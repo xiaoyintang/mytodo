@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+/* Tailwind v4: tell the compiler where to scan for class names */
+@source "../app/**/*.{ts,tsx}";
+@source "../components/**/*.{ts,tsx}";
+
+:root {
+  /* Colors */
+  --color-primary: #2563EB;
+  --color-success: #16A34A;
+  --color-danger: #DC2626;
+  --color-text-primary: #18181B;
+  --color-text-secondary: #71717A;
+  --color-text-tertiary: #A1A1AA;
+  --color-text-quaternary: #D4D4D8;
+  --color-bg-white: #FFFFFF;
+  --color-bg-gray-light: #F4F4F5;
+  --color-bg-gray-lighter: #F9FAFB;
+  --color-border: #E4E4E7;
+  --color-primary-light: #EFF6FF;
+  --color-success-light: #DCFCE7;
+  --color-danger-light: #FEF2F2;
+}
+
+@layer base {
+  html, body {
+    height: 100%;
+  }
+
+  .font-inter {
+    font-family: "Inter", sans-serif;
+  }
+
+  .font-lucide {
+    font-family: "lucide";
+    font-feature-settings: "liga";
+  }
+}
