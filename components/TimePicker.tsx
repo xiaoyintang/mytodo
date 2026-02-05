@@ -17,6 +17,7 @@ export default function TimePicker({ value, onChange, placeholder = "选择时�
   const [isOpen, setIsOpen] = useState(false);
   const [selectedHour, setSelectedHour] = useState<string | null>(null);
   const [selectedMinute, setSelectedMinute] = useState<string | null>(null);
+  const [dropdownPosition, setDropdownPosition] = useState<"bottom" | "top">("bottom");
   const containerRef = useRef<HTMLDivElement>(null);
   const hourColumnRef = useRef<HTMLDivElement>(null);
 
@@ -54,6 +55,22 @@ export default function TimePicker({ value, onChange, placeholder = "选择时�
       }
     }
   }, [isOpen, selectedHour]);
+
+  // Calculate dropdown position based on available space
+  useEffect(() => {
+    if (isOpen && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const dropdownHeight = 320; // approximate height of dropdown
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+
+      if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
+        setDropdownPosition("top");
+      } else {
+        setDropdownPosition("bottom");
+      }
+    }
+  }, [isOpen]);
 
   const hasValue = value !== "";
   const displayValue = value || placeholder;
@@ -115,7 +132,10 @@ export default function TimePicker({ value, onChange, placeholder = "选择时�
 
       {/* Dropdown */}
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-[10px] border border-[var(--color-border)] shadow-[0_4px_16px_-2px_rgba(0,0,0,0.1)] z-50 overflow-hidden">
+        <div className={[
+          "absolute left-0 right-0 bg-white rounded-[10px] border border-[var(--color-border)] shadow-[0_4px_16px_-2px_rgba(0,0,0,0.1)] z-50 overflow-hidden",
+          dropdownPosition === "top" ? "bottom-full mb-2" : "top-full mt-2",
+        ].join(" ")}>
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-[var(--color-bg-gray-lighter)]">
             <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">

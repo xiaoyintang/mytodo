@@ -22,15 +22,29 @@ TodoApp.tsx（状态管理中心）
 ├── cycleTaskStatus(taskId) - 状态循环：todo → in_progress → done → todo
 ├── createTask(taskData) - 创建任务
 ├── deleteTask(taskId) - 删除任务
+├── updateTask(taskId, updates) - 更新任务（标题、日期等）
 │
 ├── TodoDayView.tsx - 日视图，按时间分组
-│   └── 分组规则：上午 (00:00-11:59)、下午 (12:00-17:59)、晚间 (18:00+)
+│   ├── 分组规则：上午 (00:00-11:59)、下午 (12:00-17:59)、晚间 (18:00+)
+│   ├── 点击任务主体 → 状态循环
+│   └── 点击编辑按钮 → 打开 TaskBottomSheet
 │
-├── TodoWeekView.tsx - 周视图，7 列网格
-│   ├── TaskHoverCard - 悬浮卡片（fixed 定位）
-│   └── WeekTaskItem - 任务条目（点击切换状态）
+├── TodoWeekView.tsx - 周视图，每日一行列表
+│   ├── 任务按开始时间排序
+│   ├── 默认显示 3 个任务 + "+N" 折叠
+│   └── 点击任务 → 打开 TaskBottomSheet
+│
+├── TaskBottomSheet.tsx - 任务详情弹窗（日视图/周视图共用）
+│   ├── 标题编辑（点击标题进入编辑，失焦保存）
+│   ├── 日期编辑（点击日期展开周选择器）
+│   ├── 时间编辑（点击时间展开 TimePicker，带确认/取消）
+│   ├── 三态状态按钮（待办→进行中→已完成）
+│   ├── 删除按钮（二次确认）
+│   └── 内容可滚动（max-h-[85vh]）+ Footer sticky
 │
 └── AddTaskModal.tsx - 新增任务弹窗（支持 Day/Week 模式）
+    ├── 内容区可滚动（max-h-[90vh]）
+    ├── Footer sticky 底部 + 安全区适配
     └── TimePicker.tsx - 自定义时间选择器（小时/分钟滚动）
 ```
 
@@ -53,7 +67,29 @@ TodoApp.tsx（状态管理中心）
 - 任务状态字段用 `"done"`（不是 `"completed"`）
 - Task 类型的标签是单数 `tag?: TaskTag`（不是 `tags` 数组）
 - 禁止 `<button>` 嵌套 `<button>`（会导致 React hydration 错误）
-- 悬浮卡片在可滚动容器中必须用 `fixed` 定位 + 视口坐标计算
+- Bottom Sheet 使用 `fixed` 定位 + z-index 100+
+- Modal 内容需要 `overflow-y-auto` + `max-h-[90vh]` 确保移动端可滚动
+
+## 交互规范
+
+### 日视图（Mobile Day View）
+- 点击任务主体区域 → 状态切换（todo → in_progress → done → todo）
+- 点击编辑按钮（✏️）→ 打开 TaskBottomSheet
+- 点击删除按钮（🗑️）→ 二次确认后删除
+
+### 周视图（Mobile Week View）
+- 点击任务 → 打开 TaskBottomSheet（不直接切换状态）
+- 周视图列表中不提供行内编辑/状态切换
+
+### TaskBottomSheet
+- 点击标题文字 → 进入编辑态，失焦/回车保存
+- 点击日期 → 展开日期选择器，支持周切换
+- 点击时间 → 展开时间编辑器（复用 TimePicker），带确认/取消按钮
+- 状态按钮三态循环：
+  - 待办 → 「标记为进行中」（蓝色）
+  - 进行中 → 「标记为已完成」（绿色）
+  - 已完成 → 「取消完成」（灰色）
+- 内容区可滚动，Footer 按钮始终可见
 
 ## Pencil 设计集成
 

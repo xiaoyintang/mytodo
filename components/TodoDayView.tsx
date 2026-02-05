@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import type { ISODate, Task, ViewMode } from "@/components/todo/types";
 import { CN_WEEKDAY, addDays, formatCNDateTitle, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
-import { Plus, Check, Flag, Trash2 } from "lucide-react";
+import { Plus, Check, Flag, Trash2, ChevronLeft, ChevronRight, Pencil } from "lucide-react";
+import TaskBottomSheet from "@/components/TaskBottomSheet";
 
 type Props = {
   viewMode: ViewMode;
@@ -13,6 +15,9 @@ type Props = {
   onCycleTaskStatus: (taskId: string) => void;
   onOpenAddModal: () => void;
   onDeleteTask: (taskId: string) => void;
+  onUpdateTask: (taskId: string, updates: Partial<Omit<Task, "id">>) => void;
+  onPrevWeek: () => void;
+  onNextWeek: () => void;
 };
 
 function timeLabel(t: Task) {
@@ -70,12 +75,32 @@ export default function TodoDayView({
   onCycleTaskStatus,
   onOpenAddModal,
   onDeleteTask,
+  onUpdateTask,
+  onPrevWeek,
+  onNextWeek,
 }: Props) {
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
+
+  // Get the latest task data from tasks array
+  const selectedTask = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) ?? null : null;
+
   function handleDelete(e: React.MouseEvent, taskId: string) {
     e.stopPropagation();
     if (window.confirm("确定要删除这个任务吗？")) {
       onDeleteTask(taskId);
     }
+  }
+
+  function handleStartEdit(e: React.MouseEvent, task: Task) {
+    e.stopPropagation();
+    setSelectedTaskId(task.id);
+    setIsBottomSheetOpen(true);
+  }
+
+  function handleCloseBottomSheet() {
+    setIsBottomSheetOpen(false);
+    setSelectedTaskId(null);
   }
   const selected = parseISODate(selectedDate);
   const weekStart = startOfWeek(selected, true);
@@ -104,15 +129,33 @@ export default function TodoDayView({
             {formatCNDateTitle(selected)}
           </p>
         </div>
-        <button
-          onClick={onOpenAddModal}
-          className="flex items-center gap-[6px] bg-[var(--color-primary)] rounded-lg px-[14px] py-2 hover:bg-[#1d4ed8] transition-colors"
-        >
-          <Plus className="w-4 h-4 text-white" strokeWidth={2} />
-          <span className="text-white text-[14px] font-semibold">
-            新增任务
-          </span>
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onPrevWeek}
+            className="w-9 h-9 rounded-lg border-[1.5px] border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors"
+            aria-label="上一周"
+          >
+            <ChevronLeft className="w-4 h-4 text-[var(--color-text-secondary)]" />
+          </button>
+          <button
+            type="button"
+            onClick={onNextWeek}
+            className="w-9 h-9 rounded-lg border-[1.5px] border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors"
+            aria-label="下一周"
+          >
+            <ChevronRight className="w-4 h-4 text-[var(--color-text-secondary)]" />
+          </button>
+          <button
+            onClick={onOpenAddModal}
+            className="flex items-center gap-[6px] bg-[var(--color-primary)] rounded-lg px-[14px] py-2 hover:bg-[#1d4ed8] transition-colors"
+          >
+            <Plus className="w-4 h-4 text-white" strokeWidth={2} />
+            <span className="text-white text-[14px] font-semibold">
+              新增任务
+            </span>
+          </button>
+        </div>
       </div>
 
       {/* View Switcher Section */}
@@ -213,69 +256,89 @@ export default function TodoDayView({
                   {sectionTasks.length} 项任务
                 </span>
               </div>
-              <div className="w-full flex flex-col rounded-[12px] border-[1.5px] border-[var(--color-border)] overflow-hidden">
-                {sectionTasks.map((t, idx) => {
+              <div className="w-full flex flex-col gap-2">
+                {sectionTasks.map((t) => {
                   const isDone = t.status === "done";
                   const isInProgress = t.status === "in_progress";
                   const isHigh = t.priority === "high";
                   const time = timeLabel(t);
+
                   return (
-                    <div key={t.id}>
-                      <div className="group relative w-full flex items-center gap-3 p-4 hover:bg-[var(--color-bg-gray-lighter)] transition-colors">
-                        {/* Status Indicator - 点击切换状态 */}
-                        <StatusIndicator status={t.status} onClick={() => onCycleTaskStatus(t.id)} />
+                    <div
+                      key={t.id}
+                      className={[
+                        "relative w-full flex items-center gap-3 px-3.5 py-3 rounded-[10px] cursor-pointer transition-colors bg-white",
+                        isInProgress
+                          ? "border-[1.5px] border-[var(--color-primary)]"
+                          : "border border-[var(--color-border)]",
+                      ].join(" ")}
+                      onClick={() => onCycleTaskStatus(t.id)}
+                    >
+                      {/* Status Indicator */}
+                      <StatusIndicator status={t.status} onClick={() => onCycleTaskStatus(t.id)} />
 
-                        {/* Task Content: 标题 + 时间 + 标签 在同一行 */}
-                        <div className="flex-1 flex items-center gap-3 min-w-0">
-                          {/* Title */}
-                          <span
-                            className={[
-                              "text-[14px] font-medium truncate flex-shrink",
-                              isDone ? "text-[var(--color-text-secondary)] line-through" : "text-[var(--color-text-primary)]",
-                            ].join(" ")}
-                          >
-                            {t.title}
-                          </span>
+                      {/* Task Content: 标题在上，时间+标签在下 */}
+                      <div className="flex-1 flex flex-col gap-0.5 min-w-0">
+                        {/* Title */}
+                        <span
+                          className={[
+                            "text-[14px] font-medium truncate",
+                            isDone ? "text-[var(--color-text-secondary)] line-through" : "text-[var(--color-text-primary)]",
+                          ].join(" ")}
+                        >
+                          {t.title}
+                        </span>
 
-                          {/* Time - 标题右侧 */}
+                        {/* 时间 + 标签 在第二行 */}
+                        <div className="flex items-center gap-2 flex-wrap">
                           {time && (
-                            <span className="text-[var(--color-text-tertiary)] text-[12px] flex-shrink-0 whitespace-nowrap">
+                            <span className={[
+                              "text-[12px] font-medium",
+                              isInProgress ? "text-[var(--color-primary)]" : "text-[var(--color-text-tertiary)]",
+                            ].join(" ")}>
                               {time}
                             </span>
                           )}
-                        </div>
-
-                        {/* Tags/Status - 最右侧 */}
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          {/* 视觉优先级：done > in_progress > priority/tag */}
+                          {/* 标签/状态 */}
                           {isDone ? (
-                            <div className="bg-[var(--color-success-light)] rounded px-2 py-0.5">
-                              <span className="text-[var(--color-success)] text-[12px] font-medium">已完成</span>
+                            <div className="bg-[var(--color-success-light)] rounded px-1.5 py-0.5">
+                              <span className="text-[var(--color-success)] text-[10px] font-medium">已完成</span>
                             </div>
                           ) : isInProgress ? (
-                            <div className="bg-[var(--color-primary-light)] rounded px-2 py-0.5">
-                              <span className="text-[var(--color-primary)] text-[12px] font-medium">进行中</span>
-                            </div>
-                          ) : isHigh ? (
-                            <div className="flex items-center gap-1 bg-[var(--color-danger-light)] rounded px-2 py-0.5">
-                              <Flag className="w-3 h-3 text-[var(--color-danger)]" fill="currentColor" strokeWidth={0} />
-                              <span className="text-[var(--color-danger)] text-[12px] font-medium">高优</span>
+                            <div className="bg-[var(--color-primary)] rounded px-1.5 py-0.5">
+                              <span className="text-white text-[10px] font-semibold">进行中</span>
                             </div>
                           ) : null}
+                          {t.tag && !isDone && !isInProgress && (
+                            <div className="bg-[#DBEAFE] rounded px-1.5 py-0.5">
+                              <span className="text-[var(--color-primary)] text-[10px] font-medium">{t.tag}</span>
+                            </div>
+                          )}
+                          {isHigh && !isDone && !isInProgress && (
+                            <div className="bg-[var(--color-danger-light)] rounded px-1.5 py-0.5">
+                              <span className="text-[var(--color-danger)] text-[10px] font-medium">紧急</span>
+                            </div>
+                          )}
                         </div>
+                      </div>
 
-                        {/* Delete button - hover only */}
+                      {/* 编辑 + 删除按钮 - 始终显示 */}
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={(e) => handleStartEdit(e, t)}
+                          className="w-[18px] h-[18px] flex items-center justify-center"
+                        >
+                          <Pencil className="w-[18px] h-[18px] text-[#A1A1AA]" />
+                        </button>
                         <button
                           type="button"
                           onClick={(e) => handleDelete(e, t.id)}
-                          className="w-6 h-6 flex items-center justify-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-[var(--color-danger-light)] transition-all flex-shrink-0"
+                          className="w-[18px] h-[18px] flex items-center justify-center"
                         >
-                          <Trash2 className="w-3.5 h-3.5 text-[var(--color-danger)]" />
+                          <Trash2 className="w-[18px] h-[18px] text-[#A1A1AA]" />
                         </button>
                       </div>
-                      {idx !== sectionTasks.length - 1 ? (
-                        <div className="w-full h-px bg-[var(--color-border)]" />
-                      ) : null}
                     </div>
                   );
                 })}
@@ -290,6 +353,16 @@ export default function TodoDayView({
           </div>
         ) : null}
       </div>
+
+      {/* Bottom Sheet for editing */}
+      <TaskBottomSheet
+        task={selectedTask}
+        isOpen={isBottomSheetOpen}
+        onClose={handleCloseBottomSheet}
+        onCycleStatus={onCycleTaskStatus}
+        onDelete={onDeleteTask}
+        onUpdate={onUpdateTask}
+      />
     </div>
   );
 }

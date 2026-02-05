@@ -5,7 +5,7 @@ import TodoDayView from "@/components/TodoDayView";
 import TodoWeekView from "@/components/TodoWeekView";
 import AddTaskModal from "@/components/AddTaskModal";
 import type { ISODate, Task, ViewMode, TaskStatus } from "@/components/todo/types";
-import { toISODate } from "@/components/todo/date";
+import { toISODate, parseISODate, addDays, startOfWeek } from "@/components/todo/date";
 import { useLocalStorageState } from "@/components/todo/storage";
 
 const STORAGE_KEY = "mytodo.tasks.v1";
@@ -102,6 +102,27 @@ export default function TodoApp() {
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
   }
 
+  // Update task (for editing)
+  function updateTask(taskId: string, updates: Partial<Omit<Task, "id">>) {
+    setTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t))
+    );
+  }
+
+  // Navigate to previous week (move selectedDate back 7 days)
+  function goToPrevWeek() {
+    const current = parseISODate(selectedDate);
+    const newDate = addDays(current, -7);
+    setSelectedDate(toISODate(newDate));
+  }
+
+  // Navigate to next week (move selectedDate forward 7 days)
+  function goToNextWeek() {
+    const current = parseISODate(selectedDate);
+    const newDate = addDays(current, 7);
+    setSelectedDate(toISODate(newDate));
+  }
+
   return (
     <main className="h-full w-full bg-[#F5F5F5] flex items-start justify-center p-8 overflow-auto">
       {viewMode === "day" ? (
@@ -114,6 +135,9 @@ export default function TodoApp() {
           onCycleTaskStatus={cycleTaskStatus}
           onOpenAddModal={() => setIsModalOpen(true)}
           onDeleteTask={deleteTask}
+          onUpdateTask={updateTask}
+          onPrevWeek={goToPrevWeek}
+          onNextWeek={goToNextWeek}
         />
       ) : (
         <TodoWeekView
@@ -125,6 +149,9 @@ export default function TodoApp() {
           onCycleTaskStatus={cycleTaskStatus}
           onOpenAddModal={() => setIsModalOpen(true)}
           onDeleteTask={deleteTask}
+          onUpdateTask={updateTask}
+          onPrevWeek={goToPrevWeek}
+          onNextWeek={goToNextWeek}
         />
       )}
 

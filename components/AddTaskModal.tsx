@@ -99,7 +99,7 @@ export default function AddTaskModal({ mode, isOpen, onClose, onSubmit, selected
       />
 
       {/* Modal */}
-      <div className="relative w-[440px] bg-white rounded-2xl shadow-[0_8px_32px_-4px_rgba(0,0,0,0.15),0_4px_12px_rgba(0,0,0,0.1)] flex flex-col">
+      <div className="relative w-[440px] max-h-[90vh] bg-white rounded-2xl shadow-[0_8px_32px_-4px_rgba(0,0,0,0.15),0_4px_12px_rgba(0,0,0,0.1)] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5">
           <div className="flex flex-col gap-1">
@@ -119,8 +119,8 @@ export default function AddTaskModal({ mode, isOpen, onClose, onSubmit, selected
         {/* Divider */}
         <div className="h-px bg-[var(--color-border)]" />
 
-        {/* Form Content */}
-        <div className="flex flex-col gap-5 p-6">
+        {/* Form Content - Scrollable */}
+        <div className="flex flex-col gap-5 p-6 overflow-y-auto flex-1">
           {/* Date Section */}
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
@@ -304,8 +304,8 @@ export default function AddTaskModal({ mode, isOpen, onClose, onSubmit, selected
         {/* Divider */}
         <div className="h-px bg-[var(--color-border)]" />
 
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4">
+        {/* Footer - Sticky at bottom */}
+        <div className="flex items-center justify-end gap-3 px-6 py-4 bg-white sticky bottom-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <button
             type="button"
             onClick={onClose}

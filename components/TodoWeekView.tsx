@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import type { ISODate, Task, ViewMode } from "@/components/todo/types";
 import { CN_WEEKDAY, addDays, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
-import { Plus, ChevronLeft, ChevronRight, Check, Flag, Trash2, Calendar, Clock } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Check, Flag, ChevronDown, ChevronUp } from "lucide-react";
+import TaskBottomSheet from "@/components/TaskBottomSheet";
 
 type Props = {
   viewMode: ViewMode;
@@ -14,229 +15,237 @@ type Props = {
   onCycleTaskStatus: (taskId: string) => void;
   onOpenAddModal: () => void;
   onDeleteTask: (taskId: string) => void;
+  onUpdateTask: (taskId: string, updates: Partial<Omit<Task, "id">>) => void;
+  onPrevWeek: () => void;
+  onNextWeek: () => void;
 };
 
-// Hover Card Component
-function TaskHoverCard({ task, position }: { task: Task; position: { top: number; left: number } }) {
+// 任务 Chip 组件
+function TaskChip({
+  task,
+  onClick,
+}: {
+  task: Task;
+  onClick: () => void;
+}) {
   const isDone = task.status === "done";
   const isInProgress = task.status === "in_progress";
   const isHigh = task.priority === "high";
 
-  const statusLabel = isDone ? "已完成" : isInProgress ? "进行中" : "待办";
-  const statusColor = isDone
-    ? "bg-[#DCFCE7] text-[#16A34A]"
+  const bgColor = isDone
+    ? "bg-[#DCFCE7]"
     : isInProgress
-      ? "bg-[#EFF6FF] text-[#2563EB]"
-      : "bg-[#FEF2F2] text-[#DC2626]";
+      ? "bg-[#EFF6FF]"
+      : isHigh
+        ? "bg-[#FEF2F2]"
+        : "bg-[#F4F4F5]";
 
-  const taskDate = parseISODate(task.date);
-  const weekdayNames = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
-  const dateStr = `${taskDate.getMonth() + 1}月${taskDate.getDate()}日 ${weekdayNames[taskDate.getDay()]}`;
-
-  const timeStr =
-    task.startTime && task.endTime
-      ? `${task.startTime} - ${task.endTime}`
-      : task.startTime
-        ? task.startTime
-        : null;
+  const textColor = isDone
+    ? "text-[#16A34A]"
+    : isInProgress
+      ? "text-[#2563EB]"
+      : isHigh
+        ? "text-[#DC2626]"
+        : "text-[#18181B]";
 
   return (
-    <div
-      className="fixed z-[9999] w-[240px] bg-white rounded-xl border border-[#E4E4E7] shadow-[0_4px_16px_-2px_rgba(0,0,0,0.1),0_8px_24px_-4px_rgba(0,0,0,0.08)] pointer-events-none"
-      style={{ top: position.top, left: position.left }}
-      onClick={(e) => e.stopPropagation()}
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className={[
+        "inline-flex items-center gap-1 px-2 py-1 rounded-md text-[12px] font-medium truncate max-w-[100px]",
+        bgColor,
+        textColor,
+        isDone ? "line-through" : "",
+      ].join(" ")}
     >
-      {/* Header */}
-      <div className="flex gap-2.5 p-3 pb-2.5">
-        {/* Status Icon */}
-        <div
-          className={[
-            "w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0",
-            isDone ? "bg-[#DCFCE7]" : isInProgress ? "bg-[#EFF6FF]" : isHigh ? "bg-[#FEF2F2]" : "bg-[#F4F4F5]",
-          ].join(" ")}
-        >
-          {isDone ? (
-            <Check className="w-3 h-3 text-[#16A34A]" strokeWidth={2.5} />
-          ) : isInProgress ? (
-            <div className="w-2 h-2 rounded-full bg-[#2563EB]" />
-          ) : isHigh ? (
-            <div className="w-2 h-2 rounded-full bg-[#DC2626]" />
-          ) : (
-            <div className="w-2 h-2 rounded-full bg-[#A1A1AA]" />
-          )}
-        </div>
-        {/* Title + Status */}
-        <div className="flex flex-col gap-1 flex-1 min-w-0">
-          <span className="text-[13px] font-semibold text-[#18181B] leading-[1.4]">{task.title}</span>
-          <span className={["text-[11px] font-medium px-2 py-0.5 rounded w-fit", statusColor].join(" ")}>
-            {statusLabel}
-          </span>
-        </div>
-      </div>
-
-      {/* Divider */}
-      <div className="h-px bg-[#F4F4F5] mx-0" />
-
-      {/* Content */}
-      <div className="flex flex-col gap-2.5 p-3 pt-2.5">
-        {/* Tags */}
-        <div className="flex flex-wrap gap-1.5">
-          {isHigh && (
-            <span className="text-[11px] font-medium px-2 py-1 rounded-full bg-[#FEF2F2] text-[#DC2626] flex items-center gap-1">
-              <Flag className="w-3 h-3" fill="currentColor" strokeWidth={0} />
-              高优
-            </span>
-          )}
-          {task.tag && (
-            <span className="text-[11px] font-medium px-2 py-1 rounded-full bg-[#EFF6FF] text-[#2563EB] flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-current" />
-              {task.tag}
-            </span>
-          )}
-        </div>
-
-        {/* Date & Time Row */}
-        <div className="flex items-center gap-1.5 text-[11px] text-[#71717A]">
-          <Calendar className="w-3 h-3 text-[#A1A1AA]" />
-          <span>{dateStr}</span>
-          {timeStr && (
-            <>
-              <Clock className="w-3 h-3 text-[#A1A1AA] ml-1.5" />
-              <span>{timeStr}</span>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
+      {isDone && <Check className="w-3 h-3 flex-shrink-0" strokeWidth={2.5} />}
+      {isInProgress && <span className="w-1.5 h-1.5 rounded-full bg-current flex-shrink-0" />}
+      {isHigh && !isDone && !isInProgress && <Flag className="w-3 h-3 flex-shrink-0" fill="currentColor" strokeWidth={0} />}
+      <span className="truncate">{task.title}</span>
+    </button>
   );
 }
 
-// Task Item Component
-function WeekTaskItem({
-  task,
-  onCycleStatus,
-  onDelete,
+// +N 按钮组件
+function MoreChip({ count, onClick }: { count: number; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className="inline-flex items-center px-2 py-1 rounded-md text-[12px] font-medium bg-[#E4E4E7] text-[#71717A]"
+    >
+      +{count}
+    </button>
+  );
+}
+
+// 每天一行的组件
+function DayRow({
+  date,
+  tasks,
+  isExpanded,
+  onToggleExpand,
+  onTaskClick,
 }: {
-  task: Task;
-  onCycleStatus: (taskId: string) => void;
-  onDelete: (taskId: string) => void;
+  date: Date;
+  tasks: Task[];
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  onTaskClick: (task: Task) => void;
 }) {
-  const [showHoverCard, setShowHoverCard] = useState(false);
-  const [hoverPosition, setHoverPosition] = useState({ top: 0, left: 0 });
-  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const itemRef = useRef<HTMLDivElement>(null);
+  const iso = toISODate(date);
+  const isToday = toISODate(new Date()) === iso;
+  const dayNum = date.getDate();
+  const weekday = CN_WEEKDAY[date.getDay()];
 
-  const isDone = task.status === "done";
-  const isInProgress = task.status === "in_progress";
-  const isHigh = task.priority === "high";
+  // 按开始时间排序
+  const sortedTasks = [...tasks].sort((a, b) =>
+    (a.startTime ?? "99:99").localeCompare(b.startTime ?? "99:99")
+  );
 
-  // Handle mouse enter with delay
-  function handleMouseEnter() {
-    hoverTimeoutRef.current = setTimeout(() => {
-      if (itemRef.current) {
-        const rect = itemRef.current.getBoundingClientRect();
-        // Position to the right of the item, or left if near edge
-        const viewportWidth = window.innerWidth;
-        const cardWidth = 240;
-        let left = rect.right + 8;
-        if (left + cardWidth > viewportWidth - 20) {
-          left = rect.left - cardWidth - 8;
-        }
-        setHoverPosition({ top: rect.top, left });
-      }
-      setShowHoverCard(true);
-    }, 200);
-  }
+  const doneTasks = tasks.filter((t) => t.status === "done").length;
+  const totalTasks = tasks.length;
 
-  // Handle mouse leave
-  function handleMouseLeave() {
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-    }
-    setShowHoverCard(false);
-  }
-
-  // Simple click: cycle through todo → in_progress → done → todo
-  function handleClick(e: React.MouseEvent) {
-    e.stopPropagation();
-    onCycleStatus(task.id);
-  }
-
-  function handleDelete(e: React.MouseEvent) {
-    e.stopPropagation();
-    if (window.confirm("确定要删除这个任务吗？")) {
-      onDelete(task.id);
-    }
-  }
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-    };
-  }, []);
+  // 默认最多显示 3 个 chips
+  const MAX_VISIBLE = 3;
+  const visibleTasks = isExpanded ? sortedTasks : sortedTasks.slice(0, MAX_VISIBLE);
+  const hiddenCount = sortedTasks.length - MAX_VISIBLE;
+  const showMore = !isExpanded && hiddenCount > 0;
 
   return (
-    <div
-      ref={itemRef}
-      className="relative group/item"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-    >
+    <div className="border-b border-[var(--color-border)] last:border-b-0">
+      {/* Day header row */}
       <div
-        className={[
-          "relative flex items-center gap-1.5 rounded-lg px-2 py-1.5 cursor-pointer text-left transition-all",
-          isDone
-            ? "bg-[var(--color-success-light)]"
-            : isInProgress
-              ? "bg-[var(--color-primary-light)]"
-              : isHigh
-                ? "bg-[var(--color-danger-light)]"
-                : "bg-[var(--color-bg-gray-light)]",
-        ].join(" ")}
-        onClick={handleClick}
+        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-[var(--color-bg-gray-lighter)] transition-colors"
+        onClick={onToggleExpand}
       >
-        {/* Status Icon */}
-        <div className="flex-shrink-0">
-          {isDone ? (
-            <Check className="w-3.5 h-3.5 text-[var(--color-success)]" strokeWidth={2.5} />
-          ) : isInProgress ? (
-            <div className="w-3.5 h-3.5 flex items-center justify-center">
-              <div className="w-2 h-2 rounded-full bg-[var(--color-primary)]" />
-            </div>
-          ) : isHigh ? (
-            <Flag className="w-3.5 h-3.5 text-[var(--color-danger)]" fill="currentColor" strokeWidth={0} />
-          ) : (
-            <div className="w-3.5 h-3.5 rounded-full border-2 border-[#A1A1AA]" />
+        {/* Date info */}
+        <div className="flex items-center gap-2 w-[80px] flex-shrink-0">
+          <div className="flex flex-col items-center">
+            <span className={[
+              "text-[20px] font-bold",
+              isToday ? "text-[var(--color-primary)]" : "text-[var(--color-text-primary)]",
+            ].join(" ")}>
+              {dayNum}
+            </span>
+            <span className={[
+              "text-[11px] font-medium",
+              isToday ? "text-[var(--color-primary)]" : "text-[var(--color-text-tertiary)]",
+            ].join(" ")}>
+              {weekday}
+            </span>
+          </div>
+          {/* Task count */}
+          {totalTasks > 0 && (
+            <span className="text-[11px] text-[var(--color-text-tertiary)] bg-[var(--color-bg-gray-light)] px-1.5 py-0.5 rounded">
+              {doneTasks}/{totalTasks}
+            </span>
           )}
         </div>
 
-        {/* Title - single line truncate */}
-        <span
-          className={[
-            "text-[12px] font-medium truncate flex-1 pr-4",
-            isDone
-              ? "text-[var(--color-success)] line-through"
-              : isInProgress
-                ? "text-[var(--color-primary)]"
-                : "text-[var(--color-text-primary)]",
-          ].join(" ")}
-        >
-          {task.title}
-        </span>
+        {/* Task chips - 默认态 */}
+        {!isExpanded && (
+          <div className="flex-1 flex items-center gap-1.5 overflow-hidden">
+            {visibleTasks.map((task) => (
+              <TaskChip key={task.id} task={task} onClick={() => onTaskClick(task)} />
+            ))}
+            {showMore && <MoreChip count={hiddenCount} onClick={onToggleExpand} />}
+            {totalTasks === 0 && (
+              <span className="text-[12px] text-[var(--color-text-quaternary)]">无任务</span>
+            )}
+          </div>
+        )}
 
-        {/* Delete button - hover only */}
-        <button
-          type="button"
-          onClick={handleDelete}
-          className="absolute top-1 right-1 w-4 h-4 flex items-center justify-center rounded bg-white/80 opacity-0 group-hover/item:opacity-100 hover:bg-[var(--color-danger-light)] transition-all"
-        >
-          <Trash2 className="w-2.5 h-2.5 text-[var(--color-danger)]" />
-        </button>
+        {/* Expand/collapse arrow */}
+        {totalTasks > 0 && (
+          <button
+            type="button"
+            className="w-6 h-6 flex items-center justify-center flex-shrink-0"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleExpand();
+            }}
+          >
+            {isExpanded ? (
+              <ChevronUp className="w-4 h-4 text-[var(--color-text-tertiary)]" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-[var(--color-text-tertiary)]" />
+            )}
+          </button>
+        )}
       </div>
 
-      {/* Hover Card - fixed position to avoid clipping */}
-      {showHoverCard && <TaskHoverCard task={task} position={hoverPosition} />}
+      {/* Expanded task list */}
+      {isExpanded && totalTasks > 0 && (
+        <div className="px-4 pb-3 pl-[96px]">
+          <div className="flex flex-col gap-2 max-h-[200px] overflow-y-auto">
+            {sortedTasks.map((task) => (
+              <button
+                key={task.id}
+                type="button"
+                onClick={() => onTaskClick(task)}
+                className={[
+                  "flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors",
+                  task.status === "done"
+                    ? "bg-[#DCFCE7]"
+                    : task.status === "in_progress"
+                      ? "bg-[#EFF6FF]"
+                      : task.priority === "high"
+                        ? "bg-[#FEF2F2]"
+                        : "bg-[#F4F4F5]",
+                ].join(" ")}
+              >
+                {/* Status icon */}
+                {task.status === "done" && (
+                  <Check className="w-3.5 h-3.5 text-[#16A34A] flex-shrink-0" strokeWidth={2.5} />
+                )}
+                {task.status === "in_progress" && (
+                  <span className="w-2 h-2 rounded-full bg-[#2563EB] flex-shrink-0" />
+                )}
+                {task.status === "todo" && task.priority === "high" && (
+                  <Flag className="w-3.5 h-3.5 text-[#DC2626] flex-shrink-0" fill="currentColor" strokeWidth={0} />
+                )}
+                {task.status === "todo" && task.priority !== "high" && (
+                  <span className="w-2 h-2 rounded-full border-2 border-[#A1A1AA] flex-shrink-0" />
+                )}
+
+                {/* Title */}
+                <span className={[
+                  "text-[13px] font-medium truncate flex-1",
+                  task.status === "done" ? "text-[#16A34A] line-through" : "",
+                  task.status === "in_progress" ? "text-[#2563EB]" : "",
+                  task.status === "todo" ? "text-[var(--color-text-primary)]" : "",
+                ].join(" ")}>
+                  {task.title}
+                </span>
+
+                {/* Time if exists */}
+                {task.startTime && (
+                  <span className="text-[11px] text-[var(--color-text-tertiary)] flex-shrink-0">
+                    {task.startTime}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          {/* Collapse button */}
+          <button
+            type="button"
+            onClick={onToggleExpand}
+            className="flex items-center gap-1 mt-2 text-[12px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]"
+          >
+            <ChevronUp className="w-3 h-3" />
+            收起
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -250,7 +259,17 @@ export default function TodoWeekView({
   onCycleTaskStatus,
   onOpenAddModal,
   onDeleteTask,
+  onUpdateTask,
+  onPrevWeek,
+  onNextWeek,
 }: Props) {
+  const [expandedDay, setExpandedDay] = useState<ISODate | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
+
+  // Get the latest task data from tasks array (real-time update)
+  const selectedTask = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) ?? null : null;
+
   const selected = parseISODate(selectedDate);
   const weekStart = startOfWeek(selected, true);
   const days = Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
@@ -264,36 +283,135 @@ export default function TodoWeekView({
   });
   const totalTasks = weekTasks.length;
   const doneTasks = weekTasks.filter((t) => t.status === "done").length;
-  const pendingTasks = totalTasks - doneTasks;
+
+  function handleTaskClick(task: Task) {
+    setSelectedTaskId(task.id);
+    setIsBottomSheetOpen(true);
+  }
+
+  function handleToggleExpand(iso: ISODate) {
+    setExpandedDay(expandedDay === iso ? null : iso);
+  }
+
+  function handleCloseBottomSheet() {
+    setIsBottomSheetOpen(false);
+    setSelectedTaskId(null);
+  }
 
   return (
-    <div className="w-[960px] bg-white flex flex-col rounded-[16px] overflow-hidden border border-[var(--color-border)]">
-      {/* Header */}
-      <div className="w-full flex items-center justify-between px-8 pt-6 pb-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-[var(--color-text-primary)] text-[28px] font-bold tracking-[-0.5px]">
-            Todo
-          </h1>
-          <p className="text-[var(--color-text-secondary)] text-[14px] font-medium">{rangeLabel}</p>
+    <>
+      <div className="w-[420px] bg-white flex flex-col rounded-[16px] overflow-hidden border border-[var(--color-border)]">
+        {/* Header */}
+        <div className="w-full flex items-center justify-between px-4 pt-5 pb-3">
+          <div className="flex flex-col gap-0.5">
+            <h1 className="text-[var(--color-text-primary)] text-[24px] font-bold tracking-[-0.5px]">
+              Todo
+            </h1>
+            <p className="text-[var(--color-text-secondary)] text-[13px] font-medium">{rangeLabel}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onPrevWeek}
+              className="w-8 h-8 rounded-lg border border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors"
+              aria-label="上一周"
+            >
+              <ChevronLeft className="w-4 h-4 text-[var(--color-text-secondary)]" />
+            </button>
+            <button
+              type="button"
+              onClick={onNextWeek}
+              className="w-8 h-8 rounded-lg border border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors"
+              aria-label="下一周"
+            >
+              <ChevronRight className="w-4 h-4 text-[var(--color-text-secondary)]" />
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            className="w-9 h-9 rounded-lg border-[1.5px] border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors"
-            aria-label="上一周"
-          >
-            <ChevronLeft className="w-4 h-4 text-[var(--color-text-secondary)]" />
-          </button>
-          <button
-            type="button"
-            className="w-9 h-9 rounded-lg border-[1.5px] border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors"
-            aria-label="下一周"
-          >
-            <ChevronRight className="w-4 h-4 text-[var(--color-text-secondary)]" />
-          </button>
+
+        {/* View Switcher + Stats */}
+        <div className="w-full flex items-center justify-between px-4 pb-3">
+          <div className="flex gap-1 bg-[var(--color-bg-gray-light)] rounded-[10px] p-1">
+            <button
+              type="button"
+              onClick={() => onChangeViewMode("day")}
+              className={[
+                "flex items-center justify-center rounded-lg px-4 py-2 transition-all",
+                viewMode === "day"
+                  ? "bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
+                  : "hover:bg-white/50",
+              ].join(" ")}
+            >
+              <span
+                className={[
+                  "text-[13px]",
+                  viewMode === "day"
+                    ? "text-[var(--color-text-primary)] font-semibold"
+                    : "text-[var(--color-text-secondary)] font-medium",
+                ].join(" ")}
+              >
+                日
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onChangeViewMode("week")}
+              className={[
+                "flex items-center justify-center rounded-lg px-4 py-2 transition-all",
+                viewMode === "week"
+                  ? "bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
+                  : "hover:bg-white/50",
+              ].join(" ")}
+            >
+              <span
+                className={[
+                  "text-[13px]",
+                  viewMode === "week"
+                    ? "text-[var(--color-text-primary)] font-semibold"
+                    : "text-[var(--color-text-secondary)] font-medium",
+                ].join(" ")}
+              >
+                周
+              </span>
+            </button>
+          </div>
+
+          {/* Stats */}
+          <div className="flex items-center gap-3 text-[12px] font-medium">
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-[#16A34A]" />
+              <span className="text-[var(--color-text-secondary)]">{doneTasks}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-[#DC2626]" />
+              <span className="text-[var(--color-text-secondary)]">{totalTasks - doneTasks}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Week Days List */}
+        <div className="flex-1 flex flex-col border-t border-[var(--color-border)] overflow-y-auto">
+          {days.map((d) => {
+            const iso = toISODate(d);
+            const dayTasks = tasks.filter((t) => t.date === iso);
+            return (
+              <DayRow
+                key={iso}
+                date={d}
+                tasks={dayTasks}
+                isExpanded={expandedDay === iso}
+                onToggleExpand={() => handleToggleExpand(iso)}
+                onTaskClick={handleTaskClick}
+              />
+            );
+          })}
+        </div>
+
+        {/* Add Task Button - Fixed at bottom */}
+        <div className="px-4 py-4 border-t border-[var(--color-border)]">
           <button
             onClick={onOpenAddModal}
-            className="flex items-center gap-[6px] bg-[var(--color-primary)] rounded-lg px-[14px] py-2 hover:bg-[#1d4ed8] transition-colors"
+            className="w-full flex items-center justify-center gap-2 bg-[var(--color-primary)] rounded-xl py-3 hover:bg-[#1d4ed8] transition-colors"
           >
             <Plus className="w-4 h-4 text-white" strokeWidth={2} />
             <span className="text-white text-[14px] font-semibold">新增任务</span>
@@ -301,166 +419,15 @@ export default function TodoWeekView({
         </div>
       </div>
 
-      {/* View Switcher + Stats */}
-      <div className="w-full flex items-center justify-between px-8 pb-4">
-        <div className="flex gap-1 bg-[var(--color-bg-gray-light)] rounded-[10px] p-1 w-[240px]">
-          <button
-            type="button"
-            onClick={() => onChangeViewMode("day")}
-            className={[
-              "flex-1 flex items-center justify-center rounded-lg px-4 py-[10px] transition-all",
-              viewMode === "day"
-                ? "bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
-                : "hover:bg-white/50",
-            ].join(" ")}
-          >
-            <span
-              className={[
-                "text-[14px]",
-                viewMode === "day"
-                  ? "text-[var(--color-text-primary)] font-semibold"
-                  : "text-[var(--color-text-secondary)] font-medium",
-              ].join(" ")}
-            >
-              日视图
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onChangeViewMode("week")}
-            className={[
-              "flex-1 flex items-center justify-center rounded-lg px-4 py-[10px] transition-all",
-              viewMode === "week"
-                ? "bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
-                : "hover:bg-white/50",
-            ].join(" ")}
-          >
-            <span
-              className={[
-                "text-[14px]",
-                viewMode === "week"
-                  ? "text-[var(--color-text-primary)] font-semibold"
-                  : "text-[var(--color-text-secondary)] font-medium",
-              ].join(" ")}
-            >
-              周视图
-            </span>
-          </button>
-        </div>
-
-        {/* Stats */}
-        <div className="flex items-center gap-6 text-[13px] font-medium">
-          <div className="flex items-center gap-2">
-            <span className="text-[var(--color-text-primary)] font-semibold text-[16px]">{totalTasks}</span>
-            <span className="text-[var(--color-text-tertiary)]">总任务</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[var(--color-success)] font-semibold text-[16px]">{doneTasks}</span>
-            <span className="text-[var(--color-text-tertiary)]">已完成</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[var(--color-danger)] font-semibold text-[16px]">{pendingTasks}</span>
-            <span className="text-[var(--color-text-tertiary)]">待完成</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Week Grid - 7 columns */}
-      <div className="w-full flex gap-3 px-8 pb-8">
-        {days.map((d) => {
-          const iso = toISODate(d);
-          const isSelected = iso === selectedDate;
-          const isToday = toISODate(new Date()) === iso;
-          const dayTasks = tasks
-            .filter((t) => t.date === iso)
-            .sort((a, b) => (a.startTime ?? "99:99").localeCompare(b.startTime ?? "99:99"));
-
-          const dayDoneTasks = dayTasks.filter((t) => t.status === "done").length;
-          const dayTotalTasks = dayTasks.length;
-
-          return (
-            <div
-              key={iso}
-              role="button"
-              tabIndex={0}
-              onClick={() => onSelectDate(iso)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onSelectDate(iso);
-                }
-              }}
-              className={[
-                "flex-1 flex flex-col rounded-[12px] border-[1.5px] overflow-hidden h-[320px] cursor-pointer",
-                isSelected
-                  ? "border-[var(--color-primary)] border-2"
-                  : "border-[var(--color-border)]",
-              ].join(" ")}
-            >
-              {/* Day Header */}
-              <div
-                className={[
-                  "w-full flex flex-col items-center gap-0.5 py-2.5 px-2",
-                  isSelected ? "bg-[var(--color-primary)]" : "bg-[var(--color-bg-gray-lighter)]",
-                ].join(" ")}
-              >
-                <span
-                  className={[
-                    "text-[12px] font-semibold",
-                    isSelected ? "text-white/80" : "text-[var(--color-text-tertiary)]",
-                  ].join(" ")}
-                >
-                  {CN_WEEKDAY[d.getDay()]}
-                </span>
-                <span
-                  className={[
-                    "text-[20px] font-bold",
-                    isSelected ? "text-white" : "text-[var(--color-text-primary)]",
-                  ].join(" ")}
-                >
-                  {d.getDate()}
-                </span>
-                {/* Today badge or Task count */}
-                {isToday && isSelected ? (
-                  <span className="text-[10px] font-semibold text-white bg-white/20 px-2 py-0.5 rounded-full">
-                    今天
-                  </span>
-                ) : dayTotalTasks > 0 ? (
-                  <span
-                    className={[
-                      "text-[10px] font-medium flex items-center gap-1",
-                      isSelected ? "text-white/80" : "text-[var(--color-text-tertiary)]",
-                    ].join(" ")}
-                  >
-                    <Check className="w-3 h-3" strokeWidth={2.5} />
-                    {dayDoneTasks} / {dayTotalTasks}
-                  </span>
-                ) : (
-                  <span className="text-[10px] h-4" />
-                )}
-              </div>
-
-              {/* Day Content - Task List with scroll */}
-              <div className="flex-1 flex flex-col gap-1.5 p-2 overflow-y-auto scrollbar-thin">
-                {dayTasks.length === 0 ? (
-                  <div className="flex-1 flex items-center justify-center">
-                    <span className="text-[12px] text-[var(--color-text-quaternary)]">无任务</span>
-                  </div>
-                ) : (
-                  dayTasks.map((t) => (
-                    <WeekTaskItem
-                      key={t.id}
-                      task={t}
-                      onCycleStatus={onCycleTaskStatus}
-                      onDelete={onDeleteTask}
-                    />
-                  ))
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+      {/* Bottom Sheet */}
+      <TaskBottomSheet
+        task={selectedTask}
+        isOpen={isBottomSheetOpen}
+        onClose={handleCloseBottomSheet}
+        onCycleStatus={onCycleTaskStatus}
+        onDelete={onDeleteTask}
+        onUpdate={onUpdateTask}
+      />
+    </>
   );
 }

@@ -159,6 +159,53 @@ npm install
 
 ---
 
+#### 第五阶段：移动端适配与交互修复（Claude Code 完成）
+
+- **23）实现 Mobile Day View 规范**
+  - 对应文档：`prompts/Mobile Todo Final Spec.md`
+  - 日视图任务行右侧增加编辑（✏️）和删除（🗑️）按钮
+  - 点击任务主体区域切换状态，点击按钮执行对应操作
+  - 编辑：点击进入编辑态，失焦即保存
+  - 删除：二次确认后删除
+
+- **24）实现 Mobile Week View 规范**
+  - 周视图点击任务打开 Bottom Sheet（不直接切换状态）
+  - 新增 `TaskBottomSheet.tsx` 组件
+  - Bottom Sheet 展示：标题（可编辑）、状态、标签/优先级、日期、时间、删除按钮
+
+- **25）修复 TimePicker 确认按钮超出屏幕问题**
+  - 对应文档：`prompts/Claude Code Fixes 2026-02-05.md`
+  - AddTaskModal 增加 `max-h-[90vh]` 限制最大高度
+  - 内容区域 `overflow-y-auto` 可滚动
+  - Footer 使用 `sticky bottom-0` + `env(safe-area-inset-bottom)` 安全区适配
+  - 确保移动端任何屏幕高度下确认按钮可见可点击
+
+- **26）修复 Bottom Sheet 三态状态按钮**
+  - 对应文档：`prompts/Claude Code Fixes 2026-02-05.md`
+  - 状态按钮从两态改为三态循环：
+    - 待办 → 点击「标记为进行中」→ 进行中
+    - 进行中 → 点击「标记为已完成」→ 已完成
+    - 已完成 → 点击「取消完成」→ 待办
+  - 按钮样式根据状态动态变化（蓝色/绿色/灰色）
+  - 状态变更后 Bottom Sheet 内立即更新显示
+  - 列表与 Bottom Sheet 状态始终同步
+
+- **27）修复提示文字与日期编辑功能**
+  - 修复 Bottom Sheet 提示文字：「点击任务可切换状态」→「点击标题可修改」
+  - 新增日期编辑功能：
+    - 周视图 Bottom Sheet：点击日期可展开日期选择器，支持周切换
+    - 日视图：编辑按钮改为打开 Bottom Sheet（复用周视图组件）
+  - 日期修改后任务自动移动到新日期
+
+- **28）新增时间范围编辑功能**
+  - Bottom Sheet 中点击时间可展开时间编辑器
+  - 复用 TimePicker 组件，支持开始/结束时间编辑
+  - 时间编辑区带确认/取消按钮
+  - Bottom Sheet 内容区可滚动（max-h-[85vh]）
+  - Footer 按钮 sticky 在底部 + 安全区适配，确保按钮不超出屏幕
+
+---
+
 ### 当前代码状态（你现在有什么）
 
 - **技术栈**：Next.js 15 + React 19 + TypeScript + Tailwind v4 + lucide-react
@@ -183,9 +230,13 @@ npm install
   - ✅ 任务状态切换（todo → in_progress → done → todo）
   - ✅ 任务删除（hover 显示删除按钮，confirm 确认）
   - ✅ localStorage 持久化（key: `mytodo.tasks.v1`）
-  - ✅ 周视图悬浮卡（hover 显示任务完整信息：标题、状态、标签、日期、时间）
   - ✅ 周视图任务统计（每日显示 ✔ X/Y）
   - ✅ 周视图纵向滚动（任务超出时可滚动）
+  - ✅ **统一编辑弹窗**（日视图/周视图均使用 Bottom Sheet 编辑）
+  - ✅ **三态状态按钮**（待办→进行中→已完成 循环）
+  - ✅ **日期编辑**（Bottom Sheet 内可修改任务日期）
+  - ✅ **时间编辑**（Bottom Sheet 内可修改开始/结束时间）
+  - ✅ **移动端适配**（Modal/Bottom Sheet 可滚动、安全区适配）
 - **Claude Code 初始化生成痕迹**
   - `.claude/settings.local.json`：记录了 Claude Code 在本项目允许/执行的初始化命令
 
@@ -366,18 +417,22 @@ app/
   page.tsx             # 入口页面 → TodoApp
 components/
   TodoApp.tsx          # 应用主组件（状态管理、CRUD 逻辑）
-  TodoDayView.tsx      # 日视图（任务分组、状态切换、删除）
-  TodoWeekView.tsx     # 周视图（7列网格、任务卡片、悬浮卡、任务统计）
-  AddTaskModal.tsx     # 新增任务弹窗（Day/Week 模式）
+  TodoDayView.tsx      # 日视图（任务分组、状态切换、编辑、删除）
+  TodoWeekView.tsx     # 周视图（7列网格、任务卡片、Bottom Sheet）
+  TaskBottomSheet.tsx  # 周视图任务详情弹窗（三态状态切换）
+  AddTaskModal.tsx     # 新增任务弹窗（Day/Week 模式，可滚动）
   TimePicker.tsx       # 自定义时间选择器
   todo/
     date.ts            # 日期工具函数
     storage.ts         # localStorage hook
     types.ts           # TypeScript 类型定义
 prompts/
-  todo-implementation.md   # 新增任务弹窗 prompt
-  todo-timepicker.md       # 时间选择器 + 状态样式 prompt
-  todo-week-delete.md      # Week View 优化 + 删除功能 prompt
+  todo-implementation.md       # 新增任务弹窗 prompt
+  todo-timepicker.md           # 时间选择器 + 状态样式 prompt
+  todo-week-delete.md          # Week View 优化 + 删除功能 prompt
+  MOBILE_V2_SPEC.md            # Mobile Day/Week V2 规范
+  Mobile Todo Final Spec.md    # Mobile 最终实现规范
+  Claude Code Fixes 2026-02-05.md  # Bug 修复需求
 postcss.config.mjs
 package.json
 AGENTS.md              # Cursor Agent 接力说明

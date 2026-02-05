@@ -1,97 +1,112 @@
-### 给 Cursor 新 Agent 的接力说明
+### Cursor 新 Agent 接力说明（必读）
 
-你接手的是一个已跑通的 Next.js Todo 项目，来源于 Pencil 设计（`.pen`）→ Claude Code 生成骨架 → 手工补齐。
+这是一个从 Pencil 设计落地的 Todo 项目，已经上线到 Vercel。请按本文接力，不要依赖聊天上下文。
 
 ---
 
-### 快速开始
+### 线上与仓库
 
-- **启动**：
+- **线上地址**：`https://mytodo-brown.vercel.app`
+  - 备注：手机侧在某些网络下需要 VPN 才能访问 `vercel.app`（网络侧限制，非代码问题）。
+- **GitHub**：`https://github.com/xiaoyintang/mytodo`
+
+---
+
+### 一句话说明项目
+
+Next.js 15 + React 19 + TS + Tailwind v4 的 Todo Web App，支持 **日/周视图**、**新增任务弹窗（含时间选择器）**、**状态流转**、**删除**、**localStorage 持久化**。
+
+---
+
+### 快速运行（本地）
 
 ```bash
 npm install
 npm run dev
 ```
 
-- **入口**：`app/page.tsx` → `components/TodoApp.tsx`
+入口：`app/page.tsx` → `components/TodoApp.tsx`
 
 ---
 
-### 当前已完成
+### 关键硬约束（非常重要）
 
-- **两张主界面已落地**（日/周切换、日期选择、任务渲染、localStorage）：
-  - `components/TodoDayView.tsx`
-  - `components/TodoWeekView.tsx`
-  - `components/TodoApp.tsx`
+- **不要重建项目/不要推倒重来**：只做增量修改与新增少量组件。
+- **不要破坏 Task 模型兼容性**（见 `components/todo/types.ts`）：
+  - `status` 必须是 `"todo" | "in_progress" | "done"`（不要改成 `completed`）
+  - 允许 `startTime/endTime`（`HH:mm`）
+  - localStorage key：`mytodo.tasks.v1`（如需 schema 变更，用新 key + 迁移）
+- **样式**：只用 Tailwind + `app/globals.css` 的 CSS 变量 tokens（`var(--color-xxx)`），不要引入新的 UI 框架/设计系统。
 
-- **基础模块**：
-  - `components/todo/types.ts`（Task 模型：`status: "todo" | "in_progress" | "done"`，含 `startTime/endTime`）
-  - `components/todo/storage.ts`（localStorage hook，key=`mytodo.tasks.v1`）
-  - `components/todo/date.ts`（日期工具）
+---
 
-- **Tailwind v4 已接通**：
-  - `postcss.config.mjs`
-  - `app/globals.css`（含 `@source` 扫描声明 + CSS tokens）
+### 目录结构（定位用）
+
+```text
+app/
+  globals.css        # tailwind v4 + tokens + @source
+  layout.tsx
+  page.tsx
+components/
+  TodoApp.tsx        # 顶层状态、切换、localStorage
+  TodoDayView.tsx    # 日视图（分组/列表/交互）
+  TodoWeekView.tsx   # 周视图（概览/更多/+N）
+  AddTaskModal.tsx   # 新增任务弹窗（Day/Week/With time picker 逻辑）
+  TimePicker.tsx     # 时间选择器
+  todo/
+    types.ts         # Task/状态/type
+    date.ts          # 日期工具
+    storage.ts       # useLocalStorageState
+prompts/
+  todo-implementation.md
+  todo-timepicker.md
+  todo-week-delete.md
+notes/
+  deploy-vercel.md
+README.md
+```
 
 ---
 
 ### 设计来源（Pencil）
 
-设计文件：`/Users/tangyin/Downloads/代办事项.pen`
+设计文件（不提交到 GitHub）：`/Users/tangyin/Downloads/代办事项.pen`
 
-关键 frame（历史）：
-- Day/Week 主界面：`Todo - Day View (798gn)` / `Todo - Week View (eRlva)`
-- 新增任务 modal：`Add Task Modal - Day View (SkTJf)` / `Add Task Modal - Week View (dwBmt)`
-- 带时间选择器的新增任务 modal：`Add Task Modal - With Time Picker (Ch6bo)`
-
----
-
-### 继续开发时的硬约束（非常重要）
-
-- **不要重建项目/不要推倒重来**：只做增量修改与新增少量组件。
-- **不要改坏 Task 模型兼容性**：
-  - `status` 不要从 `done` 改成 `completed`
-  - localStorage key 保持 `mytodo.tasks.v1`（如要升级 schema，用版本化 key 并做迁移）
-- **样式必须沿用现有 tokens**：使用 Tailwind + `app/globals.css` 的 CSS 变量（`var(--color-xxx)`）。
+关键 frame（ID 供对齐使用）：
+- `Todo - Day View`（`798gn`）
+- `Todo - Week View`（`eRlva`）
+- `Add Task Modal - Day View`（`SkTJf`）
+- `Add Task Modal - Week View`（`dwBmt`）
+- `Add Task Modal - With Time Picker`（`Ch6bo`）
 
 ---
 
-### Claude Code / 提示词（直接复用）
+### Claude Code / Prompts（继续开发的入口）
 
-- 完整功能补全（含 SkTJf/dwBmt）：`prompts/todo-implementation.md`
-- 时间选择器 + 分组逻辑 + 进行中样式（对齐 Ch6bo）：`prompts/todo-timepicker.md`
-- Week View 可读性优化 + 任务删除：`prompts/todo-week-delete.md`
-
-如果使用 Claude Code 从选中 frame 生成/改代码：
-- 避免让它重建项目；若出现 1/2 选项，**必须选 2**（只集成到现有项目）。
+按任务选择对应文件（直接读并执行）：
+- `prompts/todo-implementation.md`：增量补全（对齐 `SkTJf/dwBmt`，禁止推倒重来）
+- `prompts/todo-timepicker.md`：时间选择器 + 分组逻辑 + in_progress 圆点样式（对齐 `Ch6bo`）
+- `prompts/todo-week-delete.md`：Week View 可读性优化 + 删除
 
 ---
 
-### 排错速记
+### 常见排错
 
-- **页面变成“纯文字”**：Tailwind 没编译 → 检查 `postcss.config.mjs` 与 `@tailwindcss/postcss` 是否安装、`app/globals.css` 是否包含 `@source`。
-- **`next build` 拉 Google Fonts 失败**：不要用 `next/font/google` 在线拉字体（本项目已移除）。
-- **Pencil MCP 读不到 selection**：确保 Pencil 打开、`.pen` 已打开并选中 frame，再在 Claude Code 里 `/ide` 重连。
-
----
-
-### 上下文快满时怎么接力（重要）
-
-当你看到类似 “Context left …% / auto-compact” 的提示时，不要依赖聊天历史记忆。按下面顺序让新 Agent/Claude Code 从文件接力：
-
-- 先读：`AGENTS.md`
-- 再读：`README.md`
-- 再读对应任务的提示词：
-  - `prompts/todo-implementation.md`
-  - `prompts/todo-timepicker.md`
-  - `prompts/todo-week-delete.md`
-
-这样即使对话被压缩，也不会丢关键约束（不重建项目、status=done、localStorage key 等）。
+- **页面变成“纯文字”**：Tailwind 没编译
+  - 检查：`postcss.config.mjs`、`@tailwindcss/postcss` 是否安装、`app/globals.css` 是否包含 `@source`
+- **`next build` 拉 Google Fonts 失败**：避免 `next/font/google` 在线拉字体（本项目已移除该依赖路径）
+- **手机打不开**
+  - 本地开发：必须同一 Wi‑Fi，用 `http://电脑局域网IP:3000`；公司网/防火墙可能拦端口
+  - 线上 Vercel：若蜂窝/换网络可用而当前 Wi‑Fi 不可用，多半是网络拦 `vercel.app`；可考虑绑定自定义域名 + Cloudflare 代理
 
 ---
 
-### 详细复盘与上下文
+### 上下文不足的接力策略（必须遵守）
 
-更完整的“今天做了什么/坑位记录”见：
-- `README.md`
+如果你发现 chat/context 快满或已被压缩，接力时不要依赖聊天历史：
+
+1. 先读：`AGENTS.md`
+2. 再读：`README.md`
+3. 再按任务读：`prompts/*.md`
+4. 最后再开始改代码
 
