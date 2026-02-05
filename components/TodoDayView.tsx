@@ -148,11 +148,11 @@ export default function TodoDayView({
           </button>
           <button
             onClick={onOpenAddModal}
-            className="flex items-center gap-[6px] bg-[var(--color-primary)] rounded-lg px-[14px] py-2 hover:bg-[#1d4ed8] transition-colors"
+            className="flex items-center gap-1 bg-[var(--color-primary)] rounded-lg px-3 py-2 hover:bg-[#1d4ed8] transition-colors whitespace-nowrap"
           >
-            <Plus className="w-4 h-4 text-white" strokeWidth={2} />
-            <span className="text-white text-[14px] font-semibold">
-              新增任务
+            <Plus className="w-4 h-4 text-white flex-shrink-0" strokeWidth={2} />
+            <span className="text-white text-[13px] font-semibold">
+              新增
             </span>
           </button>
         </div>
