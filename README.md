@@ -204,6 +204,28 @@ npm install
   - Bottom Sheet 内容区可滚动（max-h-[85vh]）
   - Footer 按钮 sticky 在底部 + 安全区适配，确保按钮不超出屏幕
 
+- **29）修复日视图头部按钮换行问题**
+  - 「新增任务」按钮文字简化为「新增」
+  - 添加 `whitespace-nowrap` 防止换行
+  - 减小字体和 padding 适配移动端
+
+---
+
+#### 第六阶段：PWA 支持（Claude Code 完成）
+
+- **30）添加 PWA 支持**
+  - 新增 `public/manifest.json`：App 名称、图标、主题色
+  - 新增 `public/sw.js`：Service Worker 离线缓存
+  - 生成 App 图标：192x192、512x512、apple-touch-icon
+  - 更新 `app/layout.tsx`：
+    - 添加 PWA meta 标签
+    - 添加 iOS 特有标签（apple-mobile-web-app-capable）
+    - 注册 Service Worker
+  - 功能：
+    - 支持「添加到主屏幕」
+    - 全屏显示，无浏览器地址栏
+    - 离线可用
+
 ---
 
 ### 当前代码状态（你现在有什么）
@@ -237,6 +259,7 @@ npm install
   - ✅ **日期编辑**（Bottom Sheet 内可修改任务日期）
   - ✅ **时间编辑**（Bottom Sheet 内可修改开始/结束时间）
   - ✅ **移动端适配**（Modal/Bottom Sheet 可滚动、安全区适配）
+  - ✅ **PWA 支持**（添加到主屏幕、全屏显示、离线可用）
 - **Claude Code 初始化生成痕迹**
   - `.claude/settings.local.json`：记录了 Claude Code 在本项目允许/执行的初始化命令
 
@@ -413,8 +436,13 @@ npm i -D @tailwindcss/postcss
 ```text
 app/
   globals.css          # CSS 变量 tokens + Tailwind v4 配置
-  layout.tsx           # 根布局
+  layout.tsx           # 根布局 + PWA meta 标签
   page.tsx             # 入口页面 → TodoApp
+public/
+  manifest.json        # PWA 配置文件
+  sw.js                # Service Worker 离线缓存
+  favicon.ico          # 网站图标
+  icons/               # PWA 图标（192x192, 512x512, apple-touch-icon）
 components/
   TodoApp.tsx          # 应用主组件（状态管理、CRUD 逻辑）
   TodoDayView.tsx      # 日视图（任务分组、状态切换、编辑、删除）

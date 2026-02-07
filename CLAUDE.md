@@ -91,6 +91,26 @@ TodoApp.tsx（状态管理中心）
   - 已完成 → 「取消完成」（灰色）
 - 内容区可滚动，Footer 按钮始终可见
 
+## PWA 配置
+
+应用已支持 PWA（Progressive Web App），可添加到 iOS 主屏幕使用。
+
+### 关键文件
+- `public/manifest.json`：App 名称、图标、主题色配置
+- `public/sw.js`：Service Worker，实现离线缓存
+- `public/icons/`：App 图标（192x192, 512x512, apple-touch-icon）
+- `app/layout.tsx`：PWA meta 标签 + Service Worker 注册
+
+### iOS 添加到主屏幕
+1. Safari 打开 https://mytodo-brown.vercel.app
+2. 点击分享按钮 → 「添加到主屏幕」
+3. 点击「添加」
+
+### 注意事项
+- `manifest.json` 中 `display: "standalone"` 实现全屏显示
+- iOS 需要 `apple-mobile-web-app-capable` meta 标签
+- Service Worker 缓存策略：优先缓存，网络回退
+
 ## Pencil 设计集成
 
 设计源文件：`/Users/tangyin/Downloads/代办事项.pen`
