@@ -3,12 +3,15 @@
 import { useMemo, useState } from "react";
 import TodoDayView from "@/components/TodoDayView";
 import TodoWeekView from "@/components/TodoWeekView";
+import TimeLogView from "@/components/TimeLogView";
 import AddTaskModal from "@/components/AddTaskModal";
-import type { ISODate, Task, ViewMode, TaskStatus } from "@/components/todo/types";
+import type { ISODate, Task, TimeEntry, ViewMode, TaskStatus } from "@/components/todo/types";
 import { toISODate, parseISODate, addDays, startOfWeek } from "@/components/todo/date";
 import { useLocalStorageState } from "@/components/todo/storage";
 
 const STORAGE_KEY = "mytodo.tasks.v1";
+const ENTRIES_KEY = "mytodo.entries.v1";
+const EMPTY_ENTRIES: TimeEntry[] = [];
 
 function seedTasks(today: ISODate): Task[] {
   // Generate dates for the current week
@@ -72,18 +75,30 @@ export default function TodoApp() {
     seedTasks(todayIso),
   );
 
+  const { value: entries, setValue: setEntries, hydrated: entriesHydrated } = useLocalStorageState<TimeEntry[]>(
+    ENTRIES_KEY,
+    EMPTY_ENTRIES,
+  );
+
   const [viewMode, setViewMode] = useState<ViewMode>("day");
   const [selectedDate, setSelectedDate] = useState<ISODate>(todayIso);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const safeTasks = hydrated ? tasks : seedTasks(todayIso);
+  const safeEntries = entriesHydrated ? entries : EMPTY_ENTRIES;
 
   // Toggle task status: todo → in_progress → done → todo
+  // 非时长目标任务：状态与手动进度联动（完成=100% 待办=0% 进行中保持原值）
   function cycleTaskStatus(taskId: string) {
     setTasks((prev) =>
       prev.map((t) => {
         if (t.id !== taskId) return t;
-        return { ...t, status: STATUS_CYCLE[t.status] };
+        const next = STATUS_CYCLE[t.status];
+        if (t.targetMinutes) return { ...t, status: next };
+        let progress = t.progress;
+        if (next === "done") progress = 100;
+        else if (next === "todo") progress = 0;
+        return { ...t, status: next, progress };
       }),
     );
   }
@@ -109,6 +124,30 @@ export default function TodoApp() {
     );
   }
 
+  // 新增时间记录（批量，用于自然语言解析出多笔的场景）
+  function addEntries(entryList: Omit<TimeEntry, "id">[]) {
+    const newEntries: TimeEntry[] = entryList.map((e, i) => ({
+      ...e,
+      id: `e-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
+    }));
+    setEntries((prev) => [...prev, ...newEntries]);
+  }
+
+  // 新增单笔时间记录（用于 TaskBottomSheet 的"记一笔"）
+  function addEntry(entryData: Omit<TimeEntry, "id">) {
+    addEntries([entryData]);
+  }
+
+  // 删除时间记录
+  function deleteEntry(entryId: string) {
+    setEntries((prev) => prev.filter((e) => e.id !== entryId));
+  }
+
+  // 更新时间记录（台账行内编辑）
+  function updateEntry(entryId: string, updates: Partial<Omit<TimeEntry, "id">>) {
+    setEntries((prev) => prev.map((e) => (e.id === entryId ? { ...e, ...updates } : e)));
+  }
+
   // Navigate to previous week (move selectedDate back 7 days)
   function goToPrevWeek() {
     const current = parseISODate(selectedDate);
@@ -132,31 +171,49 @@ export default function TodoApp() {
           selectedDate={selectedDate}
           onSelectDate={setSelectedDate}
           tasks={safeTasks}
+          entries={safeEntries}
           onCycleTaskStatus={cycleTaskStatus}
           onOpenAddModal={() => setIsModalOpen(true)}
           onDeleteTask={deleteTask}
           onUpdateTask={updateTask}
+          onAddEntry={addEntry}
           onPrevWeek={goToPrevWeek}
           onNextWeek={goToNextWeek}
         />
-      ) : (
+      ) : viewMode === "week" ? (
         <TodoWeekView
           viewMode={viewMode}
           onChangeViewMode={setViewMode}
           selectedDate={selectedDate}
           onSelectDate={setSelectedDate}
           tasks={safeTasks}
+          entries={safeEntries}
           onCycleTaskStatus={cycleTaskStatus}
           onOpenAddModal={() => setIsModalOpen(true)}
           onDeleteTask={deleteTask}
           onUpdateTask={updateTask}
+          onAddEntry={addEntry}
+          onPrevWeek={goToPrevWeek}
+          onNextWeek={goToNextWeek}
+        />
+      ) : (
+        <TimeLogView
+          viewMode={viewMode}
+          onChangeViewMode={setViewMode}
+          selectedDate={selectedDate}
+          onSelectDate={setSelectedDate}
+          tasks={safeTasks}
+          entries={safeEntries}
+          onAddEntries={addEntries}
+          onDeleteEntry={deleteEntry}
+          onUpdateEntry={updateEntry}
           onPrevWeek={goToPrevWeek}
           onNextWeek={goToNextWeek}
         />
       )}
 
       <AddTaskModal
-        mode={viewMode}
+        mode={viewMode === "week" ? "week" : "day"}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSubmit={createTask}

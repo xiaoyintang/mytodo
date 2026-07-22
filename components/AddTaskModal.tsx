@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from "react";
 import type { ISODate, Task, TaskPriority } from "@/components/todo/types";
-import { X, Calendar, Plus, CircleCheck, TriangleAlert, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, Calendar, Plus, CircleCheck, TriangleAlert, ChevronLeft, ChevronRight, Clock, Timer } from "lucide-react";
 import TimePicker from "@/components/TimePicker";
 import { CN_WEEKDAY, addDays, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
+import { formatMinutes } from "@/components/todo/time";
 
 type ModalMode = "day" | "week";
 
@@ -23,6 +24,9 @@ const TAGS = [
   { label: "学习", value: "学习" as const, bg: "#F0FDF4", border: "#BBF7D0", text: "#16A34A" },
 ];
 
+// 时长目标快捷选项（分钟）
+const TARGET_PRESETS = [30, 60, 90, 120, 180, 240];
+
 export default function AddTaskModal({ mode, isOpen, onClose, onSubmit, selectedDate }: Props) {
   const today = toISODate(new Date());
 
@@ -33,6 +37,10 @@ export default function AddTaskModal({ mode, isOpen, onClose, onSubmit, selected
   const [endTime, setEndTime] = useState("");
   const [priority, setPriority] = useState<TaskPriority | null>(null);
   const [tag, setTag] = useState<string | null>(null);
+  // 时间方式：固定时间段 or 时长目标（柳比歇夫模式）
+  const [timeMode, setTimeMode] = useState<"range" | "target">("range");
+  const [targetMinutes, setTargetMinutes] = useState<number | null>(null);
+  const [customTarget, setCustomTarget] = useState("");
 
   // Week picker state (for week mode)
   const [pickerWeekStart, setPickerWeekStart] = useState(() => startOfWeek(new Date(), true));
@@ -46,6 +54,9 @@ export default function AddTaskModal({ mode, isOpen, onClose, onSubmit, selected
       setEndTime("");
       setPriority(null);
       setTag(null);
+      setTimeMode("range");
+      setTargetMinutes(null);
+      setCustomTarget("");
       setPickerWeekStart(startOfWeek(new Date(), true));
     }
   }, [isOpen, mode, selectedDate, today]);
@@ -64,17 +75,25 @@ export default function AddTaskModal({ mode, isOpen, onClose, onSubmit, selected
   function handleSubmit() {
     if (!canSubmit || !date) return;
 
+    const isTarget = timeMode === "target";
     onSubmit({
       title: title.trim(),
       date,
       status: "todo",
-      startTime: startTime || undefined,
-      endTime: endTime || undefined,
+      startTime: isTarget ? undefined : startTime || undefined,
+      endTime: isTarget ? undefined : endTime || undefined,
+      targetMinutes: isTarget && targetMinutes ? targetMinutes : undefined,
       priority: priority ?? undefined,
       tag: tag as Task["tag"] ?? undefined,
     });
 
     onClose();
+  }
+
+  function handleCustomTarget(value: string) {
+    setCustomTarget(value);
+    const n = Math.round(Number(value));
+    setTargetMinutes(Number.isFinite(n) && n > 0 ? n : null);
   }
 
   function handleTagClick(tagValue: string, isPriority: boolean) {
@@ -237,26 +256,103 @@ export default function AddTaskModal({ mode, isOpen, onClose, onSubmit, selected
           </div>
 
           {/* Time Section */}
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              <span className="text-[14px] font-medium text-[var(--color-text-primary)]">时间范围</span>
+              <span className="text-[14px] font-medium text-[var(--color-text-primary)]">时间安排</span>
               <span className="text-[12px] text-[var(--color-text-tertiary)]">(可选)</span>
             </div>
-            <div className="flex items-center gap-3">
-              <TimePicker
-                value={startTime}
-                onChange={setStartTime}
-                placeholder="开始时间"
-                label="选择开始时间"
-              />
-              <span className="text-[14px] text-[var(--color-text-tertiary)]">—</span>
-              <TimePicker
-                value={endTime}
-                onChange={setEndTime}
-                placeholder="结束时间"
-                label="选择结束时间"
-              />
+
+            {/* 模式切换：固定时间段 / 时长目标 */}
+            <div className="flex gap-1 bg-[var(--color-bg-gray-light)] rounded-[10px] p-1">
+              <button
+                type="button"
+                onClick={() => setTimeMode("range")}
+                className={[
+                  "flex-1 flex items-center justify-center gap-1.5 rounded-lg px-3 py-2",
+                  timeMode === "range" ? "bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]" : "",
+                ].join(" ")}
+              >
+                <Clock className={["w-3.5 h-3.5", timeMode === "range" ? "text-[var(--color-primary)]" : "text-[var(--color-text-tertiary)]"].join(" ")} />
+                <span className={[
+                  "text-[13px]",
+                  timeMode === "range" ? "text-[var(--color-text-primary)] font-semibold" : "text-[var(--color-text-secondary)] font-medium",
+                ].join(" ")}>
+                  固定时间段
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTimeMode("target")}
+                className={[
+                  "flex-1 flex items-center justify-center gap-1.5 rounded-lg px-3 py-2",
+                  timeMode === "target" ? "bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]" : "",
+                ].join(" ")}
+              >
+                <Timer className={["w-3.5 h-3.5", timeMode === "target" ? "text-[var(--color-primary)]" : "text-[var(--color-text-tertiary)]"].join(" ")} />
+                <span className={[
+                  "text-[13px]",
+                  timeMode === "target" ? "text-[var(--color-text-primary)] font-semibold" : "text-[var(--color-text-secondary)] font-medium",
+                ].join(" ")}>
+                  时长目标
+                </span>
+              </button>
             </div>
+
+            {timeMode === "range" ? (
+              <div className="flex items-center gap-3">
+                <TimePicker
+                  value={startTime}
+                  onChange={setStartTime}
+                  placeholder="开始时间"
+                  label="选择开始时间"
+                />
+                <span className="text-[14px] text-[var(--color-text-tertiary)]">—</span>
+                <TimePicker
+                  value={endTime}
+                  onChange={setEndTime}
+                  placeholder="结束时间"
+                  label="选择结束时间"
+                />
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap gap-2">
+                  {TARGET_PRESETS.map((m) => {
+                    const isSelected = targetMinutes === m && customTarget === "";
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => {
+                          setTargetMinutes(m);
+                          setCustomTarget("");
+                        }}
+                        className={[
+                          "px-3 py-2 rounded-lg text-[13px] font-medium border transition-colors",
+                          isSelected
+                            ? "bg-[var(--color-primary)] text-white border-[var(--color-primary)]"
+                            : "bg-white text-[var(--color-text-primary)] border-[var(--color-border)] hover:border-[var(--color-primary)]",
+                        ].join(" ")}
+                      >
+                        {formatMinutes(m)}
+                      </button>
+                    );
+                  })}
+                </div>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  value={customTarget}
+                  onChange={(e) => handleCustomTarget(e.target.value)}
+                  placeholder="或自定义分钟数，如 150"
+                  className="w-full px-3 py-2.5 rounded-md border border-[var(--color-border)] text-[14px] placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)]"
+                />
+                <p className="text-[12px] text-[var(--color-text-secondary)]">
+                  不限定几点做，累计投入满目标时长即达成（柳比歇夫时间记录法）
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Priority / Tags Section */}

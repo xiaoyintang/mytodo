@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import type { ISODate, Task, ViewMode } from "@/components/todo/types";
+import type { ISODate, Task, TimeEntry, ViewMode } from "@/components/todo/types";
 import { CN_WEEKDAY, addDays, formatCNDateTitle, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
-import { Plus, Check, Flag, Trash2, ChevronLeft, ChevronRight, Pencil } from "lucide-react";
+import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
+import { Plus, Check, Flag, Trash2, ChevronLeft, ChevronRight, Pencil, Timer } from "lucide-react";
 import TaskBottomSheet from "@/components/TaskBottomSheet";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 type Props = {
   viewMode: ViewMode;
@@ -12,10 +14,12 @@ type Props = {
   selectedDate: ISODate;
   onSelectDate: (date: ISODate) => void;
   tasks: Task[];
+  entries: TimeEntry[];
   onCycleTaskStatus: (taskId: string) => void;
   onOpenAddModal: () => void;
   onDeleteTask: (taskId: string) => void;
   onUpdateTask: (taskId: string, updates: Partial<Omit<Task, "id">>) => void;
+  onAddEntry: (entry: Omit<TimeEntry, "id">) => void;
   onPrevWeek: () => void;
   onNextWeek: () => void;
 };
@@ -26,8 +30,9 @@ function timeLabel(t: Task) {
   return "";
 }
 
-// 分组规则：00:00-11:59 上午，12:00-17:59 下午，18:00+ 晚间
-function sectionForTask(t: Task): "上午" | "下午" | "晚间" {
+// 分组规则：时长目标任务单独一组「不限时段」；其余按开始时间 00:00-11:59 上午，12:00-17:59 下午，18:00+ 晚间
+function sectionForTask(t: Task): "不限时段" | "上午" | "下午" | "晚间" {
+  if (t.targetMinutes) return "不限时段"; // 柳比歇夫模式：不限定几点做
   if (!t.startTime) return "晚间"; // 无时间的放到晚间
   const h = Number(t.startTime.slice(0, 2));
   if (h < 12) return "上午";
@@ -72,24 +77,26 @@ export default function TodoDayView({
   selectedDate,
   onSelectDate,
   tasks,
+  entries,
   onCycleTaskStatus,
   onOpenAddModal,
   onDeleteTask,
   onUpdateTask,
+  onAddEntry,
   onPrevWeek,
   onNextWeek,
 }: Props) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   // Get the latest task data from tasks array
   const selectedTask = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) ?? null : null;
+  const deleteTarget = deleteTargetId ? tasks.find((t) => t.id === deleteTargetId) ?? null : null;
 
   function handleDelete(e: React.MouseEvent, taskId: string) {
     e.stopPropagation();
-    if (window.confirm("确定要删除这个任务吗？")) {
-      onDeleteTask(taskId);
-    }
+    setDeleteTargetId(taskId);
   }
 
   function handleStartEdit(e: React.MouseEvent, task: Task) {
@@ -112,6 +119,7 @@ export default function TodoDayView({
     .sort((a, b) => (a.startTime ?? "99:99").localeCompare(b.startTime ?? "99:99"));
 
   const groups = {
+    不限时段: dayTasks.filter((t) => sectionForTask(t) === "不限时段"),
     上午: dayTasks.filter((t) => sectionForTask(t) === "上午"),
     下午: dayTasks.filter((t) => sectionForTask(t) === "下午"),
     晚间: dayTasks.filter((t) => sectionForTask(t) === "晚间"),
@@ -162,48 +170,30 @@ export default function TodoDayView({
       <div className="w-full flex flex-col gap-4 px-6">
         {/* Tab Container */}
         <div className="w-full flex gap-1 bg-[var(--color-bg-gray-light)] rounded-[10px] p-1">
-          <button
-            type="button"
-            onClick={() => onChangeViewMode("day")}
-            className={[
-              "flex-1 flex items-center justify-center rounded-lg px-4 py-[10px]",
-              viewMode === "day"
-                ? "bg-[var(--color-bg-white)] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
-                : "",
-            ].join(" ")}
-          >
-            <span
+          {([["day", "日视图"], ["week", "周视图"], ["log", "记录"]] as Array<[ViewMode, string]>).map(([mode, label]) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => onChangeViewMode(mode)}
               className={[
-                "text-[14px]",
-                viewMode === "day"
-                  ? "text-[var(--color-text-primary)] font-semibold"
-                  : "text-[var(--color-text-secondary)] font-medium",
+                "flex-1 flex items-center justify-center rounded-lg px-4 py-[10px]",
+                viewMode === mode
+                  ? "bg-[var(--color-bg-white)] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
+                  : "",
               ].join(" ")}
             >
-              日视图
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onChangeViewMode("week")}
-            className={[
-              "flex-1 flex items-center justify-center rounded-lg px-4 py-[10px]",
-              viewMode === "week"
-                ? "bg-[var(--color-bg-white)] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
-                : "",
-            ].join(" ")}
-          >
-            <span
-              className={[
-                "text-[14px]",
-                viewMode === "week"
-                  ? "text-[var(--color-text-primary)] font-semibold"
-                  : "text-[var(--color-text-secondary)] font-medium",
-              ].join(" ")}
-            >
-              周视图
-            </span>
-          </button>
+              <span
+                className={[
+                  "text-[14px]",
+                  viewMode === mode
+                    ? "text-[var(--color-text-primary)] font-semibold"
+                    : "text-[var(--color-text-secondary)] font-medium",
+                ].join(" ")}
+              >
+                {label}
+              </span>
+            </button>
+          ))}
         </div>
 
         {/* Date Picker */}
@@ -211,6 +201,7 @@ export default function TodoDayView({
           {days.map((d) => {
             const iso = toISODate(d);
             const isSelected = iso === selectedDate;
+            const isToday = iso === toISODate(new Date());
             return (
               <button
                 key={iso}
@@ -218,21 +209,29 @@ export default function TodoDayView({
                 onClick={() => onSelectDate(iso)}
                 className={[
                   "flex flex-col items-center gap-[6px] px-3 py-2 rounded-[12px]",
-                  isSelected ? "bg-[var(--color-primary)]" : "",
+                  isSelected ? "bg-[var(--color-primary)]" : isToday ? "bg-[var(--color-primary-light)]" : "",
                 ].join(" ")}
               >
                 <span
                   className={[
                     "text-[12px] font-medium",
-                    isSelected ? "text-[var(--color-bg-white)] font-semibold" : "text-[var(--color-text-tertiary)]",
+                    isSelected
+                      ? "text-[var(--color-bg-white)] font-semibold"
+                      : isToday
+                        ? "text-[var(--color-primary)] font-semibold"
+                        : "text-[var(--color-text-tertiary)]",
                   ].join(" ")}
                 >
-                  {CN_WEEKDAY[d.getDay()]}
+                  {isToday ? "今天" : CN_WEEKDAY[d.getDay()]}
                 </span>
                 <span
                   className={[
                     "text-[16px] font-semibold",
-                    isSelected ? "text-[var(--color-bg-white)] font-bold" : "text-[var(--color-text-secondary)]",
+                    isSelected
+                      ? "text-[var(--color-bg-white)] font-bold"
+                      : isToday
+                        ? "text-[var(--color-primary)] font-bold"
+                        : "text-[var(--color-text-secondary)]",
                   ].join(" ")}
                 >
                   {d.getDate()}
@@ -262,6 +261,10 @@ export default function TodoDayView({
                   const isInProgress = t.status === "in_progress";
                   const isHigh = t.priority === "high";
                   const time = timeLabel(t);
+                  const target = t.targetMinutes ?? 0;
+                  const logged = target > 0 ? taskLoggedMinutes(t.id, entries) : 0;
+                  const reached = target > 0 && logged >= target;
+                  const manualPct = target > 0 ? 0 : (t.progress ?? 0);
 
                   return (
                     <div
@@ -288,6 +291,43 @@ export default function TodoDayView({
                         >
                           {t.title}
                         </span>
+
+                        {/* 时长目标进度（柳比歇夫模式任务） */}
+                        {target > 0 && (
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <div className="flex-1 h-[6px] rounded-full bg-[var(--color-bg-gray-light)] overflow-hidden max-w-[140px]">
+                              <div
+                                className={[
+                                  "h-full rounded-full transition-all",
+                                  reached ? "bg-[var(--color-success)]" : "bg-[var(--color-primary)]",
+                                ].join(" ")}
+                                style={{ width: `${Math.min(100, Math.round((logged / target) * 100))}%` }}
+                              />
+                            </div>
+                            <span className={[
+                              "text-[11px] font-medium flex items-center gap-0.5",
+                              reached ? "text-[var(--color-success)]" : "text-[var(--color-text-tertiary)]",
+                            ].join(" ")}>
+                              <Timer className="w-3 h-3" />
+                              {formatMinutes(logged)} / {formatMinutes(target)}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* 手动完成进度（非时长目标、进行中的任务） */}
+                        {manualPct > 0 && !isDone && (
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <div className="flex-1 h-[6px] rounded-full bg-[var(--color-bg-gray-light)] overflow-hidden max-w-[140px]">
+                              <div
+                                className="h-full rounded-full bg-[var(--color-primary)]"
+                                style={{ width: `${manualPct}%` }}
+                              />
+                            </div>
+                            <span className="text-[11px] font-medium text-[var(--color-text-tertiary)]">
+                              {manualPct}%
+                            </span>
+                          </div>
+                        )}
 
                         {/* 时间 + 标签 在第二行 */}
                         <div className="flex items-center gap-2 flex-wrap">
@@ -357,11 +397,25 @@ export default function TodoDayView({
       {/* Bottom Sheet for editing */}
       <TaskBottomSheet
         task={selectedTask}
+        entries={entries}
         isOpen={isBottomSheetOpen}
         onClose={handleCloseBottomSheet}
         onCycleStatus={onCycleTaskStatus}
         onDelete={onDeleteTask}
         onUpdate={onUpdateTask}
+        onAddEntry={onAddEntry}
+      />
+
+      {/* 删除任务二次确认 */}
+      <ConfirmDialog
+        isOpen={deleteTargetId !== null}
+        title="删除这个任务？"
+        description={deleteTarget ? `「${deleteTarget.title}」删除后无法恢复` : undefined}
+        onConfirm={() => {
+          if (deleteTargetId) onDeleteTask(deleteTargetId);
+          setDeleteTargetId(null);
+        }}
+        onCancel={() => setDeleteTargetId(null)}
       />
     </div>
   );

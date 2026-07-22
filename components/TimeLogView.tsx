@@ -1,0 +1,600 @@
+"use client";
+
+import { useState } from "react";
+import type { ISODate, Task, TimeEntry, ViewMode } from "@/components/todo/types";
+import { CN_WEEKDAY, addDays, formatCNDateTitle, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
+import { formatMinutes, matchTaskByTitle, timeToMinutes, minutesToTime } from "@/components/todo/time";
+import { parseTimeEntries, type ParsedEntry } from "@/components/todo/nlparse";
+import { ChevronLeft, ChevronRight, Mic, Sparkles, Trash2, X, Check, Link2, Zap, Pencil } from "lucide-react";
+import TimePicker from "@/components/TimePicker";
+import ConfirmDialog from "@/components/ConfirmDialog";
+
+type Props = {
+  viewMode: ViewMode;
+  onChangeViewMode: (mode: ViewMode) => void;
+  selectedDate: ISODate;
+  onSelectDate: (date: ISODate) => void;
+  tasks: Task[];
+  entries: TimeEntry[];
+  onAddEntries: (entries: Omit<TimeEntry, "id">[]) => void;
+  onDeleteEntry: (entryId: string) => void;
+  onUpdateEntry: (entryId: string, updates: Partial<Omit<TimeEntry, "id">>) => void;
+  onPrevWeek: () => void;
+  onNextWeek: () => void;
+};
+
+const TABS: Array<{ mode: ViewMode; label: string }> = [
+  { mode: "day", label: "日视图" },
+  { mode: "week", label: "周视图" },
+  { mode: "log", label: "记录" },
+];
+
+export default function TimeLogView({
+  viewMode,
+  onChangeViewMode,
+  selectedDate,
+  onSelectDate,
+  tasks,
+  entries,
+  onAddEntries,
+  onDeleteEntry,
+  onUpdateEntry,
+  onPrevWeek,
+  onNextWeek,
+}: Props) {
+  const [input, setInput] = useState("");
+  const [pending, setPending] = useState<ParsedEntry[] | null>(null);
+  const [parsing, setParsing] = useState(false);
+  const [parseSource, setParseSource] = useState<"ai" | "rule" | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
+
+  // 台账行内编辑状态
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editMinutes, setEditMinutes] = useState("");
+  const [editStart, setEditStart] = useState("");
+  const [editEnd, setEditEnd] = useState("");
+  const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null);
+
+  const selected = parseISODate(selectedDate);
+  const weekStart = startOfWeek(selected, true);
+  const days = Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
+
+  // 今日台账
+  const dayEntries = entries
+    .filter((e) => e.date === selectedDate)
+    .slice()
+    .sort((a, b) => (a.startTime ?? "99:99").localeCompare(b.startTime ?? "99:99"));
+  const dayTotal = dayEntries.reduce((s, e) => s + e.minutes, 0);
+
+  // 本周汇总：按（关联任务标题 或 记录标题）聚合
+  const weekEnd = addDays(weekStart, 6);
+  const weekEntries = entries.filter((e) => {
+    const d = parseISODate(e.date);
+    return d >= weekStart && d <= weekEnd;
+  });
+  const weekTotal = weekEntries.reduce((s, e) => s + e.minutes, 0);
+  const summaryMap = new Map<string, number>();
+  for (const e of weekEntries) {
+    const task = e.taskId ? tasks.find((t) => t.id === e.taskId) : undefined;
+    const key = task?.title ?? e.title;
+    summaryMap.set(key, (summaryMap.get(key) ?? 0) + e.minutes);
+  }
+  const summary = [...summaryMap.entries()].sort((a, b) => b[1] - a[1]);
+  const maxMinutes = summary.length > 0 ? summary[0][1] : 0;
+
+  // useAI=false 走本地规则解析（零延迟）；useAI=true 走 /api/parse，失败时降级规则
+  async function handleParse(useAI: boolean) {
+    const text = input.trim();
+    if (!text || parsing) return;
+    setParsing(true);
+    setParseError(null);
+    setPending(null);
+
+    let parsed: ParsedEntry[] | null = null;
+    let source: "ai" | "rule" = "rule";
+
+    if (useAI) {
+      try {
+        const d = new Date();
+        const now = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+        const res = await fetch("/api/parse", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, now }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.entries)) {
+            parsed = data.entries;
+            source = "ai";
+          }
+        }
+      } catch {
+        // 网络失败 → 走规则
+      }
+      if (!parsed) {
+        setParseError("AI 解析不可用，已改用规则解析");
+      }
+    }
+
+    if (!parsed) {
+      parsed = parseTimeEntries(text);
+    }
+
+    setParsing(false);
+    setParseSource(source);
+    if (parsed.length === 0) {
+      setParseError('没有识别出时间记录，试试"数学 9点到10点半"或"背单词40分钟"这样的说法');
+      return;
+    }
+    setPending(parsed);
+  }
+
+  function handleConfirm() {
+    if (!pending || pending.length === 0) return;
+    onAddEntries(
+      pending.map((p) => {
+        const matched = matchTaskByTitle(p.title, selectedDate, tasks);
+        return {
+          date: selectedDate,
+          title: p.title,
+          minutes: p.minutes,
+          startTime: p.startTime,
+          endTime: p.endTime,
+          taskId: matched?.id,
+        };
+      }),
+    );
+    setPending(null);
+    setInput("");
+    setParseSource(null);
+  }
+
+  function removePending(index: number) {
+    if (!pending) return;
+    const next = pending.filter((_, i) => i !== index);
+    setPending(next.length > 0 ? next : null);
+  }
+
+  function handleConfirmDeleteEntry() {
+    if (!deleteEntryId) return;
+    onDeleteEntry(deleteEntryId);
+    if (editingId === deleteEntryId) setEditingId(null);
+    setDeleteEntryId(null);
+  }
+
+  function startEditEntry(e: TimeEntry) {
+    setEditingId(e.id);
+    setEditTitle(e.title);
+    setEditMinutes(String(e.minutes));
+    setEditStart(e.startTime ?? "");
+    setEditEnd(e.endTime ?? "");
+  }
+
+  // 修改起止时间后，若两端齐全则自动算出时长（仍可手动改）
+  function handleEditTime(which: "start" | "end", value: string) {
+    const start = which === "start" ? value : editStart;
+    const end = which === "end" ? value : editEnd;
+    if (which === "start") setEditStart(value);
+    else setEditEnd(value);
+    if (start && end) {
+      const diff = timeToMinutes(end) - timeToMinutes(start);
+      if (diff > 0) setEditMinutes(String(diff));
+    }
+  }
+
+  // 修改时长后，若有开始时间则结束时间自动跟着挪（开始 + 时长）
+  function handleEditMinutes(value: string) {
+    setEditMinutes(value);
+    const m = Math.round(Number(value));
+    if (editStart && Number.isFinite(m) && m > 0) {
+      const newEnd = minutesToTime(timeToMinutes(editStart) + m);
+      setEditEnd(newEnd ?? "");
+    }
+  }
+
+  function saveEditEntry(e: TimeEntry) {
+    const title = editTitle.trim();
+    const minutes = Math.round(Number(editMinutes));
+    if (!title || !Number.isFinite(minutes) || minutes <= 0) return;
+    // 标题变了就重新匹配任务关联；没变则保留原关联
+    const taskId = title === e.title ? e.taskId : matchTaskByTitle(title, e.date, tasks)?.id;
+    onUpdateEntry(e.id, {
+      title,
+      minutes,
+      startTime: editStart || undefined,
+      endTime: editEnd || undefined,
+      taskId,
+    });
+    setEditingId(null);
+  }
+
+  function entryTimeLabel(e: { startTime?: string; endTime?: string }): string {
+    if (e.startTime && e.endTime) return `${e.startTime} - ${e.endTime}`;
+    if (e.startTime) return e.startTime;
+    return "补记";
+  }
+
+  return (
+    <div className="w-[420px] bg-[var(--color-bg-white)] flex flex-col rounded-[16px] overflow-hidden border border-[var(--color-border)]">
+      {/* Header */}
+      <div className="w-full flex items-center justify-between px-6 pt-6 pb-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-[var(--color-text-primary)] text-[28px] font-bold tracking-[-0.5px]">
+            时间记录
+          </h1>
+          <p className="text-[var(--color-text-secondary)] text-[14px] font-medium">
+            {formatCNDateTitle(selected)}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onPrevWeek}
+            className="w-9 h-9 rounded-lg border-[1.5px] border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors"
+            aria-label="上一周"
+          >
+            <ChevronLeft className="w-4 h-4 text-[var(--color-text-secondary)]" />
+          </button>
+          <button
+            type="button"
+            onClick={onNextWeek}
+            className="w-9 h-9 rounded-lg border-[1.5px] border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors"
+            aria-label="下一周"
+          >
+            <ChevronRight className="w-4 h-4 text-[var(--color-text-secondary)]" />
+          </button>
+        </div>
+      </div>
+
+      {/* Tabs + Date Picker */}
+      <div className="w-full flex flex-col gap-4 px-6">
+        <div className="w-full flex gap-1 bg-[var(--color-bg-gray-light)] rounded-[10px] p-1">
+          {TABS.map((tab) => (
+            <button
+              key={tab.mode}
+              type="button"
+              onClick={() => onChangeViewMode(tab.mode)}
+              className={[
+                "flex-1 flex items-center justify-center rounded-lg px-4 py-[10px]",
+                viewMode === tab.mode
+                  ? "bg-[var(--color-bg-white)] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
+                  : "",
+              ].join(" ")}
+            >
+              <span
+                className={[
+                  "text-[14px]",
+                  viewMode === tab.mode
+                    ? "text-[var(--color-text-primary)] font-semibold"
+                    : "text-[var(--color-text-secondary)] font-medium",
+                ].join(" ")}
+              >
+                {tab.label}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="w-full flex items-center justify-between">
+          {days.map((d) => {
+            const iso = toISODate(d);
+            const isSelected = iso === selectedDate;
+            const isToday = iso === toISODate(new Date());
+            return (
+              <button
+                key={iso}
+                type="button"
+                onClick={() => onSelectDate(iso)}
+                className={[
+                  "flex flex-col items-center gap-[6px] px-3 py-2 rounded-[12px]",
+                  isSelected ? "bg-[var(--color-primary)]" : isToday ? "bg-[var(--color-primary-light)]" : "",
+                ].join(" ")}
+              >
+                <span
+                  className={[
+                    "text-[12px] font-medium",
+                    isSelected
+                      ? "text-[var(--color-bg-white)] font-semibold"
+                      : isToday
+                        ? "text-[var(--color-primary)] font-semibold"
+                        : "text-[var(--color-text-tertiary)]",
+                  ].join(" ")}
+                >
+                  {isToday ? "今天" : CN_WEEKDAY[d.getDay()]}
+                </span>
+                <span
+                  className={[
+                    "text-[16px] font-semibold",
+                    isSelected
+                      ? "text-[var(--color-bg-white)] font-bold"
+                      : isToday
+                        ? "text-[var(--color-primary)] font-bold"
+                        : "text-[var(--color-text-secondary)]",
+                  ].join(" ")}
+                >
+                  {d.getDate()}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="w-full flex flex-col gap-6 px-6 pt-4 pb-6">
+        {/* 快速记录 */}
+        <div className="w-full flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <Mic className="w-4 h-4 text-[var(--color-primary)]" />
+            <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">记一笔</span>
+            <span className="text-[var(--color-text-tertiary)] text-[12px]">支持键盘语音输入</span>
+          </div>
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="口述或输入：上午9点到10点半做了数学，下午背单词40分钟"
+            rows={2}
+            className="w-full px-3 py-2.5 rounded-[10px] border border-[var(--color-border)] text-[14px] leading-relaxed placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] resize-none"
+          />
+          {parseError && (
+            <p className="text-[12px] text-[var(--color-danger)]">{parseError}</p>
+          )}
+
+          {/* 解析预览 */}
+          {pending ? (
+            <div className="flex flex-col gap-2 p-3 rounded-[10px] bg-[var(--color-bg-gray-lighter)] border border-[var(--color-border)]">
+              <div className="flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                <span className="text-[12px] font-medium text-[var(--color-text-secondary)]">
+                  识别出 {pending.length} 笔记录{parseSource === "rule" ? "（规则解析）" : ""}，确认后计入
+                </span>
+              </div>
+              {pending.map((p, i) => {
+                const matched = matchTaskByTitle(p.title, selectedDate, tasks);
+                return (
+                  <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-[var(--color-border)]">
+                    <div className="flex-1 flex flex-col min-w-0">
+                      <span className="text-[13px] font-medium text-[var(--color-text-primary)] truncate">{p.title}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-[var(--color-text-tertiary)]">{entryTimeLabel(p)}</span>
+                        <span className="text-[11px] font-medium text-[var(--color-primary)]">{formatMinutes(p.minutes)}</span>
+                        {matched && (
+                          <span className="flex items-center gap-0.5 text-[10px] text-[var(--color-success)]">
+                            <Link2 className="w-3 h-3" />
+                            {matched.title}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removePending(i)}
+                      className="w-6 h-6 flex items-center justify-center flex-shrink-0"
+                    >
+                      <X className="w-4 h-4 text-[var(--color-text-tertiary)]" />
+                    </button>
+                  </div>
+                );
+              })}
+              <div className="flex justify-end gap-2 mt-1">
+                <button
+                  type="button"
+                  onClick={() => setPending(null)}
+                  className="px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] hover:bg-white rounded transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirm}
+                  className="flex items-center gap-1 px-4 py-1.5 text-[12px] bg-[var(--color-primary)] text-white rounded hover:bg-[#1d4ed8] transition-colors font-medium"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  确认记录
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => handleParse(false)}
+                disabled={!input.trim() || parsing}
+                className={[
+                  "flex-1 flex items-center justify-center gap-1.5 rounded-[10px] py-2.5 text-[14px] font-semibold border transition-colors",
+                  input.trim() && !parsing
+                    ? "bg-white border-[var(--color-primary)] text-[var(--color-primary)] hover:bg-[var(--color-primary-light)]"
+                    : "bg-[var(--color-bg-gray-light)] border-transparent text-[var(--color-text-tertiary)] cursor-not-allowed",
+                ].join(" ")}
+              >
+                <Zap className="w-4 h-4" />
+                快速解析
+              </button>
+              <button
+                type="button"
+                onClick={() => handleParse(true)}
+                disabled={!input.trim() || parsing}
+                className={[
+                  "flex-1 flex items-center justify-center gap-1.5 rounded-[10px] py-2.5 text-[14px] font-semibold transition-colors",
+                  input.trim() && !parsing
+                    ? "bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8]"
+                    : "bg-[var(--color-bg-gray-light)] text-[var(--color-text-tertiary)] cursor-not-allowed",
+                ].join(" ")}
+              >
+                <Sparkles className="w-4 h-4" />
+                {parsing ? "解析中..." : "AI 解析"}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* 今日台账 */}
+        <div className="w-full flex flex-col gap-3">
+          <div className="w-full flex items-center justify-between">
+            <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">今日台账</span>
+            <span className="text-[var(--color-text-tertiary)] text-[13px] font-medium">
+              {dayEntries.length > 0 ? `${dayEntries.length} 笔 · 共 ${formatMinutes(dayTotal)}` : "暂无记录"}
+            </span>
+          </div>
+          {dayEntries.length > 0 && (
+            <div className="w-full flex flex-col gap-2">
+              {dayEntries.map((e) => {
+                const task = e.taskId ? tasks.find((t) => t.id === e.taskId) : undefined;
+                const isEditing = editingId === e.id;
+
+                if (isEditing) {
+                  const canSave = editTitle.trim() !== "" && Number(editMinutes) > 0;
+                  return (
+                    <div
+                      key={e.id}
+                      className="w-full flex flex-col gap-2 px-3.5 py-3 rounded-[10px] bg-[var(--color-bg-gray-lighter)] border-[1.5px] border-[var(--color-primary)]"
+                    >
+                      <input
+                        type="text"
+                        value={editTitle}
+                        onChange={(ev) => setEditTitle(ev.target.value)}
+                        placeholder="事项名称"
+                        className="w-full px-3 py-2 rounded-lg border border-[var(--color-border)] text-[14px] bg-white focus:outline-none focus:border-[var(--color-primary)]"
+                      />
+                      <div className="flex items-center gap-2">
+                        <TimePicker
+                          value={editStart}
+                          onChange={(v) => handleEditTime("start", v)}
+                          placeholder="开始"
+                          label="开始时间"
+                        />
+                        <span className="text-[13px] text-[var(--color-text-tertiary)]">—</span>
+                        <TimePicker
+                          value={editEnd}
+                          onChange={(v) => handleEditTime("end", v)}
+                          placeholder="结束"
+                          label="结束时间"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={1}
+                          value={editMinutes}
+                          onChange={(ev) => handleEditMinutes(ev.target.value)}
+                          placeholder="时长"
+                          className="w-[100px] px-3 py-2 rounded-lg border border-[var(--color-border)] text-[13px] bg-white focus:outline-none focus:border-[var(--color-primary)]"
+                        />
+                        <span className="text-[13px] text-[var(--color-text-secondary)]">分钟</span>
+                        <div className="flex-1" />
+                        <button
+                          type="button"
+                          onClick={() => setEditingId(null)}
+                          className="px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] hover:bg-white rounded transition-colors"
+                        >
+                          取消
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => saveEditEntry(e)}
+                          disabled={!canSave}
+                          className={[
+                            "px-4 py-1.5 text-[12px] rounded font-medium transition-colors",
+                            canSave
+                              ? "bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8]"
+                              : "bg-[var(--color-bg-gray-light)] text-[var(--color-text-tertiary)] cursor-not-allowed",
+                          ].join(" ")}
+                        >
+                          保存
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div
+                    key={e.id}
+                    className="w-full flex items-center gap-3 px-3.5 py-3 rounded-[10px] bg-white border border-[var(--color-border)]"
+                  >
+                    <span className="w-[86px] flex-shrink-0 text-[12px] font-medium text-[var(--color-text-tertiary)]">
+                      {entryTimeLabel(e)}
+                    </span>
+                    <div className="flex-1 flex flex-col gap-0.5 min-w-0">
+                      <span className="text-[14px] font-medium text-[var(--color-text-primary)] truncate">
+                        {e.title}
+                      </span>
+                      {task && (
+                        <span className="flex items-center gap-0.5 text-[10px] text-[var(--color-success)]">
+                          <Link2 className="w-3 h-3" />
+                          计入「{task.title}」
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[13px] font-semibold text-[var(--color-primary)] flex-shrink-0">
+                      {formatMinutes(e.minutes)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => startEditEntry(e)}
+                      className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0"
+                    >
+                      <Pencil className="w-[16px] h-[16px] text-[#A1A1AA]" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteEntryId(e.id)}
+                      className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0"
+                    >
+                      <Trash2 className="w-[16px] h-[16px] text-[#A1A1AA]" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 本周汇总 */}
+        <div className="w-full flex flex-col gap-3">
+          <div className="w-full flex items-center justify-between">
+            <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">本周汇总</span>
+            <span className="text-[var(--color-text-tertiary)] text-[13px] font-medium">
+              {weekEntries.length > 0 ? `共 ${formatMinutes(weekTotal)}` : "暂无记录"}
+            </span>
+          </div>
+          {summary.length > 0 && (
+            <div className="w-full flex flex-col gap-2.5">
+              {summary.map(([name, minutes]) => (
+                <div key={name} className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[13px] font-medium text-[var(--color-text-primary)] truncate">{name}</span>
+                    <span className="text-[12px] font-medium text-[var(--color-text-secondary)] flex-shrink-0 ml-2">
+                      {formatMinutes(minutes)}
+                    </span>
+                  </div>
+                  <div className="w-full h-[8px] rounded-full bg-[var(--color-bg-gray-light)] overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-[var(--color-primary)]"
+                      style={{ width: `${Math.max(4, Math.round((minutes / maxMinutes) * 100))}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 删除记录二次确认 */}
+      <ConfirmDialog
+        isOpen={deleteEntryId !== null}
+        title="删除这笔记录？"
+        description={(() => {
+          const target = deleteEntryId ? entries.find((e) => e.id === deleteEntryId) : undefined;
+          return target ? `「${target.title} · ${formatMinutes(target.minutes)}」删除后无法恢复` : undefined;
+        })()}
+        onConfirm={handleConfirmDeleteEntry}
+        onCancel={() => setDeleteEntryId(null)}
+      />
+    </div>
+  );
+}

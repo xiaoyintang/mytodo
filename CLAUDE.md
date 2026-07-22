@@ -19,10 +19,12 @@ npm run lint     # 运行 ESLint
 ```
 TodoApp.tsx（状态管理中心）
 ├── tasks 状态通过 useLocalStorageState 管理（key: "mytodo.tasks.v1"）
+├── entries 时间记录状态（key: "mytodo.entries.v1"，柳比歇夫时间台账）
 ├── cycleTaskStatus(taskId) - 状态循环：todo → in_progress → done → todo
 ├── createTask(taskData) - 创建任务
 ├── deleteTask(taskId) - 删除任务
 ├── updateTask(taskId, updates) - 更新任务（标题、日期等）
+├── addEntry / addEntries / deleteEntry - 时间记录增删
 │
 ├── TodoDayView.tsx - 日视图，按时间分组
 │   ├── 分组规则：上午 (00:00-11:59)、下午 (12:00-17:59)、晚间 (18:00+)
@@ -42,17 +44,37 @@ TodoApp.tsx（状态管理中心）
 │   ├── 删除按钮（二次确认）
 │   └── 内容可滚动（max-h-[85vh]）+ Footer sticky
 │
-└── AddTaskModal.tsx - 新增任务弹窗（支持 Day/Week 模式）
-    ├── 内容区可滚动（max-h-[90vh]）
-    ├── Footer sticky 底部 + 安全区适配
-    └── TimePicker.tsx - 自定义时间选择器（小时/分钟滚动）
+├── AddTaskModal.tsx - 新增任务弹窗（支持 Day/Week 模式）
+│   ├── 内容区可滚动（max-h-[90vh]）
+│   ├── Footer sticky 底部 + 安全区适配
+│   ├── 时间安排模式切换：固定时间段 / 时长目标（targetMinutes）
+│   └── TimePicker.tsx - 自定义时间选择器（小时/分钟滚动）
+│
+└── TimeLogView.tsx - 「记录」视图（柳比歇夫时间记录法）
+    ├── 自然语言快速记录框（配合手机键盘语音输入即可"口述记账"）
+    ├── 解析优先走 /api/parse（AI），失败/未配 key 降级 nlparse.ts 规则解析
+    ├── 解析结果先预览（可逐条删除），确认后写入 entries
+    ├── 记录标题与当日任务标题匹配时自动关联 taskId（计入任务进度）
+    ├── 今日台账：按时间排序的流水 + 当日总时长
+    └── 本周汇总：按事项聚合的时长条形图
 ```
+
+### 时间记录（柳比歇夫模式）
+
+- 任务可设 `targetMinutes`（时长目标），代替固定时间段：不限几点做，累计投入满目标即达成
+- 日视图卡片和 TaskBottomSheet 显示进度条（`taskLoggedMinutes` 聚合关联 entries）
+- TaskBottomSheet 提供"记一笔"：快捷时长按钮 + 自定义分钟数
+- AI 解析：`app/api/parse/route.ts`，OpenAI 兼容接口（DeepSeek / 硅基流动）
+  - 环境变量：`LLM_API_KEY`（必填）、`LLM_BASE_URL`、`LLM_MODEL`，见 `.env.local.example`
+  - 未配置 key 时返回 501，前端自动降级为 `components/todo/nlparse.ts` 规则解析
+- 工具函数：`components/todo/time.ts`（formatMinutes、taskLoggedMinutes、matchTaskByTitle）
 
 ### 关键类型（components/todo/types.ts）
 
-- `Task`：id, title, date (ISODate), startTime?, endTime?, status, priority?, tag?
+- `Task`：id, title, date (ISODate), startTime?, endTime?, status, priority?, tag?, targetMinutes?
+- `TimeEntry`：id, date, title, minutes, startTime?, endTime?, taskId?（一笔时间开销）
 - `TaskStatus`："todo" | "in_progress" | "done"
-- `ViewMode`："day" | "week"
+- `ViewMode`："day" | "week" | "log"
 - `ISODate`："YYYY-MM-DD" 格式字符串
 
 ### 样式系统
@@ -63,7 +85,7 @@ TodoApp.tsx（状态管理中心）
 
 ## 硬性约束
 
-- localStorage key 必须保持 `mytodo.tasks.v1`
+- localStorage key 必须保持 `mytodo.tasks.v1`（任务）和 `mytodo.entries.v1`（时间记录）
 - 任务状态字段用 `"done"`（不是 `"completed"`）
 - Task 类型的标签是单数 `tag?: TaskTag`（不是 `tags` 数组）
 - 禁止 `<button>` 嵌套 `<button>`（会导致 React hydration 错误）
