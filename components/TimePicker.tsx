@@ -10,28 +10,128 @@ type Props = {
   label?: string;
 };
 
-const HOURS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, "0"));
-const MINUTES = ["00", "15", "30", "45"];
+const ITEM_H = 36; // 每格高度
+const VISIBLE_ROWS = 5;
+const WHEEL_H = ITEM_H * VISIBLE_ROWS; // 180
+const PAD = (WHEEL_H - ITEM_H) / 2; // 上下留白，让首尾项也能滚到中心
+
+const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
+const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
+
+// 滚轮划过一格时的"嗒"声（WebAudio 合成，无需音频文件）
+let audioCtx: AudioContext | null = null;
+function playTick() {
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    }
+    const ctx = audioCtx;
+    if (ctx.state === "suspended") void ctx.resume();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "square";
+    osc.frequency.value = 1900;
+    gain.gain.setValueAtTime(0.035, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.02);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.025);
+  } catch {
+    // 音频不可用就静默滚动
+  }
+}
+
+// 单列滚轮（iOS 风格：snap 吸附 + 中心选中带 + 渐隐遮罩）
+function WheelColumn({
+  values,
+  selected,
+  onSelect,
+}: {
+  values: string[];
+  selected: number;
+  onSelect: (index: number) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const lastIdx = useRef(selected);
+
+  // 打开时定位到当前值（不触发声音）
+  useEffect(() => {
+    if (ref.current) ref.current.scrollTop = selected * ITEM_H;
+    lastIdx.current = selected;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function handleScroll() {
+    const el = ref.current;
+    if (!el) return;
+    const idx = Math.max(0, Math.min(values.length - 1, Math.round(el.scrollTop / ITEM_H)));
+    if (idx !== lastIdx.current) {
+      lastIdx.current = idx;
+      playTick();
+      onSelect(idx);
+    }
+  }
+
+  return (
+    <div className="relative flex-1">
+      <div
+        ref={ref}
+        onScroll={handleScroll}
+        className="overflow-y-auto scrollbar-none"
+        style={{ height: WHEEL_H, scrollSnapType: "y mandatory" }}
+      >
+        <div style={{ height: PAD }} />
+        {values.map((v, i) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => ref.current?.scrollTo({ top: i * ITEM_H, behavior: "smooth" })}
+            className={[
+              "w-full flex items-center justify-center text-[16px] tabular-nums transition-colors",
+              i === selected
+                ? "text-[var(--color-primary)] font-semibold"
+                : "text-[var(--color-text-tertiary)]",
+            ].join(" ")}
+            style={{ height: ITEM_H, scrollSnapAlign: "center" }}
+          >
+            {v}
+          </button>
+        ))}
+        <div style={{ height: PAD }} />
+      </div>
+
+      {/* 中心选中带 */}
+      <div className="pointer-events-none absolute inset-x-1 top-1/2 -translate-y-1/2 h-[36px] rounded-lg bg-[var(--color-primary-light)] opacity-60 -z-10" />
+      {/* 上下渐隐遮罩 */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[64px] bg-gradient-to-b from-white via-white/70 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[64px] bg-gradient-to-t from-white via-white/70 to-transparent" />
+    </div>
+  );
+}
 
 export default function TimePicker({ value, onChange, placeholder = "选择时间", label }: Props) {
   const [isOpen, setIsOpen] = useState(false);
-  const [selectedHour, setSelectedHour] = useState<string | null>(null);
-  const [selectedMinute, setSelectedMinute] = useState<string | null>(null);
+  const [hourIdx, setHourIdx] = useState(9);
+  const [minuteIdx, setMinuteIdx] = useState(0);
   const [dropdownPosition, setDropdownPosition] = useState<"bottom" | "top">("bottom");
   const containerRef = useRef<HTMLDivElement>(null);
-  const hourColumnRef = useRef<HTMLDivElement>(null);
 
-  // Parse initial value
+  // 打开时用当前值初始化滚轮位置
   useEffect(() => {
-    if (value) {
-      const [h, m] = value.split(":");
-      setSelectedHour(h);
-      setSelectedMinute(m);
-    } else {
-      setSelectedHour(null);
-      setSelectedMinute(null);
+    if (isOpen) {
+      if (value) {
+        const [h, m] = value.split(":").map(Number);
+        setHourIdx(Number.isFinite(h) ? h : 9);
+        setMinuteIdx(Number.isFinite(m) ? m : 0);
+      } else {
+        setHourIdx(9);
+        setMinuteIdx(0);
+      }
     }
-  }, [value]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   // Close on outside click
   useEffect(() => {
@@ -46,29 +146,14 @@ export default function TimePicker({ value, onChange, placeholder = "选择时�
     }
   }, [isOpen]);
 
-  // Scroll to selected hour when opening
-  useEffect(() => {
-    if (isOpen && hourColumnRef.current && selectedHour) {
-      const hourIndex = HOURS.indexOf(selectedHour);
-      if (hourIndex >= 0) {
-        hourColumnRef.current.scrollTop = hourIndex * 36;
-      }
-    }
-  }, [isOpen, selectedHour]);
-
   // Calculate dropdown position based on available space
   useEffect(() => {
     if (isOpen && containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
-      const dropdownHeight = 320; // approximate height of dropdown
+      const dropdownHeight = 300;
       const spaceBelow = window.innerHeight - rect.bottom;
       const spaceAbove = rect.top;
-
-      if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
-        setDropdownPosition("top");
-      } else {
-        setDropdownPosition("bottom");
-      }
+      setDropdownPosition(spaceBelow < dropdownHeight && spaceAbove > spaceBelow ? "top" : "bottom");
     }
   }, [isOpen]);
 
@@ -76,31 +161,13 @@ export default function TimePicker({ value, onChange, placeholder = "选择时�
   const displayValue = value || placeholder;
 
   function handleConfirm() {
-    if (selectedHour && selectedMinute) {
-      onChange(`${selectedHour}:${selectedMinute}`);
-      setIsOpen(false);
-    }
-  }
-
-  function handleClear() {
-    setSelectedHour(null);
-    setSelectedMinute(null);
-    onChange("");
+    onChange(`${HOURS[hourIdx]}:${MINUTES[minuteIdx]}`);
     setIsOpen(false);
   }
 
-  function handleHourSelect(hour: string) {
-    setSelectedHour(hour);
-    if (!selectedMinute) {
-      setSelectedMinute("00");
-    }
-  }
-
-  function handleMinuteSelect(minute: string) {
-    setSelectedMinute(minute);
-    if (!selectedHour) {
-      setSelectedHour("09");
-    }
+  function handleClear() {
+    onChange("");
+    setIsOpen(false);
   }
 
   return (
@@ -133,11 +200,11 @@ export default function TimePicker({ value, onChange, placeholder = "选择时�
       {/* Dropdown */}
       {isOpen && (
         <div className={[
-          "absolute left-0 right-0 bg-white rounded-[10px] border border-[var(--color-border)] shadow-[0_4px_16px_-2px_rgba(0,0,0,0.1)] z-50 overflow-hidden",
+          "absolute left-0 right-0 min-w-[200px] bg-white rounded-[10px] border border-[var(--color-border)] shadow-[0_4px_16px_-2px_rgba(0,0,0,0.1)] z-50 overflow-hidden",
           dropdownPosition === "top" ? "bottom-full mb-2" : "top-full mt-2",
         ].join(" ")}>
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 bg-[var(--color-bg-gray-lighter)]">
+          <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--color-bg-gray-lighter)]">
             <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">
               {label || "选择时间"}
             </span>
@@ -150,62 +217,27 @@ export default function TimePicker({ value, onChange, placeholder = "选择时�
             </button>
           </div>
 
-          {/* Content - Hour and Minute Columns */}
-          <div className="flex gap-2 px-3 py-2">
-            {/* Hour Column */}
-            <div
-              ref={hourColumnRef}
-              className="flex-1 h-[180px] overflow-y-auto flex flex-col gap-0.5 scrollbar-thin"
+          {/* 滚轮区：时 / 分 */}
+          <div className="relative flex px-3 py-1">
+            <WheelColumn values={HOURS} selected={hourIdx} onSelect={setHourIdx} />
+            <span
+              className="flex items-center text-[16px] font-semibold text-[var(--color-text-secondary)] px-1"
+              style={{ height: WHEEL_H }}
             >
-              {HOURS.map((hour) => (
-                <button
-                  key={hour}
-                  type="button"
-                  onClick={() => handleHourSelect(hour)}
-                  className={[
-                    "w-full py-2 text-center text-[14px] rounded-md transition-colors",
-                    selectedHour === hour
-                      ? "bg-[var(--color-primary)] text-white font-semibold"
-                      : "hover:bg-[var(--color-bg-gray-light)] text-[var(--color-text-secondary)]",
-                  ].join(" ")}
-                >
-                  {hour}:00
-                </button>
-              ))}
-            </div>
-
-            {/* Minute Column */}
-            <div className="flex-1 h-[180px] overflow-y-auto flex flex-col gap-0.5">
-              {MINUTES.map((minute) => (
-                <button
-                  key={minute}
-                  type="button"
-                  onClick={() => handleMinuteSelect(minute)}
-                  className={[
-                    "w-full py-2 text-center text-[14px] rounded-md transition-colors",
-                    selectedMinute === minute
-                      ? "bg-[var(--color-primary)] text-white font-semibold"
-                      : "hover:bg-[var(--color-bg-gray-light)] text-[var(--color-text-secondary)]",
-                  ].join(" ")}
-                >
-                  :{minute}
-                </button>
-              ))}
-            </div>
+              :
+            </span>
+            <WheelColumn values={MINUTES} selected={minuteIdx} onSelect={setMinuteIdx} />
           </div>
 
           {/* Footer */}
-          <div className="flex justify-end px-4 py-3 border-t border-[var(--color-border)]">
+          <div className="flex items-center justify-between px-4 py-2.5 border-t border-[var(--color-border)]">
+            <span className="text-[14px] font-semibold text-[var(--color-primary)] tabular-nums">
+              {HOURS[hourIdx]}:{MINUTES[minuteIdx]}
+            </span>
             <button
               type="button"
               onClick={handleConfirm}
-              disabled={!selectedHour || !selectedMinute}
-              className={[
-                "px-4 py-2 rounded-md text-[13px] font-medium transition-colors",
-                selectedHour && selectedMinute
-                  ? "bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8]"
-                  : "bg-[var(--color-bg-gray-light)] text-[var(--color-text-tertiary)] cursor-not-allowed",
-              ].join(" ")}
+              className="px-4 py-2 rounded-md text-[13px] font-medium bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8] transition-colors"
             >
               确认
             </button>

@@ -27,6 +27,15 @@
     height: 100%;
   }
 
+  /* 滚轮选择器隐藏滚动条 */
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
   .font-inter {
     font-family: "Inter", sans-serif;
   }

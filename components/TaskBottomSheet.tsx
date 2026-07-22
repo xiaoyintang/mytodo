@@ -1,19 +1,95 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import type { Task, TaskStatus, ISODate } from "@/components/todo/types";
+import type { Task, TaskStatus, ISODate, TimeEntry } from "@/components/todo/types";
 import { parseISODate, toISODate, startOfWeek, addDays, CN_WEEKDAY } from "@/components/todo/date";
-import { X, Check, Calendar, Clock, Flag, Trash2, ChevronLeft, ChevronRight, Pencil } from "lucide-react";
+import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
+import { X, Check, Calendar, Clock, Flag, Trash2, ChevronLeft, ChevronRight, Timer, Plus, Gauge } from "lucide-react";
 import TimePicker from "@/components/TimePicker";
+import ConfirmDialog from "@/components/ConfirmDialog";
+
+// 可拖动的完成进度滑块（0-100，指哪填哪）
+function ProgressSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+  const [local, setLocal] = useState(value);
+
+  useEffect(() => {
+    if (!dragging.current) setLocal(value);
+  }, [value]);
+
+  function pctFrom(clientX: number): number {
+    const el = trackRef.current;
+    if (!el) return local;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0) return local;
+    return Math.max(0, Math.min(100, Math.round(((clientX - r.left) / r.width) * 100)));
+  }
+
+  function handleDown(e: React.PointerEvent) {
+    dragging.current = true;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const p = pctFrom(e.clientX);
+    setLocal(p);
+    onChange(p);
+  }
+  function handleMove(e: React.PointerEvent) {
+    if (!dragging.current) return;
+    const p = pctFrom(e.clientX);
+    setLocal(p);
+    onChange(p);
+  }
+  function handleUp(e: React.PointerEvent) {
+    dragging.current = false;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return (
+    <div
+      className="py-2 cursor-pointer touch-none select-none"
+      onPointerDown={handleDown}
+      onPointerMove={handleMove}
+      onPointerUp={handleUp}
+      onPointerCancel={handleUp}
+    >
+      <div ref={trackRef} className="relative mx-2.5">
+        <div className="w-full h-[10px] rounded-full bg-[var(--color-bg-gray-light)] overflow-hidden">
+          <div
+            className={[
+              "h-full rounded-full",
+              local >= 100 ? "bg-[var(--color-success)]" : "bg-[var(--color-primary)]",
+            ].join(" ")}
+            style={{ width: `${local}%` }}
+          />
+        </div>
+        <div
+          className={[
+            "absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-white shadow-md pointer-events-none border-2",
+            local >= 100 ? "border-[var(--color-success)]" : "border-[var(--color-primary)]",
+          ].join(" ")}
+          style={{ left: `${local}%` }}
+        />
+      </div>
+    </div>
+  );
+}
 
 type Props = {
   task: Task | null;
+  entries: TimeEntry[];
   isOpen: boolean;
   onClose: () => void;
   onCycleStatus: (taskId: string) => void;
   onDelete: (taskId: string) => void;
   onUpdate: (taskId: string, updates: Partial<Omit<Task, "id">>) => void;
+  onAddEntry: (entry: Omit<TimeEntry, "id">) => void;
 };
+
+const QUICK_MINUTES = [15, 30, 45, 60, 90, 120];
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
   todo: "待办",
@@ -48,11 +124,13 @@ const STATUS_BUTTON_CONFIG: Record<TaskStatus, { label: string; nextStatus: Task
 
 export default function TaskBottomSheet({
   task,
+  entries,
   isOpen,
   onClose,
   onCycleStatus,
   onDelete,
   onUpdate,
+  onAddEntry,
 }: Props) {
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState("");
@@ -61,6 +139,9 @@ export default function TaskBottomSheet({
   const [editStartTime, setEditStartTime] = useState("");
   const [editEndTime, setEditEndTime] = useState("");
   const [pickerWeekStart, setPickerWeekStart] = useState(() => startOfWeek(new Date(), true));
+  const [isLogging, setIsLogging] = useState(false);
+  const [customMinutes, setCustomMinutes] = useState("");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Reset state when task changes
@@ -74,6 +155,9 @@ export default function TaskBottomSheet({
     setIsEditing(false);
     setIsEditingDate(false);
     setIsEditingTime(false);
+    setIsLogging(false);
+    setCustomMinutes("");
+    setShowDeleteConfirm(false);
   }, [task]);
 
   // Focus input when editing starts
@@ -110,11 +194,14 @@ export default function TaskBottomSheet({
   }
 
   function handleDelete() {
+    setShowDeleteConfirm(true);
+  }
+
+  function handleConfirmDelete() {
     if (!task) return;
-    if (window.confirm("确定要删除这个任务吗？")) {
-      onDelete(task.id);
-      onClose();
-    }
+    setShowDeleteConfirm(false);
+    onDelete(task.id);
+    onClose();
   }
 
   function handleStatusClick() {
@@ -135,6 +222,25 @@ export default function TaskBottomSheet({
       endTime: editEndTime || undefined,
     });
     setIsEditingTime(false);
+  }
+
+  // 拖动进度：同步手动进度 + 联动三态状态
+  function handleProgressChange(pct: number) {
+    if (!task) return;
+    const status: TaskStatus = pct >= 100 ? "done" : pct <= 0 ? "todo" : "in_progress";
+    onUpdate(task.id, { progress: pct, status });
+  }
+
+  function handleLogMinutes(minutes: number) {
+    if (!task || minutes <= 0) return;
+    onAddEntry({
+      date: task.date,
+      title: task.title,
+      minutes,
+      taskId: task.id,
+    });
+    setIsLogging(false);
+    setCustomMinutes("");
   }
 
   // Generate week days for the picker
@@ -353,6 +459,141 @@ export default function TaskBottomSheet({
               </div>
             )}
           </div>
+
+          {/* 完成进度（非时长目标任务，可拖动） */}
+          {!task.targetMinutes && (
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-1">
+                <span className="flex items-center gap-1.5 text-[13px] font-medium text-[var(--color-text-primary)]">
+                  <Gauge className="w-4 h-4 text-[var(--color-primary)]" />
+                  完成进度
+                </span>
+                <span
+                  className={[
+                    "text-[15px] font-bold tabular-nums",
+                    (task.progress ?? 0) >= 100 ? "text-[var(--color-success)]" : "text-[var(--color-primary)]",
+                  ].join(" ")}
+                >
+                  {task.progress ?? 0}%
+                </span>
+              </div>
+              <ProgressSlider value={task.progress ?? 0} onChange={handleProgressChange} />
+              <div className="flex gap-1.5 mt-1">
+                {[0, 25, 50, 75, 100].map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => handleProgressChange(p)}
+                    className={[
+                      "flex-1 py-1.5 rounded-lg text-[12px] font-medium border transition-colors",
+                      (task.progress ?? 0) === p
+                        ? "bg-[var(--color-primary)] text-white border-[var(--color-primary)]"
+                        : "bg-white text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-[var(--color-primary)]",
+                    ].join(" ")}
+                  >
+                    {p}%
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 时长目标进度 + 记一笔（柳比歇夫模式） */}
+          {(() => {
+            const target = task.targetMinutes ?? 0;
+            const logged = taskLoggedMinutes(task.id, entries);
+            if (target <= 0 && logged <= 0) return null;
+            const reached = target > 0 && logged >= target;
+            return (
+              <div className="mb-4 p-3 rounded-[10px] bg-[var(--color-bg-gray-lighter)] border border-[var(--color-border)]">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="flex items-center gap-1.5 text-[13px] font-medium text-[var(--color-text-primary)]">
+                    <Timer className="w-4 h-4 text-[var(--color-primary)]" />
+                    已投入时长
+                  </span>
+                  <span className={[
+                    "text-[13px] font-semibold",
+                    reached ? "text-[var(--color-success)]" : "text-[var(--color-text-secondary)]",
+                  ].join(" ")}>
+                    {formatMinutes(logged)}
+                    {target > 0 && ` / ${formatMinutes(target)}`}
+                    {reached && " · 已达成 🎉"}
+                  </span>
+                </div>
+                {target > 0 && (
+                  <div className="w-full h-[8px] rounded-full bg-[var(--color-bg-gray-light)] overflow-hidden mb-3">
+                    <div
+                      className={[
+                        "h-full rounded-full transition-all",
+                        reached ? "bg-[var(--color-success)]" : "bg-[var(--color-primary)]",
+                      ].join(" ")}
+                      style={{ width: `${Math.min(100, Math.round((logged / target) * 100))}%` }}
+                    />
+                  </div>
+                )}
+
+                {isLogging ? (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex flex-wrap gap-1.5">
+                      {QUICK_MINUTES.map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => handleLogMinutes(m)}
+                          className="px-2.5 py-1.5 rounded-lg bg-white border border-[var(--color-border)] text-[12px] font-medium text-[var(--color-text-primary)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors"
+                        >
+                          {formatMinutes(m)}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        value={customMinutes}
+                        onChange={(e) => setCustomMinutes(e.target.value)}
+                        placeholder="自定义分钟数"
+                        className="flex-1 px-3 py-2 rounded-lg border border-[var(--color-border)] text-[13px] bg-white placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleLogMinutes(Math.round(Number(customMinutes)))}
+                        disabled={!customMinutes || Number(customMinutes) <= 0}
+                        className={[
+                          "px-3 py-2 rounded-lg text-[12px] font-medium transition-colors",
+                          customMinutes && Number(customMinutes) > 0
+                            ? "bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8]"
+                            : "bg-[var(--color-bg-gray-light)] text-[var(--color-text-tertiary)] cursor-not-allowed",
+                        ].join(" ")}
+                      >
+                        确认
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsLogging(false);
+                          setCustomMinutes("");
+                        }}
+                        className="px-3 py-2 rounded-lg text-[12px] text-[var(--color-text-secondary)] hover:bg-white transition-colors"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsLogging(true)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-[var(--color-border)] text-[12px] font-medium text-[var(--color-primary)] hover:border-[var(--color-primary)] transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    记一笔
+                  </button>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Footer - Sticky at bottom */}
@@ -383,6 +624,15 @@ export default function TaskBottomSheet({
           </div>
         </div>
       </div>
+
+      {/* 删除任务二次确认 */}
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="删除这个任务？"
+        description={`「${task.title}」删除后无法恢复`}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
 
       {/* Animation styles */}
       <style jsx>{`
