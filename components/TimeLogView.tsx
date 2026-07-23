@@ -5,7 +5,7 @@ import type { ISODate, Task, TimeEntry, ViewMode } from "@/components/todo/types
 import { CN_WEEKDAY, addDays, formatCNDateTitle, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
 import { formatMinutes, matchTaskByTitle, timeToMinutes, minutesToTime } from "@/components/todo/time";
 import { parseTimeEntries, type ParsedEntry } from "@/components/todo/nlparse";
-import { ChevronLeft, ChevronRight, Mic, Sparkles, Trash2, X, Check, Link2, Zap, Pencil, Copy } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Mic, Sparkles, Trash2, X, Check, Link2, Zap, Pencil, Copy } from "lucide-react";
 import TimePicker from "@/components/TimePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
@@ -55,6 +55,7 @@ export default function TimeLogView({
   const [editStart, setEditStart] = useState("");
   const [editEnd, setEditEnd] = useState("");
   const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null);
+  const [weekOpen, setWeekOpen] = useState(false); // 周汇总默认收起
 
   const selected = parseISODate(selectedDate);
   const weekStart = startOfWeek(selected, true);
@@ -67,6 +68,21 @@ export default function TimeLogView({
     .sort((a, b) => (a.startTime ?? "99:99").localeCompare(b.startTime ?? "99:99"));
   const dayTotal = dayEntries.reduce((s, e) => s + e.minutes, 0);
 
+  // 汇总辅助：按（关联任务标题 或 记录标题）聚合一组记录
+  function aggregate(list: TimeEntry[]): [string, number][] {
+    const map = new Map<string, number>();
+    for (const e of list) {
+      const task = e.taskId ? tasks.find((t) => t.id === e.taskId) : undefined;
+      const key = task?.title ?? e.title;
+      map.set(key, (map.get(key) ?? 0) + e.minutes);
+    }
+    return [...map.entries()].sort((a, b) => b[1] - a[1]);
+  }
+
+  // 今日汇总
+  const daySummary = aggregate(dayEntries);
+  const dayMaxMinutes = daySummary.length > 0 ? daySummary[0][1] : 0;
+
   // 本周汇总：按（关联任务标题 或 记录标题）聚合
   const weekEnd = addDays(weekStart, 6);
   const weekEntries = entries.filter((e) => {
@@ -74,13 +90,7 @@ export default function TimeLogView({
     return d >= weekStart && d <= weekEnd;
   });
   const weekTotal = weekEntries.reduce((s, e) => s + e.minutes, 0);
-  const summaryMap = new Map<string, number>();
-  for (const e of weekEntries) {
-    const task = e.taskId ? tasks.find((t) => t.id === e.taskId) : undefined;
-    const key = task?.title ?? e.title;
-    summaryMap.set(key, (summaryMap.get(key) ?? 0) + e.minutes);
-  }
-  const summary = [...summaryMap.entries()].sort((a, b) => b[1] - a[1]);
+  const summary = aggregate(weekEntries);
   const maxMinutes = summary.length > 0 ? summary[0][1] : 0;
 
   // useAI=false 走本地规则解析（零延迟）；useAI=true 走 /api/parse，失败时降级规则
@@ -582,15 +592,54 @@ export default function TimeLogView({
           )}
         </div>
 
-        {/* 本周汇总 */}
+        {/* 今日汇总（默认展开，天天看） */}
+        {daySummary.length > 0 && (
+          <div className="w-full flex flex-col gap-3">
+            <div className="w-full flex items-center justify-between">
+              <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">今日汇总</span>
+              <span className="text-[var(--color-text-tertiary)] text-[13px] font-medium">共 {formatMinutes(dayTotal)}</span>
+            </div>
+            <div className="w-full flex flex-col gap-2.5">
+              {daySummary.map(([name, minutes]) => (
+                <div key={name} className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[13px] font-medium text-[var(--color-text-primary)] truncate">{name}</span>
+                    <span className="text-[12px] font-medium text-[var(--color-text-secondary)] flex-shrink-0 ml-2">
+                      {formatMinutes(minutes)}
+                    </span>
+                  </div>
+                  <div className="w-full h-[8px] rounded-full bg-[var(--color-bg-gray-light)] overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-[var(--color-primary)]"
+                      style={{ width: `${Math.max(4, Math.round((minutes / dayMaxMinutes) * 100))}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 本周汇总（默认收起，点开才看） */}
         <div className="w-full flex flex-col gap-3">
-          <div className="w-full flex items-center justify-between">
-            <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">本周汇总</span>
+          <button
+            type="button"
+            onClick={() => setWeekOpen((v) => !v)}
+            className="w-full flex items-center justify-between"
+          >
+            <span className="flex items-center gap-1 text-[var(--color-text-primary)] text-[16px] font-semibold">
+              本周汇总
+              {weekOpen ? (
+                <ChevronUp className="w-4 h-4 text-[var(--color-text-tertiary)]" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-[var(--color-text-tertiary)]" />
+              )}
+            </span>
             <span className="text-[var(--color-text-tertiary)] text-[13px] font-medium">
               {weekEntries.length > 0 ? `共 ${formatMinutes(weekTotal)}` : "暂无记录"}
             </span>
-          </div>
-          {summary.length > 0 && (
+          </button>
+          {weekOpen && summary.length > 0 && (
             <div className="w-full flex flex-col gap-2.5">
               {summary.map(([name, minutes]) => (
                 <div key={name} className="flex flex-col gap-1">
