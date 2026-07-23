@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { Clock } from "lucide-react";
 
 type Props = {
@@ -56,8 +56,8 @@ function WheelColumn({
   const ref = useRef<HTMLDivElement>(null);
   const lastIdx = useRef(selected);
 
-  // 打开时定位到当前值（不触发声音）
-  useEffect(() => {
+  // 挂载即定位到初始值（在绘制前完成，避免闪一下 0 点；不触发声音）
+  useLayoutEffect(() => {
     if (ref.current) ref.current.scrollTop = selected * ITEM_H;
     lastIdx.current = selected;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -118,20 +118,25 @@ export default function TimePicker({ value, onChange, placeholder = "选择时�
   const [dropdownPosition, setDropdownPosition] = useState<"bottom" | "top">("bottom");
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // 打开时用当前值初始化滚轮位置
-  useEffect(() => {
+  // 打开/关闭：打开时同步把滚轮定位到"已有值"或"当前时间"
+  // （在事件里 setState 会被批处理，下一次渲染时索引已就位，滚轮挂载即落在正确位置）
+  function handleToggle() {
     if (isOpen) {
-      if (value) {
-        const [h, m] = value.split(":").map(Number);
-        setHourIdx(Number.isFinite(h) ? h : 9);
-        setMinuteIdx(Number.isFinite(m) ? m : 0);
-      } else {
-        setHourIdx(9);
-        setMinuteIdx(0);
-      }
+      setIsOpen(false);
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
+    if (value) {
+      const [h, m] = value.split(":").map(Number);
+      setHourIdx(Number.isFinite(h) && h >= 0 && h <= 23 ? h : 0);
+      setMinuteIdx(Number.isFinite(m) && m >= 0 && m <= 59 ? m : 0);
+    } else {
+      // 没填时间 → 默认落在当前时间，少滑
+      const now = new Date();
+      setHourIdx(now.getHours());
+      setMinuteIdx(now.getMinutes());
+    }
+    setIsOpen(true);
+  }
 
   // Close on outside click
   useEffect(() => {
@@ -175,7 +180,7 @@ export default function TimePicker({ value, onChange, placeholder = "选择时�
       {/* Input Button */}
       <button
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleToggle}
         className={[
           "w-full flex items-center gap-2 px-3 py-2.5 rounded-md border transition-all",
           isOpen || hasValue
