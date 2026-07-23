@@ -29,6 +29,31 @@ const TABS: Array<{ mode: ViewMode; label: string }> = [
   { mode: "log", label: "记录" },
 ];
 
+// AI 解析请求：8 秒超时 + 失败自动重试一次（应对 VPN 抽风）。返回 null 表示彻底失败（由调用方降级规则）。
+async function fetchAIParse(text: string, now: string): Promise<ParsedEntry[] | null> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch("/api/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, now }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (res.status === 501) return null; // 没配 key，重试也没用
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.entries)) return data.entries;
+      }
+    } catch {
+      // 超时 / 网络中断 → 进入下一次重试
+    }
+  }
+  return null;
+}
+
 export default function TimeLogView({
   viewMode,
   onChangeViewMode,
@@ -106,26 +131,14 @@ export default function TimeLogView({
     let source: "ai" | "rule" = "rule";
 
     if (useAI) {
-      try {
-        const d = new Date();
-        const now = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-        const res = await fetch("/api/parse", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text, now }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data.entries)) {
-            parsed = data.entries;
-            source = "ai";
-          }
-        }
-      } catch {
-        // 网络失败 → 走规则
-      }
-      if (!parsed) {
-        setParseError("AI 解析不可用，已改用规则解析");
+      const d = new Date();
+      const now = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      const aiResult = await fetchAIParse(text, now);
+      if (aiResult) {
+        parsed = aiResult;
+        source = "ai";
+      } else {
+        setParseError("AI 解析不可用（网络不稳），已改用规则解析");
       }
     }
 

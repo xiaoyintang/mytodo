@@ -32,6 +32,9 @@ export async function parseWithLLM(text: string, now?: string): Promise<ParsedEn
   const model = process.env.LLM_MODEL ?? "deepseek-chat";
 
   try {
+    // 8 秒超时保护：DeepSeek 偶尔卡住时快速失败，避免拖死整个函数
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
     const res = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
@@ -48,7 +51,9 @@ export async function parseWithLLM(text: string, now?: string): Promise<ParsedEn
         max_tokens: 1024,
         stream: false,
       }),
+      signal: controller.signal,
     });
+    clearTimeout(timer);
     if (!res.ok) return null;
 
     const data = await res.json();
