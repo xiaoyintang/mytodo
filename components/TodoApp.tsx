@@ -5,9 +5,12 @@ import TodoDayView from "@/components/TodoDayView";
 import TodoWeekView from "@/components/TodoWeekView";
 import TimeLogView from "@/components/TimeLogView";
 import AddTaskModal from "@/components/AddTaskModal";
+import SyncModal from "@/components/SyncModal";
 import type { ISODate, Task, TimeEntry, ViewMode, TaskStatus } from "@/components/todo/types";
 import { toISODate, parseISODate, addDays, startOfWeek } from "@/components/todo/date";
 import { useLocalStorageState } from "@/components/todo/storage";
+import { useCloudSync } from "@/components/todo/sync";
+import { Cloud, CloudOff, RefreshCw } from "lucide-react";
 
 const STORAGE_KEY = "mytodo.tasks.v1";
 const ENTRIES_KEY = "mytodo.entries.v1";
@@ -83,9 +86,19 @@ export default function TodoApp() {
   const [viewMode, setViewMode] = useState<ViewMode>("day");
   const [selectedDate, setSelectedDate] = useState<ISODate>(todayIso);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSyncOpen, setIsSyncOpen] = useState(false);
 
   const safeTasks = hydrated ? tasks : seedTasks(todayIso);
   const safeEntries = entriesHydrated ? entries : EMPTY_ENTRIES;
+
+  // 多设备同步码
+  const sync = useCloudSync({
+    hydrated: hydrated && entriesHydrated,
+    tasks,
+    entries,
+    setTasks: (t) => setTasks(t),
+    setEntries: (e) => setEntries(e),
+  });
 
   // Toggle task status: todo → in_progress → done → todo
   // 非时长目标任务：状态与手动进度联动（完成=100% 待办=0% 进行中保持原值）
@@ -218,6 +231,43 @@ export default function TodoApp() {
         onClose={() => setIsModalOpen(false)}
         onSubmit={createTask}
         selectedDate={selectedDate}
+      />
+
+      {/* 多设备同步：右上角浮动按钮 */}
+      <button
+        type="button"
+        onClick={() => setIsSyncOpen(true)}
+        aria-label="多设备同步"
+        className="fixed top-4 right-4 z-40 w-11 h-11 rounded-full bg-white shadow-[0_2px_10px_rgba(0,0,0,0.12)] border border-[var(--color-border)] flex items-center justify-center hover:bg-[var(--color-bg-gray-light)] transition-colors"
+      >
+        {sync.status === "syncing" ? (
+          <RefreshCw className="w-5 h-5 text-[var(--color-primary)] animate-spin" />
+        ) : sync.code ? (
+          <Cloud
+            className={[
+              "w-5 h-5",
+              sync.status === "error" || sync.status === "not_configured"
+                ? "text-[var(--color-danger)]"
+                : "text-[var(--color-primary)]",
+            ].join(" ")}
+          />
+        ) : (
+          <CloudOff className="w-5 h-5 text-[var(--color-text-tertiary)]" />
+        )}
+        {sync.code && sync.status === "synced" && (
+          <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-[var(--color-success)] border border-white" />
+        )}
+      </button>
+
+      <SyncModal
+        isOpen={isSyncOpen}
+        onClose={() => setIsSyncOpen(false)}
+        code={sync.code}
+        status={sync.status}
+        lastSyncedAt={sync.lastSyncedAt}
+        onConnect={sync.setCode}
+        onDisconnect={sync.disconnect}
+        onRefresh={sync.refresh}
       />
     </main>
   );
