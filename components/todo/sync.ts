@@ -80,6 +80,9 @@ export function useCloudSync({ hydrated, tasks, entries, setTasks, setEntries }:
     async (): Promise<"has_data" | "empty" | "error" | "not_configured"> => {
       const c = codeRef.current;
       if (!c) return "error";
+      // 记录拉取前的本地数据引用，用于检测"拉取期间用户改了本地"
+      const t0 = tasksRef.current;
+      const e0 = entriesRef.current;
       try {
         const res = await fetch(`/api/sync?code=${encodeURIComponent(c)}`, { cache: "no-store" });
         if (res.status === 501) {
@@ -92,6 +95,13 @@ export function useCloudSync({ hydrated, tasks, entries, setTasks, setEntries }:
         }
         const json = await res.json();
         const data = json?.data;
+        // 拉取期间用户改动过本地（如刚停止计时新增一条）→ 不要用云端覆盖，
+        // 保住本地改动，交给防抖推送同步上去（否则会把刚加的记录冲掉）
+        if (tasksRef.current !== t0 || entriesRef.current !== e0) {
+          setStatus("synced");
+          setLastSyncedAt(Date.now());
+          return "has_data";
+        }
         if (data && (Array.isArray(data.tasks) || Array.isArray(data.entries))) {
           setTasks(Array.isArray(data.tasks) ? data.tasks : []);
           setEntries(Array.isArray(data.entries) ? data.entries : []);

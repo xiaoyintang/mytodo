@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { Square, Timer as TimerIcon } from "lucide-react";
 import type { ISODate, TimeEntry } from "@/components/todo/types";
 import { toISODate } from "@/components/todo/date";
-import { timeToMinutes } from "@/components/todo/time";
 
 // 三类计时。颜色用于按钮和运行态。
 const CATEGORIES = [
@@ -77,8 +76,8 @@ export default function TimerPanel({ onAdd }: Props) {
     const endD = new Date();
     const startTime = hhmm(startD);
     const endTime = hhmm(endD);
-    // 时长按分钟差算，保证起止时间与时长一致；不足 1 分钟按 1 分钟
-    let minutes = timeToMinutes(endTime) - timeToMinutes(startTime);
+    // 用真实毫秒差算时长，跨午夜/超长都正确；不足 1 分钟按 1 分钟
+    let minutes = Math.round((endD.getTime() - startD.getTime()) / 60000);
     if (minutes < 1) minutes = 1;
     onAdd({
       date: toISODate(endD) as ISODate,
