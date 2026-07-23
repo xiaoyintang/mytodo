@@ -5,7 +5,7 @@ import type { ISODate, Task, TimeEntry, ViewMode } from "@/components/todo/types
 import { CN_WEEKDAY, addDays, formatCNDateTitle, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
 import { formatMinutes, matchTaskByTitle, timeToMinutes, minutesToTime } from "@/components/todo/time";
 import { parseTimeEntries, type ParsedEntry } from "@/components/todo/nlparse";
-import { ChevronLeft, ChevronRight, Mic, Sparkles, Trash2, X, Check, Link2, Zap, Pencil } from "lucide-react";
+import { ChevronLeft, ChevronRight, Mic, Sparkles, Trash2, X, Check, Link2, Zap, Pencil, Copy } from "lucide-react";
 import TimePicker from "@/components/TimePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
@@ -208,6 +208,87 @@ export default function TimeLogView({
       taskId,
     });
     setEditingId(null);
+  }
+
+  // 复制：照着某笔再记一次（沿用同一个名字 → 汇总能合并），时长清空由你重填
+  function startCopyEntry(e: TimeEntry) {
+    const d = new Date();
+    setEditingId("__new__");
+    setEditTitle(e.title);
+    setEditStart(`${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`);
+    setEditEnd("");
+    setEditMinutes("");
+  }
+
+  function saveNewEntry() {
+    const title = editTitle.trim();
+    const minutes = Math.round(Number(editMinutes));
+    if (!title || !Number.isFinite(minutes) || minutes <= 0) return;
+    onAddEntries([
+      {
+        date: selectedDate,
+        title,
+        minutes,
+        startTime: editStart || undefined,
+        endTime: editEnd || undefined,
+        taskId: matchTaskByTitle(title, selectedDate, tasks)?.id,
+      },
+    ]);
+    setEditingId(null);
+  }
+
+  // 台账条目编辑表单（新建/编辑共用），onSave 决定是新增还是更新
+  function renderEntryEditor(onSave: () => void) {
+    const canSave = editTitle.trim() !== "" && Number(editMinutes) > 0;
+    return (
+      <div className="w-full flex flex-col gap-2 px-3.5 py-3 rounded-[10px] bg-[var(--color-bg-gray-lighter)] border-[1.5px] border-[var(--color-primary)]">
+        <input
+          type="text"
+          value={editTitle}
+          onChange={(ev) => setEditTitle(ev.target.value)}
+          placeholder="事项名称"
+          className="w-full px-3 py-2 rounded-lg border border-[var(--color-border)] text-[14px] bg-white focus:outline-none focus:border-[var(--color-primary)]"
+        />
+        <div className="flex items-center gap-2">
+          <TimePicker value={editStart} onChange={(v) => handleEditTime("start", v)} placeholder="开始" label="开始时间" />
+          <span className="text-[13px] text-[var(--color-text-tertiary)]">—</span>
+          <TimePicker value={editEnd} onChange={(v) => handleEditTime("end", v)} placeholder="结束" label="结束时间" />
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            value={editMinutes}
+            onChange={(ev) => handleEditMinutes(ev.target.value)}
+            placeholder="时长"
+            className="w-[100px] px-3 py-2 rounded-lg border border-[var(--color-border)] text-[13px] bg-white focus:outline-none focus:border-[var(--color-primary)]"
+          />
+          <span className="text-[13px] text-[var(--color-text-secondary)]">分钟</span>
+          <div className="flex-1" />
+          <button
+            type="button"
+            onClick={() => setEditingId(null)}
+            className="px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] hover:bg-white rounded transition-colors"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={!canSave}
+            className={[
+              "px-4 py-1.5 text-[12px] rounded font-medium transition-colors",
+              canSave
+                ? "bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8]"
+                : "bg-[var(--color-bg-gray-light)] text-[var(--color-text-tertiary)] cursor-not-allowed",
+            ].join(" ")}
+          >
+            保存
+          </button>
+        </div>
+      </div>
+    );
   }
 
   function entryTimeLabel(e: { startTime?: string; endTime?: string }): string {
@@ -438,84 +519,24 @@ export default function TimeLogView({
               {dayEntries.length > 0 ? `${dayEntries.length} 笔 · 共 ${formatMinutes(dayTotal)}` : "暂无记录"}
             </span>
           </div>
+          {/* 复制/再记一次：新建条目表单 */}
+          {editingId === "__new__" && renderEntryEditor(saveNewEntry)}
+
           {dayEntries.length > 0 && (
             <div className="w-full flex flex-col gap-2">
               {dayEntries.map((e) => {
                 const task = e.taskId ? tasks.find((t) => t.id === e.taskId) : undefined;
-                const isEditing = editingId === e.id;
 
-                if (isEditing) {
-                  const canSave = editTitle.trim() !== "" && Number(editMinutes) > 0;
-                  return (
-                    <div
-                      key={e.id}
-                      className="w-full flex flex-col gap-2 px-3.5 py-3 rounded-[10px] bg-[var(--color-bg-gray-lighter)] border-[1.5px] border-[var(--color-primary)]"
-                    >
-                      <input
-                        type="text"
-                        value={editTitle}
-                        onChange={(ev) => setEditTitle(ev.target.value)}
-                        placeholder="事项名称"
-                        className="w-full px-3 py-2 rounded-lg border border-[var(--color-border)] text-[14px] bg-white focus:outline-none focus:border-[var(--color-primary)]"
-                      />
-                      <div className="flex items-center gap-2">
-                        <TimePicker
-                          value={editStart}
-                          onChange={(v) => handleEditTime("start", v)}
-                          placeholder="开始"
-                          label="开始时间"
-                        />
-                        <span className="text-[13px] text-[var(--color-text-tertiary)]">—</span>
-                        <TimePicker
-                          value={editEnd}
-                          onChange={(v) => handleEditTime("end", v)}
-                          placeholder="结束"
-                          label="结束时间"
-                        />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          min={1}
-                          value={editMinutes}
-                          onChange={(ev) => handleEditMinutes(ev.target.value)}
-                          placeholder="时长"
-                          className="w-[100px] px-3 py-2 rounded-lg border border-[var(--color-border)] text-[13px] bg-white focus:outline-none focus:border-[var(--color-primary)]"
-                        />
-                        <span className="text-[13px] text-[var(--color-text-secondary)]">分钟</span>
-                        <div className="flex-1" />
-                        <button
-                          type="button"
-                          onClick={() => setEditingId(null)}
-                          className="px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] hover:bg-white rounded transition-colors"
-                        >
-                          取消
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => saveEditEntry(e)}
-                          disabled={!canSave}
-                          className={[
-                            "px-4 py-1.5 text-[12px] rounded font-medium transition-colors",
-                            canSave
-                              ? "bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8]"
-                              : "bg-[var(--color-bg-gray-light)] text-[var(--color-text-tertiary)] cursor-not-allowed",
-                          ].join(" ")}
-                        >
-                          保存
-                        </button>
-                      </div>
-                    </div>
-                  );
+                if (editingId === e.id) {
+                  return <div key={e.id}>{renderEntryEditor(() => saveEditEntry(e))}</div>;
                 }
 
                 return (
                   <div
                     key={e.id}
-                    className="w-full flex items-center gap-3 px-3.5 py-3 rounded-[10px] bg-white border border-[var(--color-border)]"
+                    className="w-full flex items-center gap-2.5 px-3.5 py-3 rounded-[10px] bg-white border border-[var(--color-border)]"
                   >
-                    <span className="w-[86px] flex-shrink-0 text-[12px] font-medium text-[var(--color-text-tertiary)]">
+                    <span className="w-[80px] flex-shrink-0 text-[12px] font-medium text-[var(--color-text-tertiary)]">
                       {entryTimeLabel(e)}
                     </span>
                     <div className="flex-1 flex flex-col gap-0.5 min-w-0">
@@ -532,6 +553,14 @@ export default function TimeLogView({
                     <span className="text-[13px] font-semibold text-[var(--color-primary)] flex-shrink-0">
                       {formatMinutes(e.minutes)}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => startCopyEntry(e)}
+                      className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0"
+                      aria-label="再记一次"
+                    >
+                      <Copy className="w-[15px] h-[15px] text-[#A1A1AA]" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => startEditEntry(e)}
