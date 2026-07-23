@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import type { ISODate, Task, TimeEntry, ViewMode } from "@/components/todo/types";
 import { CN_WEEKDAY, addDays, formatCNDateTitle, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
 import { formatMinutes, matchTaskByTitle, timeToMinutes, minutesToTime } from "@/components/todo/time";
@@ -55,6 +55,7 @@ export default function TimeLogView({
   const [editStart, setEditStart] = useState("");
   const [editEnd, setEditEnd] = useState("");
   const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null);
+  const [copySourceId, setCopySourceId] = useState<string | null>(null); // 复制表单挂在哪条下面
   const [weekOpen, setWeekOpen] = useState(false); // 周汇总默认收起
 
   const selected = parseISODate(selectedDate);
@@ -223,6 +224,7 @@ export default function TimeLogView({
   // 复制：照着某笔再记一次（沿用同一个名字 → 汇总能合并），时长清空由你重填
   function startCopyEntry(e: TimeEntry) {
     const d = new Date();
+    setCopySourceId(e.id); // 让新建表单出现在这条下面
     setEditingId("__new__");
     setEditTitle(e.title);
     setEditStart(`${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`);
@@ -529,9 +531,6 @@ export default function TimeLogView({
               {dayEntries.length > 0 ? `${dayEntries.length} 笔 · 共 ${formatMinutes(dayTotal)}` : "暂无记录"}
             </span>
           </div>
-          {/* 复制/再记一次：新建条目表单 */}
-          {editingId === "__new__" && renderEntryEditor(saveNewEntry)}
-
           {dayEntries.length > 0 && (
             <div className="w-full flex flex-col gap-2">
               {dayEntries.map((e) => {
@@ -541,51 +540,54 @@ export default function TimeLogView({
                   return <div key={e.id}>{renderEntryEditor(() => saveEditEntry(e))}</div>;
                 }
 
+                const composingHere = editingId === "__new__" && copySourceId === e.id;
+
                 return (
-                  <div
-                    key={e.id}
-                    className="w-full flex items-center gap-2.5 px-3.5 py-3 rounded-[10px] bg-white border border-[var(--color-border)]"
-                  >
-                    <span className="w-[80px] flex-shrink-0 text-[12px] font-medium text-[var(--color-text-tertiary)]">
-                      {entryTimeLabel(e)}
-                    </span>
-                    <div className="flex-1 flex flex-col gap-0.5 min-w-0">
-                      <span className="text-[14px] font-medium text-[var(--color-text-primary)] truncate">
-                        {e.title}
+                  <Fragment key={e.id}>
+                    <div className="w-full flex items-center gap-2.5 px-3.5 py-3 rounded-[10px] bg-white border border-[var(--color-border)]">
+                      <span className="w-[80px] flex-shrink-0 text-[12px] font-medium text-[var(--color-text-tertiary)]">
+                        {entryTimeLabel(e)}
                       </span>
-                      {task && (
-                        <span className="flex items-center gap-0.5 text-[10px] text-[var(--color-success)]">
-                          <Link2 className="w-3 h-3" />
-                          计入「{task.title}」
+                      <div className="flex-1 flex flex-col gap-0.5 min-w-0">
+                        <span className="text-[14px] font-medium text-[var(--color-text-primary)] truncate">
+                          {e.title}
                         </span>
-                      )}
+                        {task && (
+                          <span className="flex items-center gap-0.5 text-[10px] text-[var(--color-success)]">
+                            <Link2 className="w-3 h-3" />
+                            计入「{task.title}」
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[13px] font-semibold text-[var(--color-primary)] flex-shrink-0">
+                        {formatMinutes(e.minutes)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => startCopyEntry(e)}
+                        className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0"
+                        aria-label="再记一次"
+                      >
+                        <Copy className="w-[15px] h-[15px] text-[#A1A1AA]" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => startEditEntry(e)}
+                        className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0"
+                      >
+                        <Pencil className="w-[16px] h-[16px] text-[#A1A1AA]" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteEntryId(e.id)}
+                        className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0"
+                      >
+                        <Trash2 className="w-[16px] h-[16px] text-[#A1A1AA]" />
+                      </button>
                     </div>
-                    <span className="text-[13px] font-semibold text-[var(--color-primary)] flex-shrink-0">
-                      {formatMinutes(e.minutes)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => startCopyEntry(e)}
-                      className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0"
-                      aria-label="再记一次"
-                    >
-                      <Copy className="w-[15px] h-[15px] text-[#A1A1AA]" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => startEditEntry(e)}
-                      className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0"
-                    >
-                      <Pencil className="w-[16px] h-[16px] text-[#A1A1AA]" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeleteEntryId(e.id)}
-                      className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0"
-                    >
-                      <Trash2 className="w-[16px] h-[16px] text-[#A1A1AA]" />
-                    </button>
-                  </div>
+                    {/* 复制表单：直接出现在被复制那条下面 */}
+                    {composingHere && renderEntryEditor(saveNewEntry)}
+                  </Fragment>
                 );
               })}
             </div>
