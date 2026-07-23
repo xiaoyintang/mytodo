@@ -187,6 +187,7 @@ export default function TodoApp() {
           entries={safeEntries}
           onCycleTaskStatus={cycleTaskStatus}
           onOpenAddModal={() => setIsModalOpen(true)}
+          onCreateTask={createTask}
           onDeleteTask={deleteTask}
           onUpdateTask={updateTask}
           onAddEntry={addEntry}
@@ -203,6 +204,7 @@ export default function TodoApp() {
           entries={safeEntries}
           onCycleTaskStatus={cycleTaskStatus}
           onOpenAddModal={() => setIsModalOpen(true)}
+          onCreateTask={createTask}
           onDeleteTask={deleteTask}
           onUpdateTask={updateTask}
           onAddEntry={addEntry}

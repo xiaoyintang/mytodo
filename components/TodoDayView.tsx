@@ -7,6 +7,7 @@ import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
 import { Plus, Check, Flag, Trash2, ChevronLeft, ChevronRight, Pencil, Timer } from "lucide-react";
 import TaskBottomSheet from "@/components/TaskBottomSheet";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import QuickAddTask from "@/components/QuickAddTask";
 
 type Props = {
   viewMode: ViewMode;
@@ -17,6 +18,7 @@ type Props = {
   entries: TimeEntry[];
   onCycleTaskStatus: (taskId: string) => void;
   onOpenAddModal: () => void;
+  onCreateTask: (task: Omit<Task, "id">) => void;
   onDeleteTask: (taskId: string) => void;
   onUpdateTask: (taskId: string, updates: Partial<Omit<Task, "id">>) => void;
   onAddEntry: (entry: Omit<TimeEntry, "id">) => void;
@@ -80,6 +82,7 @@ export default function TodoDayView({
   entries,
   onCycleTaskStatus,
   onOpenAddModal,
+  onCreateTask,
   onDeleteTask,
   onUpdateTask,
   onAddEntry,
@@ -244,6 +247,9 @@ export default function TodoDayView({
 
       {/* Content Area */}
       <div className="w-full flex flex-col gap-6 px-6 pt-4 pb-6">
+        {/* AI 一句话建任务（直接在页面上，无需点新增） */}
+        <QuickAddTask onCreate={onCreateTask} />
+
         {(Object.keys(groups) as Array<keyof typeof groups>).map((section) => {
           const sectionTasks = groups[section];
           if (sectionTasks.length === 0) return null;

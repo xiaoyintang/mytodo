@@ -6,6 +6,7 @@ import { CN_WEEKDAY, addDays, parseISODate, startOfWeek, toISODate } from "@/com
 import { Plus, ChevronLeft, ChevronRight, Check, Flag, Timer } from "lucide-react";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
 import TaskBottomSheet from "@/components/TaskBottomSheet";
+import QuickAddTask from "@/components/QuickAddTask";
 
 type Props = {
   viewMode: ViewMode;
@@ -16,6 +17,7 @@ type Props = {
   entries: TimeEntry[];
   onCycleTaskStatus: (taskId: string) => void;
   onOpenAddModal: () => void;
+  onCreateTask: (task: Omit<Task, "id">) => void;
   onDeleteTask: (taskId: string) => void;
   onUpdateTask: (taskId: string, updates: Partial<Omit<Task, "id">>) => void;
   onAddEntry: (entry: Omit<TimeEntry, "id">) => void;
@@ -190,6 +192,7 @@ export default function TodoWeekView({
   entries,
   onCycleTaskStatus,
   onOpenAddModal,
+  onCreateTask,
   onDeleteTask,
   onUpdateTask,
   onAddEntry,
@@ -297,6 +300,11 @@ export default function TodoWeekView({
               <span className="text-[var(--color-text-secondary)]">{totalTasks - doneTasks}</span>
             </div>
           </div>
+        </div>
+
+        {/* AI 一句话建任务 */}
+        <div className="px-4 pb-3">
+          <QuickAddTask onCreate={onCreateTask} />
         </div>
 
         {/* Week Days List */}
