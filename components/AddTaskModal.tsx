@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import type { ISODate, Task, TaskPriority } from "@/components/todo/types";
-import { X, Calendar, Plus, CircleCheck, TriangleAlert, ChevronLeft, ChevronRight, Clock, Timer } from "lucide-react";
+import { X, Calendar, Plus, CircleCheck, TriangleAlert, ChevronLeft, ChevronRight, Clock, Timer, Sparkles } from "lucide-react";
 import TimePicker from "@/components/TimePicker";
 import { CN_WEEKDAY, addDays, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
 import { formatMinutes } from "@/components/todo/time";
@@ -45,6 +45,11 @@ export default function AddTaskModal({ mode, isOpen, onClose, onSubmit, selected
   // Week picker state (for week mode)
   const [pickerWeekStart, setPickerWeekStart] = useState(() => startOfWeek(new Date(), true));
 
+  // AI 快速建任务
+  const [aiInput, setAiInput] = useState("");
+  const [aiParsing, setAiParsing] = useState(false);
+  const [aiError, setAiError] = useState("");
+
   // Reset form when modal opens/closes or mode changes
   useEffect(() => {
     if (isOpen) {
@@ -58,8 +63,76 @@ export default function AddTaskModal({ mode, isOpen, onClose, onSubmit, selected
       setTargetMinutes(null);
       setCustomTarget("");
       setPickerWeekStart(startOfWeek(new Date(), true));
+      setAiInput("");
+      setAiError("");
     }
   }, [isOpen, mode, selectedDate, today]);
+
+  // AI 解析一句话 → 填充表单（8 秒超时 + 重试一次）
+  async function handleAIParse() {
+    const text = aiInput.trim();
+    if (!text || aiParsing) return;
+    setAiParsing(true);
+    setAiError("");
+
+    const now = new Date();
+    const weekday = CN_WEEKDAY[now.getDay()];
+    let tasks: Array<{ title: string; date: string; startTime?: string; endTime?: string; priority?: "high"; targetMinutes?: number }> | null = null;
+
+    for (let attempt = 0; attempt < 2 && !tasks; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 8000);
+        const res = await fetch("/api/parse-task", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, today, weekday }),
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        if (res.status === 501) {
+          setAiError("AI 未配置，请在下方手动填写");
+          break;
+        }
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.tasks)) tasks = data.tasks;
+        }
+      } catch {
+        // 超时/网络 → 重试
+      }
+    }
+
+    setAiParsing(false);
+    if (!tasks) {
+      if (!aiError) setAiError("AI 解析失败（网络不稳），请手动填写");
+      return;
+    }
+    if (tasks.length === 0) {
+      setAiError('没识别出任务，换个说法，比如"明天下午3点开产品评审会"');
+      return;
+    }
+
+    // 用第一条填充表单（多条时提示）
+    const t = tasks[0];
+    setTitle(t.title);
+    setDate(t.date as ISODate);
+    setPickerWeekStart(startOfWeek(parseISODate(t.date), true));
+    if (t.targetMinutes) {
+      setTimeMode("target");
+      setTargetMinutes(t.targetMinutes);
+      setCustomTarget("");
+      setStartTime("");
+      setEndTime("");
+    } else {
+      setTimeMode("range");
+      setStartTime(t.startTime ?? "");
+      setEndTime(t.endTime ?? "");
+      setTargetMinutes(null);
+    }
+    setPriority(t.priority === "high" ? "high" : null);
+    setAiError(tasks.length > 1 ? `识别到 ${tasks.length} 个任务，已填入第一个，其余请分别创建` : "");
+  }
 
   // Update date when selectedDate changes (for day mode)
   useEffect(() => {
@@ -140,6 +213,46 @@ export default function AddTaskModal({ mode, isOpen, onClose, onSubmit, selected
 
         {/* Form Content - Scrollable */}
         <div className="flex flex-col gap-5 p-6 overflow-y-auto flex-1">
+          {/* AI 快速建任务 */}
+          <div className="flex flex-col gap-2 p-3 rounded-[10px] bg-[var(--color-bg-gray-lighter)] border border-[var(--color-border)]">
+            <div className="flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4 text-[var(--color-primary)]" />
+              <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">AI 一句话建任务</span>
+              <span className="text-[11px] text-[var(--color-text-tertiary)]">可键盘语音</span>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={aiInput}
+                onChange={(e) => {
+                  setAiInput(e.target.value);
+                  setAiError("");
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleAIParse();
+                }}
+                placeholder="如：明天下午3点开产品评审会，高优"
+                className="flex-1 px-3 py-2 rounded-md border border-[var(--color-border)] text-[13px] bg-white placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)]"
+              />
+              <button
+                type="button"
+                onClick={handleAIParse}
+                disabled={!aiInput.trim() || aiParsing}
+                className={[
+                  "flex items-center gap-1 px-3 rounded-md text-[13px] font-medium transition-colors whitespace-nowrap",
+                  aiInput.trim() && !aiParsing
+                    ? "bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8]"
+                    : "bg-[var(--color-bg-gray-light)] text-[var(--color-text-tertiary)] cursor-not-allowed",
+                ].join(" ")}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                {aiParsing ? "解析中" : "解析"}
+              </button>
+            </div>
+            {aiError && <p className="text-[11px] text-[var(--color-danger)]">{aiError}</p>}
+            <p className="text-[11px] text-[var(--color-text-tertiary)]">解析后自动填好下面的表单，确认无误再创建</p>
+          </div>
+
           {/* Date Section */}
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">

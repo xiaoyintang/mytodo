@@ -1,7 +1,7 @@
 import type { ParsedEntry } from "./nlparse";
 
-// 服务端 LLM 解析（OpenAI 兼容接口：DeepSeek / 硅基流动）。
-// 未配 LLM_API_KEY 或调用失败时返回 null，由调用方决定降级（规则解析）。
+// 服务端 LLM 调用（OpenAI 兼容接口：DeepSeek / 硅基流动）。
+// 未配 LLM_API_KEY 或调用失败/超时返回 null，由调用方决定降级。
 
 const SYSTEM_PROMPT = `你是一个时间记录解析器（柳比歇夫时间记录法）。用户会口述自己做了什么事、花了多少时间。你把它解析成结构化 JSON。
 
@@ -24,7 +24,8 @@ export function hasLLM(): boolean {
   return !!process.env.LLM_API_KEY;
 }
 
-export async function parseWithLLM(text: string, now?: string): Promise<ParsedEntry[] | null> {
+// 通用：给定 system + user，返回模型输出的 JSON（对象），失败/超时返回 null。
+export async function callLLMJson(system: string, user: string): Promise<unknown | null> {
   const apiKey = process.env.LLM_API_KEY;
   if (!apiKey) return null;
 
@@ -32,7 +33,7 @@ export async function parseWithLLM(text: string, now?: string): Promise<ParsedEn
   const model = process.env.LLM_MODEL ?? "deepseek-chat";
 
   try {
-    // 8 秒超时保护：DeepSeek 偶尔卡住时快速失败，避免拖死整个函数
+    // 8 秒超时保护，避免卡死拖满函数时限
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
     const res = await fetch(`${baseUrl}/chat/completions`, {
@@ -41,8 +42,8 @@ export async function parseWithLLM(text: string, now?: string): Promise<ParsedEn
       body: JSON.stringify({
         model,
         messages: [
-          { role: "system", content: now ? `${SYSTEM_PROMPT}\n\n当前时间：${now}` : SYSTEM_PROMPT },
-          { role: "user", content: text },
+          { role: "system", content: system },
+          { role: "user", content: user },
         ],
         response_format: { type: "json_object" },
         // DeepSeek V4 默认开思考模式，简单抽取任务关掉能快 5 倍以上
@@ -55,23 +56,31 @@ export async function parseWithLLM(text: string, now?: string): Promise<ParsedEn
     });
     clearTimeout(timer);
     if (!res.ok) return null;
-
     const data = await res.json();
     const content = data?.choices?.[0]?.message?.content ?? "";
-    const parsed = JSON.parse(content);
-    const raw = Array.isArray(parsed?.entries) ? parsed.entries : [];
-
-    return raw
-      .map((e: Record<string, unknown>): ParsedEntry | null => {
-        const title = String(e.title ?? "").trim();
-        const minutes = Math.round(Number(e.minutes));
-        const startTime = typeof e.startTime === "string" && TIME_RE.test(e.startTime) ? e.startTime : undefined;
-        const endTime = typeof e.endTime === "string" && TIME_RE.test(e.endTime) ? e.endTime : undefined;
-        if (!title || !Number.isFinite(minutes) || minutes <= 0) return null;
-        return { title, minutes, startTime, endTime };
-      })
-      .filter((x: ParsedEntry | null): x is ParsedEntry => x !== null);
+    return JSON.parse(content);
   } catch {
     return null;
   }
+}
+
+export async function parseWithLLM(text: string, now?: string): Promise<ParsedEntry[] | null> {
+  const parsed = await callLLMJson(now ? `${SYSTEM_PROMPT}\n\n当前时间：${now}` : SYSTEM_PROMPT, text);
+  if (parsed === null) return null;
+
+  const raw = Array.isArray((parsed as { entries?: unknown[] })?.entries)
+    ? (parsed as { entries: unknown[] }).entries
+    : [];
+
+  return raw
+    .map((e): ParsedEntry | null => {
+      const o = e as Record<string, unknown>;
+      const title = String(o.title ?? "").trim();
+      const minutes = Math.round(Number(o.minutes));
+      const startTime = typeof o.startTime === "string" && TIME_RE.test(o.startTime) ? o.startTime : undefined;
+      const endTime = typeof o.endTime === "string" && TIME_RE.test(o.endTime) ? o.endTime : undefined;
+      if (!title || !Number.isFinite(minutes) || minutes <= 0) return null;
+      return { title, minutes, startTime, endTime };
+    })
+    .filter((x): x is ParsedEntry => x !== null);
 }
