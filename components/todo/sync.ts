@@ -142,6 +142,22 @@ export function useCloudSync({ hydrated, tasks, entries, setTasks, setEntries }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks, entries]);
 
+  // 切回页面自动同步：离开时把本地改动推上去，回来时拉最新
+  // （比如刚用 Siri / 快捷指令记了一笔，切回 app 就能看到，不用退出重进）
+  useEffect(() => {
+    if (!hydrated || !code) return;
+    function onVisibility() {
+      if (!pulledRef.current) return;
+      if (document.visibilityState === "hidden") {
+        void push(); // 离开前先冲一次，避免丢本地改动
+      } else {
+        void pull(); // 回来拉云端最新
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [hydrated, code, push, pull]);
+
   const refresh = useCallback(async () => {
     setStatus("syncing");
     await pull();

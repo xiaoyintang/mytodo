@@ -96,8 +96,8 @@ export default function TodoApp() {
     hydrated: hydrated && entriesHydrated,
     tasks,
     entries,
-    setTasks: (t) => setTasks(t),
-    setEntries: (e) => setEntries(e),
+    setTasks,
+    setEntries,
   });
 
   // Toggle task status: todo → in_progress → done → todo
