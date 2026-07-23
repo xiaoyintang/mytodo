@@ -8,6 +8,7 @@ import { parseTimeEntries, type ParsedEntry } from "@/components/todo/nlparse";
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Mic, Sparkles, Trash2, X, Check, Link2, Zap, Pencil, Copy } from "lucide-react";
 import TimePicker from "@/components/TimePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import TimerPanel from "@/components/TimerPanel";
 
 type Props = {
   viewMode: ViewMode;
@@ -430,6 +431,11 @@ export default function TimeLogView({
 
       {/* Content */}
       <div className="w-full flex flex-col gap-6 px-6 pt-4 pb-6">
+        {/* 计时器（仅"今天"显示，记录到当天） */}
+        {selectedDate === toISODate(new Date()) && (
+          <TimerPanel onAdd={(entry) => onAddEntries([entry])} />
+        )}
+
         {/* 快速记录 */}
         <div className="w-full flex flex-col gap-2">
           <div className="flex items-center gap-2">
