@@ -87,6 +87,8 @@ export default function TodoApp() {
   const [selectedDate, setSelectedDate] = useState<ISODate>(todayIso);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSyncOpen, setIsSyncOpen] = useState(false);
+  // 时间记录撤回栈：每次用户改动记录前先存一份快照，最多留 30 步
+  const [entriesHistory, setEntriesHistory] = useState<TimeEntry[][]>([]);
 
   const safeTasks = hydrated ? tasks : seedTasks(todayIso);
   const safeEntries = entriesHydrated ? entries : EMPTY_ENTRIES;
@@ -137,8 +139,14 @@ export default function TodoApp() {
     );
   }
 
+  // 改动记录前先存快照，供撤回（本地云同步的替换不走这里，不会污染撤回栈）
+  function snapshotEntries() {
+    setEntriesHistory((h) => [...h.slice(-29), entries]);
+  }
+
   // 新增时间记录（批量，用于自然语言解析出多笔的场景）
   function addEntries(entryList: Omit<TimeEntry, "id">[]) {
+    snapshotEntries();
     const newEntries: TimeEntry[] = entryList.map((e, i) => ({
       ...e,
       id: `e-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
@@ -153,12 +161,22 @@ export default function TodoApp() {
 
   // 删除时间记录
   function deleteEntry(entryId: string) {
+    snapshotEntries();
     setEntries((prev) => prev.filter((e) => e.id !== entryId));
   }
 
   // 更新时间记录（台账行内编辑）
   function updateEntry(entryId: string, updates: Partial<Omit<TimeEntry, "id">>) {
+    snapshotEntries();
     setEntries((prev) => prev.map((e) => (e.id === entryId ? { ...e, ...updates } : e)));
+  }
+
+  // 撤回上一步记录改动（编辑/删除/新增都能退回）
+  function undoEntries() {
+    if (entriesHistory.length === 0) return;
+    const prev = entriesHistory[entriesHistory.length - 1];
+    setEntries(prev);
+    setEntriesHistory((h) => h.slice(0, -1));
   }
 
   // Navigate to previous week (move selectedDate back 7 days)
@@ -222,6 +240,8 @@ export default function TodoApp() {
           onAddEntries={addEntries}
           onDeleteEntry={deleteEntry}
           onUpdateEntry={updateEntry}
+          onUndoEntries={undoEntries}
+          canUndoEntries={entriesHistory.length > 0}
           onPrevWeek={goToPrevWeek}
           onNextWeek={goToNextWeek}
         />

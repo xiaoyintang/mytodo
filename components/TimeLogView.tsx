@@ -5,7 +5,7 @@ import type { ISODate, Task, TimeEntry, ViewMode } from "@/components/todo/types
 import { CN_WEEKDAY, addDays, formatCNDateTitle, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
 import { formatMinutes, matchTaskByTitle, timeToMinutes, minutesToTime } from "@/components/todo/time";
 import { parseTimeEntries, type ParsedEntry } from "@/components/todo/nlparse";
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Mic, Sparkles, Trash2, X, Check, Link2, Zap, Pencil, Copy } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Mic, Sparkles, Trash2, X, Check, Link2, Zap, Pencil, Copy, Undo2 } from "lucide-react";
 import TimePicker from "@/components/TimePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import TimerPanel from "@/components/TimerPanel";
@@ -20,6 +20,8 @@ type Props = {
   onAddEntries: (entries: Omit<TimeEntry, "id">[]) => void;
   onDeleteEntry: (entryId: string) => void;
   onUpdateEntry: (entryId: string, updates: Partial<Omit<TimeEntry, "id">>) => void;
+  onUndoEntries: () => void;
+  canUndoEntries: boolean;
   onPrevWeek: () => void;
   onNextWeek: () => void;
 };
@@ -65,6 +67,8 @@ export default function TimeLogView({
   onAddEntries,
   onDeleteEntry,
   onUpdateEntry,
+  onUndoEntries,
+  canUndoEntries,
   onPrevWeek,
   onNextWeek,
 }: Props) {
@@ -546,9 +550,23 @@ export default function TimeLogView({
         <div className="w-full flex flex-col gap-3">
           <div className="w-full flex items-center justify-between">
             <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">今日台账</span>
-            <span className="text-[var(--color-text-tertiary)] text-[13px] font-medium">
-              {dayEntries.length > 0 ? `${dayEntries.length} 笔 · 共 ${formatMinutes(dayTotal)}` : "暂无记录"}
-            </span>
+            <div className="flex items-center gap-2">
+              {canUndoEntries && (
+                <button
+                  type="button"
+                  onClick={onUndoEntries}
+                  className="flex items-center gap-1 px-2 py-1 rounded-md text-[12px] font-semibold text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] transition-colors"
+                  aria-label="撤回上一步改动"
+                  title="撤回上一步（编辑 / 删除 / 新增都能退回）"
+                >
+                  <Undo2 className="w-3.5 h-3.5" />
+                  撤回
+                </button>
+              )}
+              <span className="text-[var(--color-text-tertiary)] text-[13px] font-medium">
+                {dayEntries.length > 0 ? `${dayEntries.length} 笔 · 共 ${formatMinutes(dayTotal)}` : "暂无记录"}
+              </span>
+            </div>
           </div>
           {dayEntries.length > 0 && (
             <div className="w-full flex flex-col gap-2">
@@ -689,7 +707,7 @@ export default function TimeLogView({
         title="删除这笔记录？"
         description={(() => {
           const target = deleteEntryId ? entries.find((e) => e.id === deleteEntryId) : undefined;
-          return target ? `「${target.title} · ${formatMinutes(target.minutes)}」删除后无法恢复` : undefined;
+          return target ? `删除「${target.title} · ${formatMinutes(target.minutes)}」，删错了可点台账上的「撤回」找回` : undefined;
         })()}
         onConfirm={handleConfirmDeleteEntry}
         onCancel={() => setDeleteEntryId(null)}
