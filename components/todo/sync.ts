@@ -6,6 +6,16 @@ import type { Task, TimeEntry } from "./types";
 export type SyncStatus = "off" | "syncing" | "synced" | "error" | "not_configured";
 
 const CODE_KEY = "mytodo.sync.code";
+const DIRTY_KEY = "mytodo.sync.dirty"; // "1"=本地有改动还没确认传上云
+
+// 按 id 合并两个列表（并集）：本地未同步时用，绝不丢任何一边的记录，
+// 同 id 冲突时以本地为准（本地带着还没传上去的最新改动）。
+function mergeById<T extends { id: string }>(cloud: T[], local: T[]): T[] {
+  const map = new Map<string, T>();
+  for (const it of cloud) map.set(it.id, it);
+  for (const it of local) map.set(it.id, it);
+  return Array.from(map.values());
+}
 
 type Args = {
   hydrated: boolean;
@@ -32,12 +42,25 @@ export function useCloudSync({ hydrated, tasks, entries, setTasks, setEntries }:
   entriesRef.current = entries;
   const pulledRef = useRef(false);
   const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 本地是否有还没成功传上云的改动（跨刷新持久化，避免重开后被旧云端覆盖）
+  const dirtyRef = useRef(false);
 
-  // 读取已保存的同步码
+  const markDirty = useCallback((v: boolean) => {
+    dirtyRef.current = v;
+    try {
+      if (v) window.localStorage.setItem(DIRTY_KEY, "1");
+      else window.localStorage.removeItem(DIRTY_KEY);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // 读取已保存的同步码 + 未同步标记
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(CODE_KEY);
       if (saved) setCodeState(saved);
+      dirtyRef.current = window.localStorage.getItem(DIRTY_KEY) === "1";
     } catch {
       /* ignore */
     }
@@ -53,38 +76,47 @@ export function useCloudSync({ hydrated, tasks, entries, setTasks, setEntries }:
     }
   }, []);
 
-  const push = useCallback(async () => {
-    const c = codeRef.current;
-    if (!c) return;
-    setStatus("syncing");
-    const body = JSON.stringify({
-      code: c,
-      payload: { tasks: tasksRef.current, entries: entriesRef.current, updatedAt: Date.now() },
-    });
-    // 10 秒超时 + 失败重试两次，抗 VPN 抖动（避免一次抽风就同步失败）
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 10000);
-        const res = await fetch("/api/sync", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body,
-          signal: controller.signal,
-        });
-        clearTimeout(timer);
-        if (res.status === 501) return setStatus("not_configured");
-        if (res.ok) {
-          setStatus("synced");
-          setLastSyncedAt(Date.now());
-          return;
+  // 把指定数据推上云。成功且推的正是当前本地状态时，清掉未同步标记。
+  const pushData = useCallback(
+    async (tks: Task[], ents: TimeEntry[]) => {
+      const c = codeRef.current;
+      if (!c) return;
+      setStatus("syncing");
+      const body = JSON.stringify({
+        code: c,
+        payload: { tasks: tks, entries: ents, updatedAt: Date.now() },
+      });
+      // 10 秒超时 + 失败重试两次，抗 VPN 抖动（避免一次抽风就同步失败）
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 10000);
+          const res = await fetch("/api/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body,
+            signal: controller.signal,
+          });
+          clearTimeout(timer);
+          if (res.status === 501) return setStatus("not_configured");
+          if (res.ok) {
+            setStatus("synced");
+            setLastSyncedAt(Date.now());
+            // 期间本地没再变 → 已同步干净；否则保持 dirty，等下次推
+            if (tasksRef.current === tks && entriesRef.current === ents) markDirty(false);
+            return;
+          }
+        } catch {
+          // 超时/网络中断 → 重试
         }
-      } catch {
-        // 超时/网络中断 → 重试
       }
-    }
-    setStatus("error");
-  }, []);
+      // 传不上去：保留 dirty，本地记录不动，等下次有机会再补传
+      setStatus("error");
+    },
+    [markDirty],
+  );
+
+  const push = useCallback(() => pushData(tasksRef.current, entriesRef.current), [pushData]);
 
   // 拉取并应用云端数据（以云端为准）
   const pull = useCallback(
@@ -125,27 +157,37 @@ export function useCloudSync({ hydrated, tasks, entries, setTasks, setEntries }:
         }
         const json = await res.json();
         const data = json?.data;
-        // 拉取期间用户改动过本地（如刚停止计时新增一条）→ 不要用云端覆盖，
-        // 保住本地改动，交给防抖推送同步上去（否则会把刚加的记录冲掉）
-        if (tasksRef.current !== t0 || entriesRef.current !== e0) {
+        const cloudTasks = Array.isArray(data?.tasks) ? (data.tasks as Task[]) : null;
+        const cloudEntries = Array.isArray(data?.entries) ? (data.entries as TimeEntry[]) : null;
+        if (!cloudTasks && !cloudEntries) return "empty";
+
+        // 本地有未上传的改动（含拉取期间刚新增的）→ 合并而不是覆盖，
+        // 保证本地记录一条都不丢，合并后再把完整数据推上云。
+        const localChanged =
+          dirtyRef.current || tasksRef.current !== t0 || entriesRef.current !== e0;
+        if (localChanged) {
+          const mergedTasks = mergeById(cloudTasks ?? [], tasksRef.current);
+          const mergedEntries = mergeById(cloudEntries ?? [], entriesRef.current);
+          setTasks(mergedTasks);
+          setEntries(mergedEntries);
           setStatus("synced");
           setLastSyncedAt(Date.now());
+          void pushData(mergedTasks, mergedEntries);
           return "has_data";
         }
-        if (data && (Array.isArray(data.tasks) || Array.isArray(data.entries))) {
-          setTasks(Array.isArray(data.tasks) ? data.tasks : []);
-          setEntries(Array.isArray(data.entries) ? data.entries : []);
-          setStatus("synced");
-          setLastSyncedAt(Date.now());
-          return "has_data";
-        }
-        return "empty";
+
+        // 本地干净 → 以云端为准（这样别的设备的删除也能同步过来）
+        setTasks(cloudTasks ?? []);
+        setEntries(cloudEntries ?? []);
+        setStatus("synced");
+        setLastSyncedAt(Date.now());
+        return "has_data";
       } catch {
         setStatus("error");
         return "error";
       }
     },
-    [setTasks, setEntries],
+    [setTasks, setEntries, pushData],
   );
 
   // 进入页面时初始拉取
@@ -171,9 +213,10 @@ export function useCloudSync({ hydrated, tasks, entries, setTasks, setEntries }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code, hydrated]);
 
-  // 本地改动防抖推送
+  // 本地改动 → 标记未同步 + 防抖推送
   useEffect(() => {
     if (!hydrated || !code || !pulledRef.current) return;
+    markDirty(true); // 先记为"有未同步改动"，推成功才会清掉
     if (pushTimer.current) clearTimeout(pushTimer.current);
     pushTimer.current = setTimeout(() => void push(), 800);
     return () => {
