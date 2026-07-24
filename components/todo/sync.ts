@@ -57,22 +57,33 @@ export function useCloudSync({ hydrated, tasks, entries, setTasks, setEntries }:
     const c = codeRef.current;
     if (!c) return;
     setStatus("syncing");
-    try {
-      const res = await fetch("/api/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          code: c,
-          payload: { tasks: tasksRef.current, entries: entriesRef.current, updatedAt: Date.now() },
-        }),
-      });
-      if (res.status === 501) return setStatus("not_configured");
-      if (!res.ok) return setStatus("error");
-      setStatus("synced");
-      setLastSyncedAt(Date.now());
-    } catch {
-      setStatus("error");
+    const body = JSON.stringify({
+      code: c,
+      payload: { tasks: tasksRef.current, entries: entriesRef.current, updatedAt: Date.now() },
+    });
+    // 10 秒超时 + 失败重试两次，抗 VPN 抖动（避免一次抽风就同步失败）
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10000);
+        const res = await fetch("/api/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        if (res.status === 501) return setStatus("not_configured");
+        if (res.ok) {
+          setStatus("synced");
+          setLastSyncedAt(Date.now());
+          return;
+        }
+      } catch {
+        // 超时/网络中断 → 重试
+      }
     }
+    setStatus("error");
   }, []);
 
   // 拉取并应用云端数据（以云端为准）
@@ -84,7 +95,26 @@ export function useCloudSync({ hydrated, tasks, entries, setTasks, setEntries }:
       const t0 = tasksRef.current;
       const e0 = entriesRef.current;
       try {
-        const res = await fetch(`/api/sync?code=${encodeURIComponent(c)}`, { cache: "no-store" });
+        // 10 秒超时 + 失败重试两次，抗 VPN 抖动
+        let res: Response | null = null;
+        for (let attempt = 0; attempt < 3 && !res; attempt++) {
+          try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 10000);
+            const r = await fetch(`/api/sync?code=${encodeURIComponent(c)}`, {
+              cache: "no-store",
+              signal: controller.signal,
+            });
+            clearTimeout(timer);
+            res = r;
+          } catch {
+            // 超时/网络中断 → 重试
+          }
+        }
+        if (!res) {
+          setStatus("error");
+          return "error";
+        }
         if (res.status === 501) {
           setStatus("not_configured");
           return "not_configured";
