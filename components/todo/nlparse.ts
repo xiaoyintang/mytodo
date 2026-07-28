@@ -99,7 +99,7 @@ function cleanTitle(raw: string): string {
     .replace(/[，,。.、;；:：~～\-—到至]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  t = t.replace(/^(我|今天|上午|下午|中午|晚上|晚间|早上|凌晨|然后|接着|之后|还|又|再|先|开始)+/, "");
+  t = t.replace(/^(我|今天|上午|下午|中午|晚上|晚间|早上|凌晨|然后|接着|之后|还|又|再|先|开始|刚才|刚刚|方才|刚)+/, "");
   // 只剥"动词+了"形式，不剥单字动词——"刷题""背单词"本身就是事项名
   t = t.replace(/^(做了|做完|学了|写了|看了|背了|复习了|练了|刷了|干了|搞了|进行了|花了|用了)/, "");
   t = t.replace(/(花了|用了|大概|左右|差不多|吧|了)$/, "");
@@ -166,6 +166,17 @@ export function parseTimeEntries(input: string, now?: string): ParsedEntry[] {
     if (duration) {
       if (!minutes) minutes = duration[0];
       rest = rest.replace(duration[1], " ");
+    }
+
+    // "刚才做了30分钟X"：说了"刚才/刚刚"但没写时刻 → 把这段时长贴到"现在"结束
+    // （现在-时长 → 现在），而不是记成一段没有时刻的纯时长
+    const justNow = /刚才|刚刚|方才|刚(?=[做看背写读练学干搞弄打玩听聊复查改吃睡跑画弹唱录拍])/.test(seg);
+    if (justNow && minutes > 0 && !startTime && !endTime) {
+      const startMin = timeToMinutes(nowTime) - minutes;
+      if (startMin >= 0) {
+        startTime = minutesToTime(startMin) ?? undefined;
+        endTime = nowTime;
+      }
     }
 
     // 时间点 + 时长 → 推出结束时间

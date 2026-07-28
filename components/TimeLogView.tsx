@@ -9,6 +9,7 @@ import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Mic, Sparkles, Trash
 import TimePicker from "@/components/TimePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import TimerPanel from "@/components/TimerPanel";
+import { useTimer } from "@/components/todo/useTimer";
 
 type Props = {
   viewMode: ViewMode;
@@ -88,6 +89,10 @@ export default function TimeLogView({
   const [copySourceId, setCopySourceId] = useState<string | null>(null); // 复制表单挂在哪条下面
   const [weekOpen, setWeekOpen] = useState(false); // 周汇总默认收起
 
+  const todayISO = toISODate(new Date());
+  // 计时器状态（三类按钮 + 自然语言"现在开始 X"共用）
+  const timer = useTimer((entry) => onAddEntries([entry]));
+
   const selected = parseISODate(selectedDate);
   const weekStart = startOfWeek(selected, true);
   const days = Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
@@ -124,10 +129,48 @@ export default function TimeLogView({
   const summary = aggregate(weekEntries);
   const maxMinutes = summary.length > 0 ? summary[0][1] : 0;
 
+  // 识别"现在开始 X"（启动计时）与"停/结束"（停止计时）指令。命中即处理并返回 true。
+  function handleTimerCommand(text: string): boolean {
+    const t = text.trim();
+
+    // 停止：短停止词
+    if (/^(停|停下|停止|结束|结束了|停了|收工|停止计时|结束计时)$/.test(t)) {
+      if (timer.running) {
+        timer.stop();
+        setInput("");
+        setParseError(null);
+      } else {
+        setParseError("现在没有正在进行的计时");
+      }
+      return true;
+    }
+
+    // 开始："（现在/马上）开始 X"。X 里带了时长/时刻的当作普通补记，交给正常解析。
+    const m = t.match(/^(?:现在|这就|马上|准备|等下|等一下)?\s*开始\s*(.+)$/);
+    if (m) {
+      const title = m[1].trim().replace(/[了吧啦。.!！,，、\s]+$/g, "").trim();
+      const hasTimeToken = /[:：]|\d\s*点|\d\s*时|分钟|小时|钟头|半小时|个半|\d+\s*分/.test(title);
+      if (title && !hasTimeToken) {
+        if (selectedDate !== todayISO) {
+          setParseError("计时从现在开始，请先切回今天再说「现在开始 X」");
+        } else if (timer.running) {
+          setParseError(`已经在计时「${timer.running.title}」，先停止再开始新的`);
+        } else {
+          timer.start(title);
+          setInput("");
+          setParseError(null);
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+
   // useAI=false 走本地规则解析（零延迟）；useAI=true 走 /api/parse，失败时降级规则
   async function handleParse(useAI: boolean) {
     const text = input.trim();
     if (!text || parsing) return;
+    if (handleTimerCommand(text)) return; // 计时开始/停止指令：拦截，不走时间记录解析
     setParsing(true);
     setParseError(null);
     setPending(null);
@@ -154,7 +197,7 @@ export default function TimeLogView({
     setParsing(false);
     setParseSource(source);
     if (parsed.length === 0) {
-      setParseError('没有识别出时间记录，试试"数学 9点到10点半"或"背单词40分钟"这样的说法');
+      setParseError('没识别出时间记录。试试"背单词40分钟""刚才复盘面试30分钟"，或"现在开始养号"启动计时');
       return;
     }
     setPending(parsed);
@@ -435,9 +478,14 @@ export default function TimeLogView({
 
       {/* Content */}
       <div className="w-full flex flex-col gap-6 px-6 pt-4 pb-6">
-        {/* 计时器（仅"今天"显示，记录到当天） */}
-        {selectedDate === toISODate(new Date()) && (
-          <TimerPanel onAdd={(entry) => onAddEntries([entry])} />
+        {/* 计时器（今天可开始；有计时在跑时始终显示，保证能停止） */}
+        {(selectedDate === todayISO || timer.running) && (
+          <TimerPanel
+            running={timer.running}
+            elapsedMs={timer.elapsedMs}
+            onStart={timer.start}
+            onStop={timer.stop}
+          />
         )}
 
         {/* 快速记录 */}
@@ -450,7 +498,7 @@ export default function TimeLogView({
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="口述或输入：上午9点到10点半做了数学，下午背单词40分钟"
+            placeholder="口述或输入：现在开始养号（计时）、刚才复盘面试30分钟、9点到10点做数学"
             rows={2}
             className="w-full px-3 py-2.5 rounded-[10px] border border-[var(--color-border)] text-[14px] leading-relaxed placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] resize-none"
           />
