@@ -170,7 +170,8 @@ export function parseTimeEntries(input: string, now?: string): ParsedEntry[] {
 
     // "刚才做了30分钟X"：说了"刚才/刚刚"但没写时刻 → 把这段时长贴到"现在"结束
     // （现在-时长 → 现在），而不是记成一段没有时刻的纯时长
-    const justNow = /刚才|刚刚|方才|刚(?=[做看背写读练学干搞弄打玩听聊复查改吃睡跑画弹唱录拍])/.test(seg);
+    // "刚"默认按"刚才"处理；只排除真不表"刚才"的词（刚好=正好、刚性/刚强/刚毅）
+    const justNow = /刚才|刚刚|方才|刚(?!好|性|强|毅|铁)/.test(seg);
     if (justNow && minutes > 0 && !startTime && !endTime) {
       const startMin = timeToMinutes(nowTime) - minutes;
       if (startMin >= 0) {
