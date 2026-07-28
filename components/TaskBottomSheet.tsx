@@ -514,7 +514,7 @@ export default function TaskBottomSheet({
           {/* 时长目标进度 + 记一笔（柳比歇夫模式） */}
           {(() => {
             const target = task.targetMinutes ?? 0;
-            const logged = taskLoggedMinutes(task.id, entries);
+            const logged = taskLoggedMinutes(task, entries);
             if (target <= 0 && logged <= 0) return null;
             const reached = target > 0 && logged >= target;
             return (

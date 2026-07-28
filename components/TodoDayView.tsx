@@ -268,7 +268,7 @@ export default function TodoDayView({
                   const isHigh = t.priority === "high";
                   const time = timeLabel(t);
                   const target = t.targetMinutes ?? 0;
-                  const logged = target > 0 ? taskLoggedMinutes(t.id, entries) : 0;
+                  const logged = target > 0 ? taskLoggedMinutes(t, entries) : 0;
                   const reached = target > 0 && logged >= target;
                   const manualPct = target > 0 ? 0 : (t.progress ?? 0);
 

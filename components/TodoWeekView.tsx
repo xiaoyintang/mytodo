@@ -39,7 +39,7 @@ function WeekTaskRow({
   const isInProgress = task.status === "in_progress";
   const isHigh = task.priority === "high";
   const target = task.targetMinutes ?? 0;
-  const logged = target > 0 ? taskLoggedMinutes(task.id, entries) : 0;
+  const logged = target > 0 ? taskLoggedMinutes(task, entries) : 0;
   const reached = target > 0 && logged >= target;
   const manualPct = target > 0 ? 0 : (task.progress ?? 0);
 

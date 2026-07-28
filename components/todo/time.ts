@@ -22,9 +22,17 @@ export function formatMinutes(min: number): string {
   return m === 0 ? `${h}小时` : `${h}小时${m}分`;
 }
 
-/** 某任务已累计记录的分钟数 */
-export function taskLoggedMinutes(taskId: string, entries: TimeEntry[]): number {
-  return entries.filter((e) => e.taskId === taskId).reduce((sum, e) => sum + e.minutes, 0);
+/** 某任务已累计记录的分钟数。计入两类记录：
+ *  1. 明确关联到该任务的（taskId 命中）——记录时任务已存在
+ *  2. 未关联、但同一天且标题与任务完全一致的——先记时间后建任务，也能倒着认回来
+ * 这样"先记录后建任务"和"先建任务后记录"两个顺序都能算进进度。 */
+export function taskLoggedMinutes(task: Task, entries: TimeEntry[]): number {
+  const title = task.title.trim();
+  return entries.reduce((sum, e) => {
+    if (e.taskId === task.id) return sum + e.minutes;
+    if (!e.taskId && e.date === task.date && e.title.trim() === title) return sum + e.minutes;
+    return sum;
+  }, 0);
 }
 
 /** 在给定日期的任务里找标题匹配的任务（用于自动关联记录 → 任务） */
