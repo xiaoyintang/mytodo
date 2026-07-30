@@ -506,6 +506,7 @@ export default function TimeLogView({
               }
             }}
             placeholder="口述或输入：现在开始养号（计时）、刚才复盘面试30分钟、9点到10点做数学"
+            enterKeyHint="send"
             rows={2}
             className="w-full px-3 py-2.5 rounded-[10px] border border-[var(--color-border)] text-[14px] leading-relaxed placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] resize-none"
           />
