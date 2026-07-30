@@ -493,11 +493,18 @@ export default function TimeLogView({
           <div className="flex items-center gap-2">
             <Mic className="w-4 h-4 text-[var(--color-primary)]" />
             <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">记一笔</span>
-            <span className="text-[var(--color-text-tertiary)] text-[12px]">支持键盘语音输入</span>
+            <span className="text-[var(--color-text-tertiary)] text-[12px]">回车解析 · Shift+回车换行 · 可语音</span>
           </div>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              // 回车提交解析；Shift+回车换行；输入法组字中的回车（选字）不算提交
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                if (input.trim() && !parsing) handleParse(true);
+              }
+            }}
             placeholder="口述或输入：现在开始养号（计时）、刚才复盘面试30分钟、9点到10点做数学"
             rows={2}
             className="w-full px-3 py-2.5 rounded-[10px] border border-[var(--color-border)] text-[14px] leading-relaxed placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] resize-none"
