@@ -151,6 +151,23 @@ export default function TimePicker({ value, onChange, placeholder = "选择时�
     }
   }, [isOpen]);
 
+  // 键盘：回车确认、Esc 关闭（仅弹层打开时监听；含 hourIdx/minuteIdx 依赖以取到最新值）
+  useEffect(() => {
+    if (!isOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        onChange(`${HOURS[hourIdx]}:${MINUTES[minuteIdx]}`);
+        setIsOpen(false);
+      } else if (e.key === "Escape") {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, hourIdx, minuteIdx]);
+
   // Calculate dropdown position based on available space
   useEffect(() => {
     if (isOpen && containerRef.current) {
