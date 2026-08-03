@@ -9,11 +9,11 @@ import {
   TYPE_STYLE,
   isGolden,
   isHighImpact,
-  nextToPlace,
 } from "@/components/todo/behavior";
 import { ArrowLeft, ChevronDown, ChevronUp, RotateCcw, Star } from "lucide-react";
 
 type AxisPatch = { impact?: number; feasibility?: number };
+type Step = 1 | 2 | 3;
 
 type Props = {
   aspiration: Aspiration;
@@ -23,39 +23,82 @@ type Props = {
   onBack: () => void;
 };
 
+const STEPS: Array<[Step, string]> = [
+  [1, "1 影响力"],
+  [2, "2 能不能做到"],
+  [3, "结果"],
+];
+
 export default function FocusMapView({ aspiration, cards, onSetAxis, onResetAxes, onBack }: Props) {
-  // 本轮跳过的卡（只在这次会话里有效，退出重进会再问）
-  const [skipped, setSkipped] = useState<Set<string>>(new Set());
+  const [step, setStep] = useState<Step>(1);
   const [lowOpen, setLowOpen] = useState(false);
   const [tweaking, setTweaking] = useState<string | null>(null);
 
-  const step = nextToPlace(cards, skipped);
-
+  const highs = cards.filter(isHighImpact);
   const golden = cards.filter(isGolden);
-  const wantCant = cards.filter((c) => isHighImpact(c) && (c.feasibility ?? 0) < 50 && c.feasibility != null);
+  const wantCant = cards.filter((c) => isHighImpact(c) && c.feasibility != null && c.feasibility < 50);
   const lowImpact = cards.filter((c) => c.impact != null && !isHighImpact(c));
-  const skippedCards = cards.filter((c) => skipped.has(c.id) && (c.impact == null || (isHighImpact(c) && c.feasibility == null)));
 
-  function place(id: string, patch: AxisPatch) {
-    onSetAxis(id, patch);
-    setSkipped((s) => {
-      if (!s.has(id)) return s;
-      const next = new Set(s);
-      next.delete(id);
-      return next;
-    });
+  const r1Done = cards.filter((c) => c.impact != null).length;
+  const r2Done = highs.filter((c) => c.feasibility != null).length;
+
+  // 一行：文字 + 二选一。点一下切换，不点就是没排，随便你跳着来
+  function renderRow(b: BehaviorCard, axis: "impact" | "feasibility") {
+    const value = axis === "impact" ? b.impact : b.feasibility;
+    const labels: Array<[string, number]> =
+      axis === "impact"
+        ? [
+            ["大", AXIS_HIGH],
+            ["小", AXIS_LOW],
+          ]
+        : [
+            ["能", AXIS_HIGH],
+            ["不能", AXIS_LOW],
+          ];
+    const st = TYPE_STYLE[b.type];
+    return (
+      <div
+        key={b.id}
+        className={[
+          "w-full flex items-center gap-2 px-3 py-2.5 rounded-[10px] border transition-colors",
+          value == null
+            ? "bg-[var(--color-bg-gray-lighter)] border-[var(--color-border)]"
+            : "bg-white border-[var(--color-border)]",
+        ].join(" ")}
+      >
+        <span className="flex-1 text-[13px] text-[var(--color-text-primary)] leading-snug">
+          {b.text}
+          {b.type === "stop" && (
+            <span className="ml-1 text-[9px]" style={{ color: st.text }}>
+              {TYPE_LABEL.stop}
+            </span>
+          )}
+        </span>
+        <div className="flex gap-1 flex-shrink-0">
+          {labels.map(([label, v]) => {
+            const active = value != null && (value >= 50) === (v === AXIS_HIGH);
+            return (
+              <button
+                key={label}
+                type="button"
+                onClick={() => onSetAxis(b.id, { [axis]: v } as AxisPatch)}
+                className={[
+                  "min-w-[38px] px-2 py-1.5 rounded-md border text-[12px] font-medium transition-colors",
+                  active
+                    ? "bg-[var(--color-primary)] border-[var(--color-primary)] text-white"
+                    : "bg-white border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-gray-light)]",
+                ].join(" ")}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
   }
 
-  function skip(id: string) {
-    setSkipped((s) => new Set(s).add(id));
-  }
-
-  function handleReset() {
-    setSkipped(new Set());
-    onResetAxes();
-  }
-
-  // 结果图里的一张小卡：点一下可以改它的位置
+  // 结果图里的一条：点一下能挪象限
   function renderChip(b: BehaviorCard) {
     const st = TYPE_STYLE[b.type];
     const open = tweaking === b.id;
@@ -76,54 +119,42 @@ export default function FocusMapView({ aspiration, cards, onSetAxis, onResetAxes
         </button>
         {open && (
           <div className="flex flex-col gap-1 pl-2 pb-1">
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] text-[var(--color-text-tertiary)] w-[36px]">影响力</span>
-              {[
-                ["高", AXIS_HIGH],
-                ["低", AXIS_LOW],
-              ].map(([label, v]) => (
-                <button
-                  key={label as string}
-                  type="button"
-                  onClick={() => {
-                    place(b.id, { impact: v as number });
-                    setTweaking(null);
-                  }}
-                  className={[
-                    "px-2 py-[2px] rounded border text-[10px]",
-                    (b.impact ?? 0) >= 50 === (v === AXIS_HIGH)
-                      ? "bg-[var(--color-primary)] border-[var(--color-primary)] text-white"
-                      : "bg-white border-[var(--color-border)] text-[var(--color-text-secondary)]",
-                  ].join(" ")}
-                >
-                  {label as string}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] text-[var(--color-text-tertiary)] w-[36px]">做得到</span>
-              {[
-                ["能", AXIS_HIGH],
-                ["不能", AXIS_LOW],
-              ].map(([label, v]) => (
-                <button
-                  key={label as string}
-                  type="button"
-                  onClick={() => {
-                    place(b.id, { feasibility: v as number });
-                    setTweaking(null);
-                  }}
-                  className={[
-                    "px-2 py-[2px] rounded border text-[10px]",
-                    (b.feasibility ?? 0) >= 50 === (v === AXIS_HIGH)
-                      ? "bg-[var(--color-primary)] border-[var(--color-primary)] text-white"
-                      : "bg-white border-[var(--color-border)] text-[var(--color-text-secondary)]",
-                  ].join(" ")}
-                >
-                  {label as string}
-                </button>
-              ))}
-            </div>
+            {(
+              [
+                ["影响力", "impact", ["高", "低"]],
+                ["做得到", "feasibility", ["能", "不能"]],
+              ] as Array<[string, "impact" | "feasibility", [string, string]]>
+            ).map(([title, axis, [hi, lo]]) => {
+              const value = axis === "impact" ? b.impact : b.feasibility;
+              return (
+                <div key={axis} className="flex items-center gap-1">
+                  <span className="text-[10px] text-[var(--color-text-tertiary)] w-[36px]">{title}</span>
+                  {(
+                    [
+                      [hi, AXIS_HIGH],
+                      [lo, AXIS_LOW],
+                    ] as Array<[string, number]>
+                  ).map(([label, v]) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => {
+                        onSetAxis(b.id, { [axis]: v } as AxisPatch);
+                        setTweaking(null);
+                      }}
+                      className={[
+                        "px-2 py-[2px] rounded border text-[10px]",
+                        value != null && (value >= 50) === (v === AXIS_HIGH)
+                          ? "bg-[var(--color-primary)] border-[var(--color-primary)] text-white"
+                          : "bg-white border-[var(--color-border)] text-[var(--color-text-secondary)]",
+                      ].join(" ")}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -141,91 +172,104 @@ export default function FocusMapView({ aspiration, cards, onSetAxis, onResetAxes
         >
           <ArrowLeft className="w-4 h-4 text-[var(--color-text-secondary)]" />
         </button>
-        <span className="text-[17px] font-semibold text-[var(--color-text-primary)] truncate">
-          焦点地图
-        </span>
+        <span className="text-[17px] font-semibold text-[var(--color-text-primary)]">焦点地图</span>
         <span className="text-[12px] text-[var(--color-text-tertiary)] truncate">{aspiration.title}</span>
       </div>
 
-      {step ? (
-        /* ===== 排卡：一次一张，一轮只问一个维度 ===== */
-        <div className="w-full flex flex-col gap-3">
-          <div className="w-full flex items-center justify-between">
-            <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">
-              第 {step.round} 轮 · {step.round === 1 ? "影响力" : "我能不能做到"}
-            </span>
-            <span className="text-[12px] text-[var(--color-text-tertiary)] tabular-nums">
-              {step.done} / {step.total}
-            </span>
-          </div>
-
-          <div className="w-full h-[4px] rounded-full bg-[var(--color-bg-gray-light)] overflow-hidden">
-            <div
-              className="h-full rounded-full bg-[var(--color-primary)] transition-all"
-              style={{ width: `${Math.round((step.done / Math.max(1, step.total)) * 100)}%` }}
-            />
-          </div>
-
-          <div className="w-full flex items-center justify-center min-h-[88px] px-4 py-5 rounded-[12px] bg-white border-[1.5px] border-[var(--color-primary)]">
-            <span className="text-[16px] font-medium text-[var(--color-text-primary)] text-center leading-snug">
-              {step.card.text}
-            </span>
-          </div>
-
-          <p className="text-[13px] text-[var(--color-text-secondary)] text-center leading-relaxed">
-            {step.round === 1
-              ? `对「${aspiration.title}」的推动大不大？`
-              : "你能想到一个每天真会发生的时刻，把它挂上去吗？"}
-          </p>
-
-          <div className="w-full flex gap-2">
-            {(step.round === 1
-              ? [
-                  ["影响大", AXIS_HIGH],
-                  ["影响小", AXIS_LOW],
-                ]
-              : [
-                  ["能做到", AXIS_HIGH],
-                  ["做不到", AXIS_LOW],
-                ]
-            ).map(([label, v]) => (
-              <button
-                key={label as string}
-                type="button"
-                onClick={() =>
-                  place(
-                    step.card.id,
-                    step.round === 1 ? { impact: v as number } : { feasibility: v as number },
-                  )
-                }
-                className={[
-                  "flex-1 py-3.5 rounded-[12px] text-[15px] font-semibold transition-colors",
-                  v === AXIS_HIGH
-                    ? "bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8]"
-                    : "bg-white border-[1.5px] border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-gray-light)]",
-                ].join(" ")}
-              >
-                {label as string}
-              </button>
-            ))}
-          </div>
-
+      {/* 两轮 + 结果，随便跳 */}
+      <div className="w-full flex gap-1 bg-[var(--color-bg-gray-light)] rounded-[10px] p-1">
+        {STEPS.map(([s, label]) => (
           <button
+            key={s}
             type="button"
-            onClick={() => skip(step.card.id)}
-            className="self-center text-[12px] text-[var(--color-text-tertiary)] hover:underline"
+            onClick={() => setStep(s)}
+            className={[
+              "flex-1 flex items-center justify-center rounded-lg px-2 py-2",
+              step === s ? "bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]" : "",
+            ].join(" ")}
           >
-            拿不准，先跳过
+            <span
+              className={[
+                "text-[13px]",
+                step === s
+                  ? "text-[var(--color-text-primary)] font-semibold"
+                  : "text-[var(--color-text-secondary)] font-medium",
+              ].join(" ")}
+            >
+              {label}
+            </span>
           </button>
+        ))}
+      </div>
+
+      {step === 1 && (
+        <div className="w-full flex flex-col gap-2.5">
+          <div className="w-full flex items-center justify-between">
+            <span className="text-[13px] text-[var(--color-text-secondary)]">
+              对「{aspiration.title}」的推动大不大？
+            </span>
+            <span className="text-[12px] text-[var(--color-text-tertiary)] tabular-nums flex-shrink-0 ml-2">
+              {r1Done}/{cards.length}
+            </span>
+          </div>
+          <p className="text-[11px] text-[var(--color-text-tertiary)]">
+            一眼能定的直接点，拿不准的先空着，顺序随你
+          </p>
+          {cards.map((b) => renderRow(b, "impact"))}
+          {r1Done > 0 && (
+            <button
+              type="button"
+              onClick={() => setStep(2)}
+              className="w-full py-2.5 rounded-[10px] bg-[var(--color-primary)] text-white text-[14px] font-semibold hover:bg-[#1d4ed8] transition-colors"
+            >
+              下一轮：这 {highs.length} 条能不能做到 →
+            </button>
+          )}
         </div>
-      ) : (
-        /* ===== 结果：四象限（二选一排出来的坐标只有两档，画散点是假的） ===== */
+      )}
+
+      {step === 2 && (
+        <div className="w-full flex flex-col gap-2.5">
+          {highs.length === 0 ? (
+            <p className="text-[12px] text-[var(--color-text-secondary)] leading-relaxed">
+              还没有判为「影响大」的行为。先去第 1 轮点几个——影响力小的反正成不了黄金行为，
+              这一轮不问它们，省你的判断。
+            </p>
+          ) : (
+            <>
+              <div className="w-full flex items-center justify-between">
+                <span className="text-[13px] text-[var(--color-text-secondary)]">
+                  能想到一个每天真会发生的时刻，把它挂上去吗？
+                </span>
+                <span className="text-[12px] text-[var(--color-text-tertiary)] tabular-nums flex-shrink-0 ml-2">
+                  {r2Done}/{highs.length}
+                </span>
+              </div>
+              <p className="text-[11px] text-[var(--color-text-tertiary)]">
+                只问第 1 轮判为「影响大」的这几条
+              </p>
+              {highs.map((b) => renderRow(b, "feasibility"))}
+              {r2Done > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setStep(3)}
+                  className="w-full py-2.5 rounded-[10px] bg-[var(--color-primary)] text-white text-[14px] font-semibold hover:bg-[#1d4ed8] transition-colors"
+                >
+                  看结果 →
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {step === 3 && (
         <div className="w-full flex flex-col gap-3">
           <div className="w-full flex items-center justify-between">
             <span className="text-[12px] text-[var(--color-text-tertiary)]">影响力 高 ↑</span>
             <button
               type="button"
-              onClick={handleReset}
+              onClick={onResetAxes}
               className="flex items-center gap-1 text-[12px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]"
             >
               <RotateCcw className="w-3 h-3" />
@@ -266,7 +310,7 @@ export default function FocusMapView({ aspiration, cards, onSetAxis, onResetAxes
           {wantCant.length > 0 && (
             <p className="text-[11px] leading-relaxed text-[var(--color-text-secondary)] px-1">
               左上角这些别硬扛——福格的原话是：<strong>做不到就把它改小</strong>，
-              小到不需要意志力为止（「读30分钟书」做不到，「读2分钟」就做得到）。改小之后再排一次。
+              小到不需要意志力为止（「读30分钟书」做不到，「读2分钟」就做得到）。回集群里改完再排。
             </p>
           )}
 
@@ -288,9 +332,10 @@ export default function FocusMapView({ aspiration, cards, onSetAxis, onResetAxes
             </div>
           )}
 
-          {skippedCards.length > 0 && (
+          {(r1Done < cards.length || r2Done < highs.length) && (
             <p className="text-[11px] text-[var(--color-text-tertiary)]">
-              还有 {skippedCards.length} 条你跳过了，退出重进会再问一遍
+              还有没排的：第 1 轮 {cards.length - r1Done} 条、第 2 轮 {highs.length - r2Done} 条。
+              不排也能出结果，只是它们不会出现在图上。
             </p>
           )}
 
