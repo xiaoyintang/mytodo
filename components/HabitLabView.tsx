@@ -558,7 +558,7 @@ export default function HabitLabView({
       {/* 子 tab：今天的习惯 / 目标和行为集群，两件事分开放 */}
       <div className="w-full px-6 pt-3">
         <div className="w-full flex gap-4 border-b border-[var(--color-border)]">
-          {([["today", `今天${liveHabits.length > 0 ? ` (${liveHabits.length})` : ""}`], ["goals", `目标${aspirations.length > 0 ? ` (${aspirations.length})` : ""}`]] as Array<["today" | "goals", string]>).map(
+          {([["today", `我的习惯${liveHabits.length > 0 ? ` ${liveHabits.length}` : ""}`], ["goals", `我的目标${aspirations.length > 0 ? ` ${aspirations.length}` : ""}`]] as Array<["today" | "goals", string]>).map(
             ([key, label]) => (
               <button
                 key={key}
@@ -616,7 +616,7 @@ export default function HabitLabView({
                 onClick={() => setSub("goals")}
                 className="self-start px-3 py-1.5 rounded-lg bg-[var(--color-primary)] text-white text-[13px] font-medium hover:bg-[#1d4ed8] transition-colors"
               >
-                去「目标」 →
+                去「我的目标」 →
               </button>
             </div>
           )

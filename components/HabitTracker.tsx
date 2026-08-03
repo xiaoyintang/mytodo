@@ -68,165 +68,166 @@ export default function HabitTracker({
   return (
     <div className="w-full flex flex-col gap-3">
       <div className="w-full flex items-center justify-between">
-        <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">今天</span>
-        <span className="text-[var(--color-text-tertiary)] text-[12px]">
+        <span className="text-[var(--color-text-primary)] text-[15px] font-semibold">今天</span>
+        <span className="text-[var(--color-text-tertiary)] text-[11px]">
           做了就点一下 · 不看连续天数
         </span>
       </div>
 
       {groups.map((g) => (
-        <div key={g.key} className="w-full flex flex-col gap-2">
+        <div key={g.key} className="w-full flex flex-col gap-1.5">
           <div className="w-full flex items-center gap-1.5">
             <Target className="w-3 h-3 text-[var(--color-primary)] flex-shrink-0" />
-            <span className="text-[12px] font-semibold text-[var(--color-text-secondary)] truncate">
+            <span className="text-[11px] font-semibold text-[var(--color-text-secondary)] truncate">
               {g.title ?? "没有归属的目标"}
             </span>
-            <span className="text-[11px] text-[var(--color-text-tertiary)] flex-shrink-0">
-              {g.items.length} 个习惯
+            <span className="text-[10px] text-[var(--color-text-tertiary)] flex-shrink-0">
+              {g.items.length}
             </span>
           </div>
-        {g.items.map((h) => {
-          const isDuration = h.measure === "duration";
-          const ledger = isDuration ? fromLedger(h, entries, today) : null;
-          const count = isDuration
-            ? (ledger?.count ?? 0)
-            : logs.filter((l) => l.habitId === h.id && l.date === today).length;
-          const done = count > 0;
-          const flash = justTapped === h.id;
 
-          return (
-            <div
-              key={h.id}
-              className={[
-                "w-full flex flex-col gap-1.5 px-3.5 py-3 rounded-[12px] border transition-colors duration-300",
-                flash
-                  ? "bg-[#F0FDF4] border-[#16A34A]"
-                  : done
-                    ? "bg-white border-[var(--color-primary)]"
-                    : "bg-white border-[var(--color-border)]",
-              ].join(" ")}
-            >
-              {/* 锚点：在我 ___ 之后 */}
-              {editAnchor === h.id ? (
-                <div className="w-full flex items-center gap-2">
-                  <span className="text-[11px] text-[var(--color-text-tertiary)] flex-shrink-0">在我</span>
-                  <input
-                    type="text"
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.nativeEvent.isComposing) return;
-                      if (e.key === "Enter") saveAnchor(h.id);
-                      else if (e.key === "Escape") setEditAnchor(null);
-                    }}
-                    onBlur={() => saveAnchor(h.id)}
-                    placeholder="看完一集动漫 / 刷完牙 / 吃完饭放下碗"
-                    autoFocus
-                    className="flex-1 px-2 py-1 rounded border border-[var(--color-primary)] text-[12px] bg-white focus:outline-none"
-                  />
-                  <span className="text-[11px] text-[var(--color-text-tertiary)] flex-shrink-0">之后</span>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditAnchor(h.id);
-                    setDraft(h.anchor ?? "");
-                  }}
-                  className="self-start text-[11px] text-left"
-                >
-                  {h.anchor ? (
-                    <span className="text-[var(--color-text-tertiary)]">
-                      在我 <span className="text-[var(--color-text-secondary)] font-medium">{h.anchor}</span> 之后
-                    </span>
-                  ) : (
-                    <span className="text-[var(--color-primary)]">+ 配个锚点（什么之后做）</span>
-                  )}
-                </button>
-              )}
+          {g.items.map((h) => {
+            const isDuration = h.measure === "duration";
+            const ledger = isDuration ? fromLedger(h, entries, today) : null;
+            const count = isDuration
+              ? (ledger?.count ?? 0)
+              : logs.filter((l) => l.habitId === h.id && l.date === today).length;
+            const flash = justTapped === h.id;
+            const editing = editAnchor === h.id;
 
-              <div className="w-full flex items-center gap-2.5">
-                <div className="flex-1 flex flex-col gap-0.5 min-w-0">
-                  <span className="text-[14px] font-medium text-[var(--color-text-primary)] leading-snug">
-                    {h.title}
-                  </span>
-                  <span className="flex items-center gap-1 text-[11px] text-[var(--color-text-tertiary)]">
-                    {isDuration ? (
-                      <>
-                        <Link2 className="w-3 h-3" />
-                        {count > 0
-                          ? `今天 ${count} 次 · ${formatMinutes(ledger?.minutes ?? 0)}（来自记录）`
-                          : "在「记录」里记一笔就自动算上"}
-                      </>
-                    ) : count > 0 ? (
-                      <span className="text-[var(--color-primary)] font-semibold text-[12px]">
-                        今天 {count} 次
-                      </span>
-                    ) : (
-                      <>
-                        今天还没做 ·{" "}
-                        <button
-                          type="button"
-                          onClick={() => onToggleMeasure(h.id)}
-                          className="underline hover:text-[var(--color-text-secondary)]"
-                        >
-                          改成按时长记
-                        </button>
-                      </>
-                    )}
-                  </span>
-                </div>
-
-                {isDuration ? (
-                  <button
-                    type="button"
-                    onClick={() => onToggleMeasure(h.id)}
-                    className="w-[52px] h-[44px] rounded-xl bg-[var(--color-bg-gray-lighter)] border border-[var(--color-border)] flex items-center justify-center flex-shrink-0 hover:bg-[var(--color-bg-gray-light)] transition-colors"
-                    aria-label="改成点一下计次"
-                    title="这条其实是点一下就完事的？点这里改成计次"
-                  >
-                    <Clock className="w-4 h-4 text-[var(--color-text-tertiary)]" />
-                  </button>
+            return (
+              <div
+                key={h.id}
+                className={[
+                  "w-full flex flex-col gap-0.5 px-3 py-2 rounded-[10px] border transition-colors duration-300",
+                  flash
+                    ? "bg-[#F0FDF4] border-[#16A34A]"
+                    : count > 0
+                      ? "bg-white border-[var(--color-primary)]"
+                      : "bg-white border-[var(--color-border)]",
+                ].join(" ")}
+              >
+                {/* 有锚点才占一行；没有的话下面挂个小链接，省一整行 */}
+                {editing ? (
+                  <div className="w-full flex items-center gap-1.5">
+                    <span className="text-[10px] text-[var(--color-text-tertiary)] flex-shrink-0">在我</span>
+                    <input
+                      type="text"
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.nativeEvent.isComposing) return;
+                        if (e.key === "Enter") saveAnchor(h.id);
+                        else if (e.key === "Escape") setEditAnchor(null);
+                      }}
+                      onBlur={() => saveAnchor(h.id)}
+                      placeholder="看完一集动漫 / 刷完牙 / 吃完饭放下碗"
+                      autoFocus
+                      className="flex-1 min-w-0 px-2 py-1 rounded border border-[var(--color-primary)] text-[12px] bg-white focus:outline-none"
+                    />
+                    <span className="text-[10px] text-[var(--color-text-tertiary)] flex-shrink-0">之后</span>
+                  </div>
                 ) : (
-                  <>
-                    {count > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => onUndoLog(h.id)}
-                        className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 hover:bg-[var(--color-bg-gray-light)] transition-colors"
-                        aria-label="点错了，撤掉一次"
-                        title="点错了，撤掉一次"
-                      >
-                        <Undo2 className="w-3.5 h-3.5 text-[#A1A1AA]" />
-                      </button>
-                    )}
+                  h.anchor && (
                     <button
                       type="button"
-                      onClick={() => tap(h)}
-                      className={[
-                        "w-[52px] h-[44px] rounded-xl flex items-center justify-center flex-shrink-0",
-                        "text-white font-bold transition-all active:scale-90",
-                        flash ? "bg-[#16A34A] scale-105" : "bg-[var(--color-primary)] hover:bg-[#1d4ed8]",
-                      ].join(" ")}
-                      aria-label={`记一次「${h.title}」`}
+                      onClick={() => {
+                        setEditAnchor(h.id);
+                        setDraft(h.anchor ?? "");
+                      }}
+                      className="self-start text-[10px] text-[var(--color-text-tertiary)] truncate max-w-full text-left"
                     >
-                      {flash ? <Check className="w-5 h-5" strokeWidth={3} /> : <Plus className="w-5 h-5" strokeWidth={3} />}
+                      在我 <span className="text-[var(--color-text-secondary)] font-medium">{h.anchor}</span> 之后
                     </button>
-                  </>
+                  )
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => onDeleteHabit(h.id)}
-                  className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0"
-                  aria-label="移出习惯表"
-                >
-                  <Trash2 className="w-[15px] h-[15px] text-[#A1A1AA]" />
-                </button>
+                <div className="w-full flex items-center gap-1.5">
+                  <span className="flex-1 min-w-0 text-[13px] font-medium text-[var(--color-text-primary)] truncate">
+                    {h.title}
+                    {!h.anchor && !editing && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditAnchor(h.id);
+                          setDraft("");
+                        }}
+                        className="ml-1.5 text-[10px] font-normal text-[var(--color-primary)]"
+                      >
+                        ＋锚点
+                      </button>
+                    )}
+                  </span>
+
+                  {/* 今天的成绩，一小段，不单独占行 */}
+                  <span
+                    className={[
+                      "text-[11px] tabular-nums flex-shrink-0",
+                      count > 0 ? "text-[var(--color-primary)] font-semibold" : "text-[var(--color-text-tertiary)]",
+                    ].join(" ")}
+                  >
+                    {isDuration
+                      ? count > 0
+                        ? `${count}次 ${formatMinutes(ledger?.minutes ?? 0)}`
+                        : "记录里记"
+                      : count > 0
+                        ? `${count}次`
+                        : "—"}
+                  </span>
+
+                  {isDuration ? (
+                    <button
+                      type="button"
+                      onClick={() => onToggleMeasure(h.id)}
+                      className="w-9 h-8 rounded-lg bg-[var(--color-bg-gray-lighter)] border border-[var(--color-border)] flex items-center justify-center flex-shrink-0"
+                      title="按时长记（成绩来自「记录」）。点这里改成点一下计次"
+                    >
+                      <Clock className="w-3.5 h-3.5 text-[var(--color-text-tertiary)]" />
+                    </button>
+                  ) : (
+                    <>
+                      {count > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => onUndoLog(h.id)}
+                          className="w-6 h-8 flex items-center justify-center flex-shrink-0"
+                          aria-label="点错了，撤掉一次"
+                          title="点错了，撤掉一次"
+                        >
+                          <Undo2 className="w-3.5 h-3.5 text-[#A1A1AA]" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => tap(h)}
+                        className={[
+                          "w-11 h-8 rounded-lg flex items-center justify-center flex-shrink-0",
+                          "text-white transition-all active:scale-90",
+                          flash ? "bg-[#16A34A] scale-105" : "bg-[var(--color-primary)] hover:bg-[#1d4ed8]",
+                        ].join(" ")}
+                        aria-label={`记一次「${h.title}」`}
+                      >
+                        {flash ? (
+                          <Check className="w-4 h-4" strokeWidth={3} />
+                        ) : (
+                          <Plus className="w-4 h-4" strokeWidth={3} />
+                        )}
+                      </button>
+                    </>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => onDeleteHabit(h.id)}
+                    className="w-4 h-8 flex items-center justify-center flex-shrink-0"
+                    aria-label="移出习惯表"
+                  >
+                    <Trash2 className="w-[13px] h-[13px] text-[#A1A1AA]" />
+                  </button>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
         </div>
       ))}
     </div>
