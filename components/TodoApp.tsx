@@ -123,7 +123,9 @@ export default function TodoApp() {
   // 时间记录撤回栈：每次用户改动记录前先存一份快照，最多留 30 步
   const [entriesHistory, setEntriesHistory] = useState<TimeEntry[][]>([]);
   // 习惯实验室的撤回栈（愿望 + 行为一起快照）
-  const [labHistory, setLabHistory] = useState<Array<{ aspirations: Aspiration[]; behaviors: BehaviorCard[] }>>([]);
+  const [labHistory, setLabHistory] = useState<
+    Array<{ aspirations: Aspiration[]; behaviors: BehaviorCard[]; restoreTasks?: Task[] }>
+  >([]);
 
   const safeTasks = hydrated ? tasks : seedTasks(todayIso);
   const safeEntries = entriesHydrated ? entries : EMPTY_ENTRIES;
@@ -248,8 +250,11 @@ export default function TodoApp() {
   // 撤回栈：愿望和行为一起存快照（删愿望会连带删它的行为，得一起退回来）。
   // 注意：拖滑块不进栈（一次拖动会触发几十次 onChange，会把栈冲爆），
   // 但「重排」进栈——所以误点重排能把所有滑块位置退回来。
-  function snapshotLab() {
-    setLabHistory((h) => [...h.slice(-29), { aspirations, behaviors: behaviorCards }]);
+  function snapshotLab(restoreTasks?: Task[]) {
+    setLabHistory((h) => [
+      ...h.slice(-29),
+      { aspirations, behaviors: behaviorCards, restoreTasks },
+    ]);
   }
 
   function undoLab() {
@@ -257,6 +262,14 @@ export default function TodoApp() {
     const prev = labHistory[labHistory.length - 1];
     setAspirations(prev.aspirations);
     setBehaviorCards(prev.behaviors);
+    // 只把当时被连带删掉的任务加回来，不整包覆盖 tasks——
+    // 否则会把用户在日视图里的其他改动一起回滚
+    if (prev.restoreTasks?.length) {
+      setTasks((cur) => {
+        const have = new Set(cur.map((t) => t.id));
+        return [...cur, ...prev.restoreTasks!.filter((t) => !have.has(t.id))];
+      });
+    }
     setLabHistory((h) => h.slice(0, -1));
   }
 
@@ -273,7 +286,15 @@ export default function TodoApp() {
 
   // 删愿望连它下面的行为一起删，不留孤儿卡片
   function deleteAspiration(id: string) {
-    snapshotLab();
+    const taskIds = new Set(
+      behaviorCards.filter((b) => b.aspirationId === id && b.taskId).map((b) => b.taskId!),
+    );
+    const gone = tasks.filter((t) => taskIds.has(t.id) && t.status !== "done");
+    snapshotLab(gone);
+    if (gone.length > 0) {
+      const ids = new Set(gone.map((t) => t.id));
+      setTasks((prev) => prev.filter((t) => !ids.has(t.id)));
+    }
     setAspirations((prev) => prev.filter((a) => a.id !== id));
     setBehaviorCards((prev) => prev.filter((b) => b.aspirationId !== id));
   }
@@ -339,8 +360,9 @@ export default function TodoApp() {
   // 撤回排期：连带把日视图里那个任务删掉
   function unscheduleBehavior(cardId: string) {
     const card = behaviorCards.find((b) => b.id === cardId);
-    if (card?.taskId) setTasks((prev) => prev.filter((t) => t.id !== card.taskId));
-    snapshotLab();
+    const gone = card?.taskId ? tasks.filter((t) => t.id === card.taskId) : [];
+    snapshotLab(gone);
+    if (gone.length > 0) setTasks((prev) => prev.filter((t) => t.id !== card!.taskId));
     setBehaviorCards((prev) => prev.map((b) => (b.id === cardId ? { ...b, taskId: undefined } : b)));
   }
 
@@ -438,8 +460,18 @@ export default function TodoApp() {
     );
   }
 
+  // 删行为卡 = 这条不做了，所以它排出去的那个任务也该跟着走。
+  // 已完成的任务留着——那是历史，不该被抹掉。
   function deleteBehavior(id: string) {
-    snapshotLab();
+    const card = behaviorCards.find((b) => b.id === id);
+    const gone = card?.taskId
+      ? tasks.filter((t) => t.id === card.taskId && t.status !== "done")
+      : [];
+    snapshotLab(gone);
+    if (gone.length > 0) {
+      const ids = new Set(gone.map((t) => t.id));
+      setTasks((prev) => prev.filter((t) => !ids.has(t.id)));
+    }
     setBehaviorCards((prev) => prev.filter((b) => b.id !== id));
   }
 

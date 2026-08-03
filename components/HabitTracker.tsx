@@ -135,15 +135,15 @@ export default function HabitTracker({
                         setEditAnchor(h.id);
                         setDraft(h.anchor ?? "");
                       }}
-                      className="self-start text-[10px] text-[var(--color-text-tertiary)] truncate max-w-full text-left"
+                      className="self-start text-[10px] text-[var(--color-text-tertiary)] leading-snug text-left"
                     >
                       在我 <span className="text-[var(--color-text-secondary)] font-medium">{h.anchor}</span> 之后
                     </button>
                   )
                 )}
 
-                <div className="w-full flex items-center gap-1.5">
-                  <span className="flex-1 min-w-0 text-[13px] font-medium text-[var(--color-text-primary)] truncate">
+                <div className="w-full flex items-start gap-1.5">
+                  <span className="flex-1 min-w-0 text-[13px] font-medium text-[var(--color-text-primary)] leading-snug break-words">
                     {h.title}
                     {!h.anchor && !editing && (
                       <button
@@ -162,7 +162,7 @@ export default function HabitTracker({
                   {/* 今天的成绩，一小段，不单独占行 */}
                   <span
                     className={[
-                      "text-[11px] tabular-nums flex-shrink-0",
+                      "text-[11px] tabular-nums flex-shrink-0 mt-[3px]",
                       count > 0 ? "text-[var(--color-primary)] font-semibold" : "text-[var(--color-text-tertiary)]",
                     ].join(" ")}
                   >
