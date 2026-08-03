@@ -23,6 +23,9 @@ export interface Task {
   progress?: number;
 }
 
+/** 记录的大类，用于"今天时间都去哪了"的饼图 */
+export type EntryCategory = "正事" | "娱乐" | "休息";
+
 /** 一笔时间开销记录（柳比歇夫时间台账的一行） */
 export interface TimeEntry {
   id: string;
@@ -32,5 +35,7 @@ export interface TimeEntry {
   startTime?: string; // "HH:mm"，事后补记可以没有
   endTime?: string; // "HH:mm"
   taskId?: string; // 关联的任务（计入该任务的时长目标进度）
+  category?: EntryCategory; // 大类（关键词规则或 AI 判定）
+  categorySource?: "user" | "ai"; // "user"=手动改过，以后同名记录都听它的，AI 不再覆盖
 }
 

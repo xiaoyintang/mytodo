@@ -1,14 +1,22 @@
 "use client";
 
-import { useState, Fragment } from "react";
-import type { ISODate, Task, TimeEntry, ViewMode } from "@/components/todo/types";
+import { useState, useEffect, useMemo, useRef, Fragment } from "react";
+import type { EntryCategory, ISODate, Task, TimeEntry, ViewMode } from "@/components/todo/types";
 import { CN_WEEKDAY, addDays, formatCNDateTitle, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
 import { formatMinutes, matchTaskByTitle, timeToMinutes, minutesToTime } from "@/components/todo/time";
 import { parseTimeEntries, type ParsedEntry } from "@/components/todo/nlparse";
+import {
+  CATEGORY_LIST,
+  buildTitleCategoryMap,
+  categoryOf,
+  categoryStyle,
+  ruleClassify,
+} from "@/components/todo/category";
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Mic, Sparkles, Trash2, X, Check, Link2, Zap, Pencil, Copy, Undo2 } from "lucide-react";
 import TimePicker from "@/components/TimePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import TimerPanel from "@/components/TimerPanel";
+import CategoryDonut, { type DonutSlice } from "@/components/CategoryDonut";
 import { useTimer } from "@/components/todo/useTimer";
 
 type Props = {
@@ -21,10 +29,20 @@ type Props = {
   onAddEntries: (entries: Omit<TimeEntry, "id">[]) => void;
   onDeleteEntry: (entryId: string) => void;
   onUpdateEntry: (entryId: string, updates: Partial<Omit<TimeEntry, "id">>) => void;
+  onSetEntriesCategory: (entryIds: string[], category: EntryCategory) => void;
+  onApplyCategories: (byTitle: Record<string, EntryCategory>) => void;
   onUndoEntries: () => void;
   canUndoEntries: boolean;
   onPrevWeek: () => void;
   onNextWeek: () => void;
+};
+
+// 汇总里的一行：一个事项名 + 累计时长 + 它包含哪些记录（改分类时要一起改）
+type SummaryRow = {
+  name: string;
+  minutes: number;
+  ids: string[];
+  category: EntryCategory | null;
 };
 
 const TABS: Array<{ mode: ViewMode; label: string }> = [
@@ -58,6 +76,28 @@ async function fetchAIParse(text: string, now: string): Promise<ParsedEntry[] | 
   return null;
 }
 
+// 事项名 → 大类 AI 分类（只在关键词认不出来时调用）。失败返回 null，界面显示"未分类"。
+async function fetchClassify(titles: string[]): Promise<Record<string, EntryCategory> | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch("/api/classify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ titles }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const map = data?.categories;
+    if (!map || typeof map !== "object") return null;
+    return map as Record<string, EntryCategory>;
+  } catch {
+    return null;
+  }
+}
+
 export default function TimeLogView({
   viewMode,
   onChangeViewMode,
@@ -68,6 +108,8 @@ export default function TimeLogView({
   onAddEntries,
   onDeleteEntry,
   onUpdateEntry,
+  onSetEntriesCategory,
+  onApplyCategories,
   onUndoEntries,
   canUndoEntries,
   onPrevWeek,
@@ -88,6 +130,8 @@ export default function TimeLogView({
   const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null);
   const [copySourceId, setCopySourceId] = useState<string | null>(null); // 复制表单挂在哪条下面
   const [weekOpen, setWeekOpen] = useState(false); // 周汇总默认收起
+  const [catEditing, setCatEditing] = useState<string | null>(null); // 正在改分类的汇总行（按事项名）
+  const classifyAskedRef = useRef<Set<string>>(new Set()); // 已问过 AI 的事项名，避免反复请求
 
   const todayISO = toISODate(new Date());
   // 计时器状态（三类按钮 + 自然语言"现在开始 X"共用）
@@ -104,20 +148,66 @@ export default function TimeLogView({
     .sort((a, b) => (a.startTime ?? "99:99").localeCompare(b.startTime ?? "99:99"));
   const dayTotal = dayEntries.reduce((s, e) => s + e.minutes, 0);
 
+  // 标题 → 大类 查表（手动改过的 > 已分类的同名记录 > 关键词规则）
+  const titleCategory = useMemo(() => buildTitleCategoryMap(entries), [entries]);
+
   // 汇总辅助：按（关联任务标题 或 记录标题）聚合一组记录
-  function aggregate(list: TimeEntry[]): [string, number][] {
-    const map = new Map<string, number>();
+  function aggregate(list: TimeEntry[]): SummaryRow[] {
+    const map = new Map<string, SummaryRow>();
     for (const e of list) {
       const task = e.taskId ? tasks.find((t) => t.id === e.taskId) : undefined;
       const key = task?.title ?? e.title;
-      map.set(key, (map.get(key) ?? 0) + e.minutes);
+      const row = map.get(key) ?? { name: key, minutes: 0, ids: [], category: null };
+      row.minutes += e.minutes;
+      row.ids.push(e.id);
+      if (!row.category) row.category = categoryOf(e, titleCategory);
+      map.set(key, row);
     }
-    return [...map.entries()].sort((a, b) => b[1] - a[1]);
+    return [...map.values()].sort((a, b) => b.minutes - a.minutes);
+  }
+
+  // 按大类汇总（正事/娱乐/休息/未分类），供环形图用；没时长的类不画
+  function categorySlices(rows: SummaryRow[]): DonutSlice[] {
+    const totals = new Map<EntryCategory | null, number>();
+    for (const r of rows) totals.set(r.category, (totals.get(r.category) ?? 0) + r.minutes);
+    const order: Array<EntryCategory | null> = [...CATEGORY_LIST, null];
+    return order
+      .filter((c) => (totals.get(c) ?? 0) > 0)
+      .map((c) => ({
+        label: c ?? "未分类",
+        minutes: totals.get(c) ?? 0,
+        color: categoryStyle(c).solid,
+      }));
   }
 
   // 今日汇总
   const daySummary = aggregate(dayEntries);
-  const dayMaxMinutes = daySummary.length > 0 ? daySummary[0][1] : 0;
+  const dayMaxMinutes = daySummary.length > 0 ? daySummary[0].minutes : 0;
+  const daySlices = categorySlices(daySummary);
+
+  // 今日出现、但关键词规则也认不出来的事项名 → 交给 AI 分类（每个名字一个会话只问一次）
+  const unknownTitles = useMemo(() => {
+    const set = new Set<string>();
+    for (const e of dayEntries) {
+      const t = e.title.trim();
+      if (t && !titleCategory.has(t) && !ruleClassify(t)) set.add(t);
+    }
+    return [...set];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, entries, titleCategory]);
+  const unknownKey = unknownTitles.join("|");
+
+  useEffect(() => {
+    const todo = unknownTitles.filter((t) => !classifyAskedRef.current.has(t));
+    if (todo.length === 0) return;
+    todo.forEach((t) => classifyAskedRef.current.add(t));
+    // 不做 cancel：分类结果写回是幂等的，晚到也照收（否则 StrictMode 双跑会把结果丢掉）
+    void (async () => {
+      const result = await fetchClassify(todo);
+      if (result && Object.keys(result).length > 0) onApplyCategories(result);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unknownKey]);
 
   // 本周汇总：按（关联任务标题 或 记录标题）聚合
   const weekEnd = addDays(weekStart, 6);
@@ -127,7 +217,8 @@ export default function TimeLogView({
   });
   const weekTotal = weekEntries.reduce((s, e) => s + e.minutes, 0);
   const summary = aggregate(weekEntries);
-  const maxMinutes = summary.length > 0 ? summary[0][1] : 0;
+  const maxMinutes = summary.length > 0 ? summary[0].minutes : 0;
+  const weekSlices = categorySlices(summary);
 
   // 识别"现在开始 X"（启动计时）与"停/结束"（停止计时）指令。命中即处理并返回 true。
   function handleTimerCommand(text: string): boolean {
@@ -360,6 +451,69 @@ export default function TimeLogView({
             保存
           </button>
         </div>
+      </div>
+    );
+  }
+
+  // 汇总里的一行：事项名 + 分类标签（可点着改）+ 时长 + 按类别上色的条形
+  function renderSummaryRow(row: SummaryRow, maxOfList: number, isToday: boolean) {
+    const st = categoryStyle(row.category);
+    const editKey = `${isToday ? "d" : "w"}:${row.name}`;
+    const open = catEditing === editKey;
+    return (
+      <div key={row.name} className="flex flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] font-medium text-[var(--color-text-primary)] truncate">{row.name}</span>
+          <button
+            type="button"
+            onClick={() => setCatEditing(open ? null : editKey)}
+            className="flex-shrink-0 px-1.5 py-[1px] rounded border text-[10px] font-medium leading-[16px]"
+            style={{ backgroundColor: st.bg, borderColor: st.border, color: st.text }}
+            title="点一下改分类"
+          >
+            {row.category ?? "未分类"}
+          </button>
+          <div className="flex-1" />
+          <span className="text-[12px] font-medium text-[var(--color-text-secondary)] flex-shrink-0">
+            {formatMinutes(row.minutes)}
+          </span>
+        </div>
+        <div className="w-full h-[8px] rounded-full bg-[var(--color-bg-gray-light)] overflow-hidden">
+          <div
+            className="h-full rounded-full"
+            style={{
+              width: `${Math.max(4, Math.round((row.minutes / maxOfList) * 100))}%`,
+              backgroundColor: st.solid,
+            }}
+          />
+        </div>
+        {open && (
+          <div className="flex items-center gap-1.5 pt-1">
+            <span className="text-[11px] text-[var(--color-text-tertiary)]">归为</span>
+            {CATEGORY_LIST.map((c) => {
+              const cs = categoryStyle(c);
+              const active = row.category === c;
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => {
+                    onSetEntriesCategory(row.ids, c);
+                    setCatEditing(null);
+                  }}
+                  className="px-2.5 py-1 rounded-md border text-[12px] font-medium transition-colors"
+                  style={{
+                    backgroundColor: active ? cs.solid : cs.bg,
+                    borderColor: active ? cs.solid : cs.border,
+                    color: active ? "#fff" : cs.text,
+                  }}
+                >
+                  {c}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   }
@@ -694,23 +848,10 @@ export default function TimeLogView({
               <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">今日汇总</span>
               <span className="text-[var(--color-text-tertiary)] text-[13px] font-medium">共 {formatMinutes(dayTotal)}</span>
             </div>
+            <CategoryDonut slices={daySlices} total={dayTotal} />
+
             <div className="w-full flex flex-col gap-2.5">
-              {daySummary.map(([name, minutes]) => (
-                <div key={name} className="flex flex-col gap-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[13px] font-medium text-[var(--color-text-primary)] truncate">{name}</span>
-                    <span className="text-[12px] font-medium text-[var(--color-text-secondary)] flex-shrink-0 ml-2">
-                      {formatMinutes(minutes)}
-                    </span>
-                  </div>
-                  <div className="w-full h-[8px] rounded-full bg-[var(--color-bg-gray-light)] overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-[var(--color-primary)]"
-                      style={{ width: `${Math.max(4, Math.round((minutes / dayMaxMinutes) * 100))}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
+              {daySummary.map((row) => renderSummaryRow(row, dayMaxMinutes, true))}
             </div>
           </div>
         )}
@@ -735,24 +876,12 @@ export default function TimeLogView({
             </span>
           </button>
           {weekOpen && summary.length > 0 && (
-            <div className="w-full flex flex-col gap-2.5">
-              {summary.map(([name, minutes]) => (
-                <div key={name} className="flex flex-col gap-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[13px] font-medium text-[var(--color-text-primary)] truncate">{name}</span>
-                    <span className="text-[12px] font-medium text-[var(--color-text-secondary)] flex-shrink-0 ml-2">
-                      {formatMinutes(minutes)}
-                    </span>
-                  </div>
-                  <div className="w-full h-[8px] rounded-full bg-[var(--color-bg-gray-light)] overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-[var(--color-primary)]"
-                      style={{ width: `${Math.max(4, Math.round((minutes / maxMinutes) * 100))}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+            <>
+              <CategoryDonut slices={weekSlices} total={weekTotal} />
+              <div className="w-full flex flex-col gap-2.5">
+                {summary.map((row) => renderSummaryRow(row, maxMinutes, false))}
+              </div>
+            </>
           )}
         </div>
       </div>

@@ -56,7 +56,9 @@ TodoApp.tsx（状态管理中心）
     ├── 解析结果先预览（可逐条删除），确认后写入 entries
     ├── 记录标题与当日任务标题匹配时自动关联 taskId（计入任务进度）
     ├── 今日台账：按时间排序的流水 + 当日总时长
-    └── 本周汇总：按事项聚合的时长条形图
+    ├── 今日汇总：正事/娱乐/休息环形图（CategoryDonut）+ 按事项聚合的条形图（按类别上色）
+    │   └── 每行的分类标签可点开改（「归为 正事/娱乐/休息」），改完记为用户判定
+    └── 本周汇总：同上，默认收起
 ```
 
 ### 时间记录（柳比歇夫模式）
@@ -69,10 +71,22 @@ TodoApp.tsx（状态管理中心）
   - 未配置 key 时返回 501，前端自动降级为 `components/todo/nlparse.ts` 规则解析
 - 工具函数：`components/todo/time.ts`（formatMinutes、taskLoggedMinutes、matchTaskByTitle）
 
+### 记录分类（正事/娱乐/休息）
+
+判定优先级（`components/todo/category.ts`）：
+
+1. 用户手动改过的同名记录（`categorySource: "user"`）——一次纠正对所有同名记录永久生效
+2. 任意一条已分类的同名记录
+3. 关键词规则 `ruleClassify()`：先看工作强信号词（运营/养号/复盘…压过平台名），再"命中最长关键词胜出"
+4. 都认不出来 → `/api/classify` 问 AI，结果写回 entries（`categorySource: "ai"`），每个名字一次会话只问一次
+
+分类存在 `TimeEntry` 上，跟着现有云同步走，多设备一致。AI 不可用（501/断网）时显示"未分类"，不影响其他功能。
+
 ### 关键类型（components/todo/types.ts）
 
 - `Task`：id, title, date (ISODate), startTime?, endTime?, status, priority?, tag?, targetMinutes?
-- `TimeEntry`：id, date, title, minutes, startTime?, endTime?, taskId?（一笔时间开销）
+- `TimeEntry`：id, date, title, minutes, startTime?, endTime?, taskId?, category?, categorySource?
+- `EntryCategory`："正事" | "娱乐" | "休息"
 - `TaskStatus`："todo" | "in_progress" | "done"
 - `ViewMode`："day" | "week" | "log"
 - `ISODate`："YYYY-MM-DD" 格式字符串
@@ -131,7 +145,9 @@ TodoApp.tsx（状态管理中心）
 ### 注意事项
 - `manifest.json` 中 `display: "standalone"` 实现全屏显示
 - iOS 需要 `apple-mobile-web-app-capable` meta 标签
-- Service Worker 缓存策略：优先缓存，网络回退
+- Service Worker 缓存策略：页面导航网络优先；静态资源缓存优先（生产 chunk 带 hash 所以不会读到旧版）
+- `sw.js` 对 localhost 直接放行不缓存——否则 dev 改完代码刷新还是旧 bundle（chunk 名不带 hash），
+  排查半天以为是代码有 bug。真在本地遇到诡异的"改了没生效"，先去 DevTools → Application 里退掉 SW
 
 ## Pencil 设计集成
 

@@ -1,4 +1,5 @@
 import type { ParsedEntry } from "./nlparse";
+import type { EntryCategory } from "./types";
 
 // 服务端 LLM 调用（OpenAI 兼容接口：DeepSeek / 硅基流动）。
 // 未配 LLM_API_KEY 或调用失败/超时返回 null，由调用方决定降级。
@@ -63,6 +64,41 @@ export async function callLLMJson(system: string, user: string): Promise<unknown
   } catch {
     return null;
   }
+}
+
+const CLASSIFY_PROMPT = `你给时间记录的事项名分类，判断每一项属于哪个大类。
+
+三类的定义：
+- 正事：工作、学习、副业、健身等有产出或自我提升的事（如"背单词""复盘面试""写代码""养号"（做自媒体账号运营）"健身"）
+- 娱乐：消遣放松、刷着爽的事（如"刷抖音""斗罗大陆""打游戏""看小说"）
+- 休息：维持生活必需的事（如"午饭""午睡""洗澡""通勤""打扫"）
+
+输出格式（必须是合法 JSON，不要输出其他内容）：
+{"categories":{"事项名":"正事","另一个事项名":"娱乐"}}
+
+要求：
+1. 键必须和输入的事项名一字不差，输入几项就输出几项，不要遗漏也不要新增
+2. 值只能是"正事""娱乐""休息"三者之一
+3. 拿不准时选最接近的那一类，不要留空
+4. 只看事项名本身，别脑补额外信息`;
+
+const VALID_CATEGORIES = new Set<string>(["正事", "娱乐", "休息"]);
+
+/** 给一批事项名分类。返回 {事项名: 分类}，未配 key / 调用失败返回 null */
+export async function classifyWithLLM(titles: string[]): Promise<Record<string, EntryCategory> | null> {
+  const parsed = await callLLMJson(CLASSIFY_PROMPT, JSON.stringify({ titles }));
+  if (parsed === null) return null;
+
+  const raw = (parsed as { categories?: unknown })?.categories;
+  if (!raw || typeof raw !== "object") return null;
+
+  const known = new Set(titles);
+  const out: Record<string, EntryCategory> = {};
+  for (const [title, value] of Object.entries(raw as Record<string, unknown>)) {
+    const v = String(value).trim();
+    if (known.has(title) && VALID_CATEGORIES.has(v)) out[title] = v as EntryCategory;
+  }
+  return out;
 }
 
 export async function parseWithLLM(text: string, now?: string): Promise<ParsedEntry[] | null> {

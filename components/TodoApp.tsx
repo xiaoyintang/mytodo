@@ -6,7 +6,7 @@ import TodoWeekView from "@/components/TodoWeekView";
 import TimeLogView from "@/components/TimeLogView";
 import AddTaskModal from "@/components/AddTaskModal";
 import SyncModal from "@/components/SyncModal";
-import type { ISODate, Task, TimeEntry, ViewMode, TaskStatus } from "@/components/todo/types";
+import type { EntryCategory, ISODate, Task, TimeEntry, ViewMode, TaskStatus } from "@/components/todo/types";
 import { toISODate, parseISODate, addDays, startOfWeek } from "@/components/todo/date";
 import { useLocalStorageState } from "@/components/todo/storage";
 import { useCloudSync } from "@/components/todo/sync";
@@ -171,6 +171,31 @@ export default function TodoApp() {
     setEntries((prev) => prev.map((e) => (e.id === entryId ? { ...e, ...updates } : e)));
   }
 
+  // 手动纠正分类：把这组记录标成指定大类，并记为"用户判定"——
+  // 以后同名记录一律按这个来，AI 不再覆盖（可撤回）
+  function setEntriesCategory(entryIds: string[], category: EntryCategory) {
+    snapshotEntries();
+    const ids = new Set(entryIds);
+    setEntries((prev) =>
+      prev.map((e) => (ids.has(e.id) ? { ...e, category, categorySource: "user" as const } : e)),
+    );
+  }
+
+  // AI 自动分类结果写回（只补还没分类的；不是用户编辑，不进撤回栈）
+  function applyEntryCategories(byTitle: Record<string, EntryCategory>) {
+    setEntries((prev) => {
+      let changed = false;
+      const next = prev.map((e) => {
+        if (e.category) return e;
+        const c = byTitle[e.title.trim()];
+        if (!c) return e;
+        changed = true;
+        return { ...e, category: c, categorySource: "ai" as const };
+      });
+      return changed ? next : prev;
+    });
+  }
+
   // 撤回上一步记录改动（编辑/删除/新增都能退回）
   function undoEntries() {
     if (entriesHistory.length === 0) return;
@@ -240,6 +265,8 @@ export default function TodoApp() {
           onAddEntries={addEntries}
           onDeleteEntry={deleteEntry}
           onUpdateEntry={updateEntry}
+          onSetEntriesCategory={setEntriesCategory}
+          onApplyCategories={applyEntryCategories}
           onUndoEntries={undoEntries}
           canUndoEntries={entriesHistory.length > 0}
           onPrevWeek={goToPrevWeek}

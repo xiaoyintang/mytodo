@@ -2,13 +2,10 @@
 
 import { Square, Timer as TimerIcon } from "lucide-react";
 import type { RunningTimer } from "@/components/todo/useTimer";
+import { CATEGORY_LIST, CATEGORY_STYLE } from "@/components/todo/category";
 
-// 三类计时快捷按钮。颜色用于按钮和运行态。
-const CATEGORIES = [
-  { key: "正事", bg: "#EFF6FF", border: "#BFDBFE", text: "#2563EB", solid: "#2563EB" },
-  { key: "娱乐", bg: "#FFF7ED", border: "#FED7AA", text: "#EA580C", solid: "#EA580C" },
-  { key: "休息", bg: "#F0FDF4", border: "#BBF7D0", text: "#16A34A", solid: "#16A34A" },
-] as const;
+// 三类计时快捷按钮，配色与汇总饼图共用一套
+const CATEGORIES = CATEGORY_LIST.map((key) => ({ key, ...CATEGORY_STYLE[key] }));
 
 // 自定义标题（如"养号"）用一套中性配色
 const CUSTOM_STYLE = { bg: "#EEF2FF", border: "#C7D2FE", text: "#4F46E5", solid: "#4F46E5" };

@@ -38,6 +38,11 @@ self.addEventListener('fetch', (event) => {
     return; // 不调用 respondWith，交给浏览器默认网络请求
   }
 
+  // 本地开发直连网络：dev 的 chunk 文件名不带 hash，缓存优先会让改完代码刷新还是旧版
+  if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+    return;
+  }
+
   // 页面导航：网络优先，保证部署后刷新即见新版；断网才回退缓存首页
   if (request.mode === 'navigate') {
     event.respondWith(fetch(request).catch(() => caches.match('/')));
