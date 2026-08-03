@@ -300,6 +300,20 @@ export default function TodoApp() {
     );
   }
 
+  // 焦点地图两轴（0-100，现在只落 25/75 两档）
+  function setBehaviorAxis(id: string, patch: { impact?: number; feasibility?: number }) {
+    setBehaviorCards((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+  }
+
+  // 重排：清掉这个愿望下所有可重复行为的两轴
+  function resetBehaviorAxes(aspirationId: string) {
+    setBehaviorCards((prev) =>
+      prev.map((b) =>
+        b.aspirationId === aspirationId ? { ...b, impact: undefined, feasibility: undefined } : b,
+      ),
+    );
+  }
+
   function deleteBehavior(id: string) {
     setBehaviorCards((prev) => prev.filter((b) => b.id !== id));
   }
@@ -366,6 +380,8 @@ export default function TodoApp() {
           onApplyJudgements={applyJudgements}
           onUpdateBehaviorText={updateBehaviorText}
           onSetBehaviorType={setBehaviorType}
+          onSetBehaviorAxis={setBehaviorAxis}
+          onResetBehaviorAxes={resetBehaviorAxes}
           onDeleteBehavior={deleteBehavior}
         />
       ) : (

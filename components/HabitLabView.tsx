@@ -8,11 +8,14 @@ import {
   TYPE_LABEL,
   TYPE_ORDER,
   TYPE_STYLE,
+  isGolden,
+  isRepeatable,
   looksLikeAspiration,
   needsBreakdown,
   pendingJudgement,
 } from "@/components/todo/behavior";
-import { AlertTriangle, ArrowLeft, ChevronRight, Plus, Target, Trash2, Wand2, X, Zap } from "lucide-react";
+import FocusMapView from "@/components/FocusMapView";
+import { AlertTriangle, ArrowLeft, ChevronRight, Map, Plus, Target, Trash2, Wand2, X, Zap } from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
 type Judgement = { id: string; type: BehaviorType; reason?: string; hasDecision?: boolean };
@@ -28,6 +31,8 @@ type Props = {
   onApplyJudgements: (results: Judgement[]) => void;
   onUpdateBehaviorText: (id: string, text: string) => void;
   onSetBehaviorType: (id: string, type: BehaviorType) => void;
+  onSetBehaviorAxis: (id: string, patch: { impact?: number; feasibility?: number }) => void;
+  onResetBehaviorAxes: (aspirationId: string) => void;
   onDeleteBehavior: (id: string) => void;
 };
 
@@ -84,6 +89,8 @@ export default function HabitLabView({
   onApplyJudgements,
   onUpdateBehaviorText,
   onSetBehaviorType,
+  onSetBehaviorAxis,
+  onResetBehaviorAxes,
   onDeleteBehavior,
 }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
@@ -107,10 +114,14 @@ export default function HabitLabView({
 
   const [deleteAspId, setDeleteAspId] = useState<string | null>(null);
 
+  const [mapOpen, setMapOpen] = useState(false); // 三级页：焦点地图
+
   const open = openId ? aspirations.find((a) => a.id === openId) ?? null : null;
   const openCards = open ? behaviors.filter((b) => b.aspirationId === open.id) : [];
   const unsorted = openCards.filter((b) => b.type === "unsorted");
   const judged = openCards.filter((b) => b.type !== "unsorted");
+  const repeatable = openCards.filter((b) => isRepeatable(b.type)); // 只有可重复行为进焦点地图
+  const goldenCount = repeatable.filter(isGolden).length;
 
   function resetTransient() {
     setPending(null);
@@ -253,7 +264,10 @@ export default function HabitLabView({
   function handleDeleteAspiration() {
     if (!deleteAspId) return;
     onDeleteAspiration(deleteAspId);
-    if (openId === deleteAspId) setOpenId(null);
+    if (openId === deleteAspId) {
+      setOpenId(null);
+      setMapOpen(false);
+    }
     setDeleteAspId(null);
   }
 
@@ -466,7 +480,16 @@ export default function HabitLabView({
       </div>
 
       <div className="w-full flex flex-col gap-5 px-6 pt-5 pb-6">
-        {!open ? (
+        {open && mapOpen ? (
+          /* ===== 三级页：焦点地图 ===== */
+          <FocusMapView
+            aspiration={open}
+            cards={repeatable}
+            onSetAxis={onSetBehaviorAxis}
+            onResetAxes={() => onResetBehaviorAxes(open.id)}
+            onBack={() => setMapOpen(false)}
+          />
+        ) : !open ? (
           /* ===== 一级页：我的愿望 ===== */
           <>
             <div className="w-full flex items-center justify-between">
@@ -567,6 +590,7 @@ export default function HabitLabView({
                         type="button"
                         onClick={() => {
                           setOpenId(a.id);
+                          setMapOpen(false);
                           resetTransient();
                           setInput("");
                         }}
@@ -606,6 +630,7 @@ export default function HabitLabView({
                 type="button"
                 onClick={() => {
                   setOpenId(null);
+                  setMapOpen(false);
                   resetTransient();
                   setInput("");
                 }}
@@ -753,10 +778,24 @@ export default function HabitLabView({
               </p>
             )}
 
-            {judged.some((b) => b.type === "habit" || b.type === "stop") && unsorted.length === 0 && (
-              <p className="text-[12px] text-[var(--color-text-tertiary)] text-center">
-                可重复行为攒够了就该排焦点地图了 —— 下一步做
-              </p>
+            {repeatable.length > 0 && (
+              <div className="w-full flex flex-col gap-1.5 pt-1 border-t border-[var(--color-border)]">
+                <button
+                  type="button"
+                  onClick={() => setMapOpen(true)}
+                  className="w-full flex items-center justify-center gap-1.5 rounded-[10px] py-2.5 text-[14px] font-semibold bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8] transition-colors"
+                >
+                  <Map className="w-4 h-4" />
+                  排焦点地图（{repeatable.length} 条可重复行为）
+                </button>
+                <span className="text-[11px] text-[var(--color-text-tertiary)] text-center">
+                  {goldenCount > 0
+                    ? `已筛出 ${goldenCount} 条黄金行为`
+                    : unsorted.length > 0
+                      ? "建议先把未判定的判完，免得漏掉可重复行为"
+                      : "两轮二选一，筛出真正该做的那几条"}
+                </span>
+              </div>
             )}
           </>
         )}

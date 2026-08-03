@@ -48,6 +48,45 @@ export function isRepeatable(type: BehaviorType): boolean {
   return type === "habit" || type === "stop";
 }
 
+// ===== 焦点地图 =====
+// 两轮二选一，存成 0-100 的坐标（现在只落 25 / 75 两档；以后要加拖拽微调，
+// 直接往这两个字段里写连续值即可，不用改数据结构）
+export const AXIS_HIGH = 75;
+export const AXIS_LOW = 25;
+const AXIS_MID = 50;
+
+/** 黄金行为 = 影响力高 且 你真能做到（右上象限）。派生值，不单独存 */
+export function isGolden(b: BehaviorCard): boolean {
+  return (b.impact ?? 0) >= AXIS_MID && (b.feasibility ?? 0) >= AXIS_MID;
+}
+
+export function isHighImpact(b: BehaviorCard): boolean {
+  return (b.impact ?? 0) >= AXIS_MID;
+}
+
+/**
+ * 下一张要排的卡：先把所有卡的影响力排完（第 1 轮），
+ * 再只问影响力高的那些能不能做到（第 2 轮）——影响力低的反正成不了黄金行为，
+ * 不值得再占用一次判断。
+ */
+export function nextToPlace(
+  cards: BehaviorCard[],
+  skipped: Set<string>,
+): { round: 1 | 2; card: BehaviorCard; done: number; total: number } | null {
+  const r1 = cards.filter((c) => c.impact == null);
+  const r1Left = r1.filter((c) => !skipped.has(c.id));
+  if (r1Left.length > 0) {
+    return { round: 1, card: r1Left[0], done: cards.length - r1.length, total: cards.length };
+  }
+  const highs = cards.filter(isHighImpact);
+  const r2 = highs.filter((c) => c.feasibility == null);
+  const r2Left = r2.filter((c) => !skipped.has(c.id));
+  if (r2Left.length > 0) {
+    return { round: 2, card: r2Left[0], done: highs.length - r2.length, total: highs.length };
+  }
+  return null;
+}
+
 // "掐一把测试"过不了的典型说法：描述的是状态/期望，不是能立刻做出来的动作
 const ASPIRATION_HINTS = [
   "想要", "希望", "更健康", "更好", "变得", "成为", "坚持", "保持", "养成",
