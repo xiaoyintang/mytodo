@@ -336,6 +336,14 @@ export default function TodoApp() {
     setBehaviorCards((prev) => prev.map((b) => (b.id === cardId ? { ...b, taskId } : b)));
   }
 
+  // 撤回排期：连带把日视图里那个任务删掉
+  function unscheduleBehavior(cardId: string) {
+    const card = behaviorCards.find((b) => b.id === cardId);
+    if (card?.taskId) setTasks((prev) => prev.filter((t) => t.id !== card.taskId));
+    snapshotLab();
+    setBehaviorCards((prev) => prev.map((b) => (b.id === cardId ? { ...b, taskId: undefined } : b)));
+  }
+
   // 「改小」专用：换掉文字但保留类型（它还是同一种可重复行为，不该退回未判定），
   // 清掉可行性——旧分数是给"难版本"打的，改小之后必须重拖一次
   function shrinkBehavior(id: string, text: string) {
@@ -499,6 +507,7 @@ export default function TodoApp() {
           onSetBehaviorType={setBehaviorType}
           onShrinkBehavior={shrinkBehavior}
           onScheduleBehavior={scheduleBehavior}
+          onUnscheduleBehavior={unscheduleBehavior}
           tasks={safeTasks}
           onSetBehaviorAxis={setBehaviorAxis}
           onResetBehaviorAxes={resetBehaviorAxes}

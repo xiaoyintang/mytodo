@@ -43,9 +43,19 @@ export function needsBreakdown(type: BehaviorType): boolean {
   return type === "aspiration" || type === "outcome";
 }
 
-/** 可重复行为（habit + stop）——只有这些进焦点地图 */
+/** 可重复行为（habit + stop） */
 export function isRepeatable(type: BehaviorType): boolean {
   return type === "habit" || type === "stop";
+}
+
+/**
+ * 能上焦点地图的：可重复行为 + 一次性任务。
+ * 一次性任务也要排——"又好做又有效"的该安排，"又难又没用"的就别做了，
+ * 筛选逻辑和可重复行为一模一样，只是出口不同（排到某天 vs 加入习惯表）。
+ * 愿望/成果执行不了，不上图。
+ */
+export function isActionable(type: BehaviorType): boolean {
+  return type === "habit" || type === "stop" || type === "onetime";
 }
 
 // ===== 焦点地图 =====

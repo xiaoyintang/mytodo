@@ -20,6 +20,7 @@ import {
   TYPE_ORDER,
   TYPE_STYLE,
   guessMeasure,
+  isActionable,
   isGolden,
   isRepeatable,
   looksLikeAspiration,
@@ -28,7 +29,6 @@ import {
 } from "@/components/todo/behavior";
 import FocusMapView from "@/components/FocusMapView";
 import HabitTracker from "@/components/HabitTracker";
-import ScheduleOnetime from "@/components/ScheduleOnetime";
 import { AlertTriangle, ArrowLeft, ChevronRight, Map, Plus, Target, Trash2, Undo2, Wand2, X, Zap } from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
@@ -47,6 +47,7 @@ type Props = {
   onSetBehaviorType: (id: string, type: BehaviorType) => void;
   onShrinkBehavior: (id: string, text: string) => void;
   onScheduleBehavior: (cardId: string, title: string, date: ISODate) => void;
+  onUnscheduleBehavior: (cardId: string) => void;
   tasks: Task[];
   onSetBehaviorAxis: (id: string, patch: { impact?: number; feasibility?: number }) => void;
   onResetBehaviorAxes: (aspirationId: string) => void;
@@ -120,6 +121,7 @@ export default function HabitLabView({
   onSetBehaviorType,
   onShrinkBehavior,
   onScheduleBehavior,
+  onUnscheduleBehavior,
   tasks,
   onSetBehaviorAxis,
   onResetBehaviorAxes,
@@ -166,9 +168,11 @@ export default function HabitLabView({
   const openCards = open ? behaviors.filter((b) => b.aspirationId === open.id) : [];
   const unsorted = openCards.filter((b) => b.type === "unsorted");
   const judged = openCards.filter((b) => b.type !== "unsorted");
-  const repeatable = openCards.filter((b) => isRepeatable(b.type)); // 只有可重复行为进焦点地图
+  // 可重复行为 + 一次性任务都上焦点地图（一次性任务也要筛：又难又没用的就别做了）
+  const actionable = openCards.filter((b) => isActionable(b.type));
+  const repeatable = openCards.filter((b) => isRepeatable(b.type));
   const liveHabits = habits.filter((h) => !h.archived);
-  const goldenCount = repeatable.filter(isGolden).length;
+  const goldenCount = actionable.filter(isGolden).length;
 
   function resetTransient() {
     setPending(null);
@@ -444,12 +448,6 @@ export default function HabitLabView({
           </span>
         )}
 
-        {b.type === "onetime" && !isEditing && (
-          <div className="w-full flex items-center">
-            <ScheduleOnetime card={b} tasks={tasks} onSchedule={onScheduleBehavior} />
-          </div>
-        )}
-
         {needsBreakdown(b.type) && !isEditing && (
           <button
             type="button"
@@ -626,15 +624,15 @@ export default function HabitLabView({
           /* ===== 三级页：焦点地图 ===== */
           <FocusMapView
             aspiration={open}
-            cards={repeatable}
+            cards={actionable}
             onSetAxis={onSetBehaviorAxis}
             onResetAxes={() => onResetBehaviorAxes(open.id)}
             onDelete={onDeleteBehavior}
             onReplaceText={onShrinkBehavior}
             onAddExtra={(items) => onAddBehaviors(open.id, items)}
-            onetimeCards={openCards.filter((b) => b.type === "onetime")}
             tasks={tasks}
             onSchedule={onScheduleBehavior}
+            onUnschedule={onUnscheduleBehavior}
             onAddHabit={handleAddHabit}
             habitBehaviorIds={habitBehaviorIds}
             onBack={() => setMapOpen(false)}
@@ -808,7 +806,7 @@ export default function HabitLabView({
             </div>
 
             {/* 焦点地图入口放最上面——放底下动线太长（进 tab → 点目标 → 一路下拉） */}
-            {repeatable.length > 0 && (
+            {actionable.length > 0 && (
               <div className="w-full flex flex-col gap-1">
                 <button
                   type="button"
@@ -816,7 +814,7 @@ export default function HabitLabView({
                   className="w-full flex items-center justify-center gap-1.5 rounded-[10px] py-2.5 text-[14px] font-semibold bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8] transition-colors"
                 >
                   <Map className="w-4 h-4" />
-                  排焦点地图（{repeatable.length} 条可重复行为）
+                  排焦点地图（{actionable.length} 条能做的行为）
                 </button>
                 <span className="text-[11px] text-[var(--color-text-tertiary)] text-center">
                   {goldenCount > 0
