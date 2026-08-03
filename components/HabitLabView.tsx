@@ -161,7 +161,8 @@ export default function HabitLabView({
   const [deleteAspId, setDeleteAspId] = useState<string | null>(null);
 
   const [mapOpen, setMapOpen] = useState(false); // 三级页：焦点地图
-  const [sub, setSub] = useState<"today" | "goals">("today"); // 首页分两栏，习惯多了不用一路下拉
+  const [sub, setSub] = useState<"today" | "goals">("today");
+  const [quickHabit, setQuickHabit] = useState(""); // 「我的习惯」里直接加，不走目标那条长路 // 首页分两栏，习惯多了不用一路下拉
   const habitBehaviorIds = new Set(habits.filter((h) => !h.archived && h.behaviorId).map((h) => h.behaviorId!));
 
   const open = openId ? aspirations.find((a) => a.id === openId) ?? null : null;
@@ -215,6 +216,14 @@ export default function HabitLabView({
         <span className="text-[10px] text-[var(--color-text-tertiary)] flex-shrink-0">回车保存</span>
       </div>
     );
+  }
+
+  // 临时想到一个习惯：直接加，不归属任何目标（进「没有归属的目标」那组）
+  function handleQuickAddHabit() {
+    const t = quickHabit.trim();
+    if (!t) return;
+    onAddHabit({ title: t, measure: guessMeasure(t) });
+    setQuickHabit("");
   }
 
   function handleCreateAspiration() {
@@ -589,7 +598,36 @@ export default function HabitLabView({
 
       <div className="w-full flex flex-col gap-5 px-6 pt-5 pb-6">
         {sub === "today" ? (
-          liveHabits.length > 0 ? (
+          <>
+            {/* 最浅的入口：临时想到就直接加，不用先建目标 */}
+            <div className="w-full flex items-center gap-2">
+              <input
+                type="text"
+                value={quickHabit}
+                onChange={(e) => setQuickHabit(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing) handleQuickAddHabit();
+                }}
+                placeholder="临时想到一个习惯？直接写，回车加进来"
+                enterKeyHint="done"
+                className="flex-1 min-w-0 px-3 py-2 rounded-[10px] border border-[var(--color-border)] text-[13px] placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)]"
+              />
+              <button
+                type="button"
+                onClick={handleQuickAddHabit}
+                disabled={!quickHabit.trim()}
+                className={[
+                  "px-3 py-2 rounded-[10px] text-[13px] font-medium transition-colors flex-shrink-0",
+                  quickHabit.trim()
+                    ? "bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8]"
+                    : "bg-[var(--color-bg-gray-light)] text-[var(--color-text-tertiary)] cursor-not-allowed",
+                ].join(" ")}
+              >
+                加
+              </button>
+            </div>
+
+            {liveHabits.length > 0 ? (
             <HabitTracker
               aspirations={aspirations}
               habits={habits}
@@ -619,7 +657,8 @@ export default function HabitLabView({
                 去「我的目标」 →
               </button>
             </div>
-          )
+            )}
+          </>
         ) : !open ? (
           /* ===== 一级页：我的愿望 ===== */
           <>

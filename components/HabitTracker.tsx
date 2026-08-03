@@ -3,7 +3,8 @@
 import { useState } from "react";
 import type { Aspiration, Habit, HabitLog, ISODate, TimeEntry } from "@/components/todo/types";
 import { formatMinutes } from "@/components/todo/time";
-import { Check, Clock, Link2, Plus, Target, Trash2, Undo2 } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Clock, Plus, Target, Trash2, Undo2 } from "lucide-react";
+import { useLocalStorageState } from "@/components/todo/storage";
 
 type Props = {
   aspirations: Aspiration[];
@@ -17,6 +18,8 @@ type Props = {
   onToggleMeasure: (habitId: string) => void;
   onDeleteHabit: (habitId: string) => void;
 };
+
+const EMPTY_COLLAPSED: string[] = [];
 
 /** 时长型习惯今天的成绩：直接从时间台账里按同名记录算，不要求打第二次卡 */
 function fromLedger(habit: Habit, entries: TimeEntry[], today: ISODate) {
@@ -37,6 +40,11 @@ export default function HabitTracker({
   onToggleMeasure,
   onDeleteHabit,
 }: Props) {
+  // 收起哪些目标分组（记在本地，刷新后还是你上次那样）
+  const { value: collapsed, setValue: setCollapsed } = useLocalStorageState<string[]>(
+    "mytodo.habitgroups.collapsed.v1",
+    EMPTY_COLLAPSED,
+  );
   const [editAnchor, setEditAnchor] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [justTapped, setJustTapped] = useState<string | null>(null);
@@ -60,6 +68,22 @@ export default function HabitTracker({
     setTimeout(() => setJustTapped((cur) => (cur === h.id ? null : cur)), 600);
   }
 
+  function isShut(key: string): boolean {
+    return collapsed.includes(key);
+  }
+
+  function toggleGroup(key: string) {
+    setCollapsed((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  }
+
+  /** 这一组今天一共记了多少次（时长型的从台账算） */
+  function groupDone(items: Habit[]): number {
+    return items.reduce((sum, h) => {
+      if (h.measure === "duration") return sum + fromLedger(h, entries, today).count;
+      return sum + logs.filter((l) => l.habitId === h.id && l.date === today).length;
+    }, 0);
+  }
+
   function saveAnchor(id: string) {
     onSetAnchor(id, draft.trim());
     setEditAnchor(null);
@@ -76,7 +100,16 @@ export default function HabitTracker({
 
       {groups.map((g) => (
         <div key={g.key} className="w-full flex flex-col gap-1.5">
-          <div className="w-full flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => toggleGroup(g.key)}
+            className="w-full flex items-center gap-1.5 text-left"
+          >
+            {isShut(g.key) ? (
+              <ChevronRight className="w-3 h-3 text-[var(--color-text-tertiary)] flex-shrink-0" />
+            ) : (
+              <ChevronDown className="w-3 h-3 text-[var(--color-text-tertiary)] flex-shrink-0" />
+            )}
             <Target className="w-3 h-3 text-[var(--color-primary)] flex-shrink-0" />
             <span className="text-[11px] font-semibold text-[var(--color-text-secondary)] truncate">
               {g.title ?? "没有归属的目标"}
@@ -84,9 +117,16 @@ export default function HabitTracker({
             <span className="text-[10px] text-[var(--color-text-tertiary)] flex-shrink-0">
               {g.items.length}
             </span>
-          </div>
+            <div className="flex-1" />
+            {/* 收起来也得知道今天动没动过 */}
+            {isShut(g.key) && (
+              <span className="text-[10px] text-[var(--color-text-tertiary)] flex-shrink-0">
+                {groupDone(g.items) > 0 ? `今天 ${groupDone(g.items)} 次` : "今天还没做"}
+              </span>
+            )}
+          </button>
 
-          {g.items.map((h) => {
+          {!isShut(g.key) && g.items.map((h) => {
             const isDuration = h.measure === "duration";
             const ledger = isDuration ? fromLedger(h, entries, today) : null;
             const count = isDuration
