@@ -49,11 +49,17 @@ export function isRepeatable(type: BehaviorType): boolean {
 }
 
 // ===== 焦点地图 =====
-// 两轮二选一，存成 0-100 的坐标（现在只落 25 / 75 两档；以后要加拖拽微调，
-// 直接往这两个字段里写连续值即可，不用改数据结构）
-export const AXIS_HIGH = 75;
-export const AXIS_LOW = 25;
+// 两根滑块，两轴各存 0-100（一轮只排一个维度）
 const AXIS_MID = 50;
+
+/**
+ * 黄金行为之间的优先级。用乘积而不是求和：
+ * 求和的话「影响力100+做不到55」会排在「85+85」前面，但前者根本做不下去。
+ * 乘积会惩罚任何一轴的短板，逼出两边都强的那个。
+ */
+export function goldenScore(b: BehaviorCard): number {
+  return ((b.impact ?? 0) * (b.feasibility ?? 0)) / 100;
+}
 
 /** 黄金行为 = 影响力高 且 你真能做到（右上象限）。派生值，不单独存 */
 export function isGolden(b: BehaviorCard): boolean {
