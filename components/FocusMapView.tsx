@@ -5,7 +5,7 @@ import type { Aspiration, BehaviorCard, BehaviorType, ISODate, Task } from "@/co
 import { callBehaviorAPI, toPendingItems, type PendingItem } from "@/components/todo/behaviorApi";
 import { TYPE_LABEL, TYPE_STYLE, goldenScore, isGolden, isRepeatable } from "@/components/todo/behavior";
 import { addDays, toISODate } from "@/components/todo/date";
-import { ArrowLeft, Check, RotateCcw, Scissors, Star, Trash2, X } from "lucide-react";
+import { ArrowUpDown, Check, RotateCcw, Scissors, Star, Trash2, X } from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
 type AxisPatch = { impact?: number; feasibility?: number };
@@ -25,13 +25,12 @@ type Props = {
   onSchedule: (cardId: string, title: string, date: ISODate) => void;
   onUnschedule: (cardId: string) => void;
   habitBehaviorIds: Set<string>;
-  onBack: () => void;
 };
 
 const SORTS: Array<[SortMode, string]> = [
-  ["default", "默认顺序"],
-  ["impact", "按影响力"],
-  ["score", "按综合分"],
+  ["default", "原顺序"],
+  ["impact", "影响力高→低"],
+  ["score", "最该先做"], // = 影响力 × 可行性，两边都强的排前面
 ];
 
 // 散点图尺寸
@@ -57,7 +56,6 @@ export default function FocusMapView({
   onSchedule,
   onUnschedule,
   habitBehaviorIds,
-  onBack,
 }: Props) {
   const [confirmReset, setConfirmReset] = useState(false);
   const [sort, setSort] = useState<SortMode>("default");
@@ -65,6 +63,7 @@ export default function FocusMapView({
   const [order, setOrder] = useState<string[] | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [scheduling, setScheduling] = useState(false);
+  const [onlyStuck, setOnlyStuck] = useState(false);
 
   const [shrinkingId, setShrinkingId] = useState<string | null>(null);
   const [shrink, setShrink] = useState<{ forId: string; items: PendingItem[] } | null>(null);
@@ -78,9 +77,13 @@ export default function FocusMapView({
   const plotted = cards.filter((c) => c.impact != null && c.feasibility != null);
   const rated = cards.filter((c) => c.impact != null || c.feasibility != null).length;
 
-  const list = order
+  // 影响力够高但做不到的——福格的解法是改小。单独拎出来，否则藏在几十行里根本找不着
+  const stuck = cards.filter((c) => (c.impact ?? 0) >= 50 && c.feasibility != null && c.feasibility < 50);
+
+  const ordered = order
     ? [...cards].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
     : cards;
+  const list = onlyStuck ? ordered.filter((c) => stuck.includes(c)) : ordered;
 
   function applySort(mode: SortMode) {
     setSort(mode);
@@ -179,17 +182,8 @@ export default function FocusMapView({
   return (
     <div className="w-full flex flex-col gap-3">
       <div className="w-full flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onBack}
-          className="w-8 h-8 rounded-lg border-[1.5px] border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors flex-shrink-0"
-          aria-label="返回行为集群"
-        >
-          <ArrowLeft className="w-4 h-4 text-[var(--color-text-secondary)]" />
-        </button>
-        <span className="text-[17px] font-semibold text-[var(--color-text-primary)]">焦点地图</span>
-        <span className="text-[12px] text-[var(--color-text-tertiary)] truncate flex-1">
-          {aspiration.title}
+        <span className="flex-1 text-[12px] text-[var(--color-text-secondary)]">
+          两根滑块都拖一下，右上角那几条就是黄金行为
         </span>
         <button
           type="button"
@@ -244,16 +238,20 @@ export default function FocusMapView({
       </div>
 
       {/* 排序：想比较第 9 和第 4？排一下它俩就挨着了 */}
-      <div className="w-full flex items-center gap-1.5">
+      <div className="w-full flex items-center gap-1.5 flex-wrap">
+        <span className="flex items-center gap-1 text-[11px] text-[var(--color-text-tertiary)] flex-shrink-0">
+          <ArrowUpDown className="w-3 h-3" />
+          排序
+        </span>
         {SORTS.map(([mode, label]) => (
           <button
             key={mode}
             type="button"
             onClick={() => applySort(mode)}
             className={[
-              "px-2.5 py-1 rounded-md border text-[11px] font-medium transition-colors",
+              "px-2 py-1 rounded-md border text-[11px] font-medium transition-colors",
               sort === mode
-                ? "bg-[var(--color-primary)] border-[var(--color-primary)] text-white"
+                ? "bg-[var(--color-primary-light)] border-[var(--color-primary)] text-[var(--color-primary)]"
                 : "bg-white border-[var(--color-border)] text-[var(--color-text-secondary)]",
             ].join(" ")}
           >
@@ -261,9 +259,31 @@ export default function FocusMapView({
           </button>
         ))}
         {sort !== "default" && (
-          <span className="text-[10px] text-[var(--color-text-tertiary)]">改完再点一次重排序</span>
+          <span className="w-full text-[10px] text-[var(--color-text-tertiary)]">
+            拖完想重新排，再点一次那个按钮（排序不实时，否则行会在手底下乱跳）
+          </span>
         )}
       </div>
+
+      {/* 影响力高但做不到 → 改小。不给入口的话，它藏在几十行里根本找不到 */}
+      {stuck.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setOnlyStuck((v) => !v)}
+          className={[
+            "w-full flex items-center gap-1.5 px-3 py-2 rounded-[10px] border text-left transition-colors",
+            onlyStuck
+              ? "bg-[#B45309] border-[#B45309] text-white"
+              : "bg-[#FFFBEB] border-[#FDE68A] text-[#B45309]",
+          ].join(" ")}
+        >
+          <Scissors className="w-3.5 h-3.5 flex-shrink-0" />
+          <span className="flex-1 text-[12px] font-medium">
+            {stuck.length} 条影响力高但做不到 —— 别删，<strong>改小它</strong>
+          </span>
+          <span className="text-[11px] flex-shrink-0">{onlyStuck ? "看全部" : "只看这几条"}</span>
+        </button>
+      )}
 
       {/* 一行两根滑块，不用记上一轮打了多少 */}
       <div className="w-full flex flex-col gap-2">

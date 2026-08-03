@@ -29,7 +29,7 @@ import {
 } from "@/components/todo/behavior";
 import FocusMapView from "@/components/FocusMapView";
 import HabitTracker from "@/components/HabitTracker";
-import { AlertTriangle, ArrowLeft, ChevronRight, Map, Plus, Target, Trash2, Undo2, Wand2, X, Zap } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ChevronRight, Plus, Target, Trash2, Undo2, Wand2, X, Zap } from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
 type Judgement = { id: string; type: BehaviorType; reason?: string; hasDecision?: boolean };
@@ -620,23 +620,6 @@ export default function HabitLabView({
               </button>
             </div>
           )
-        ) : open && mapOpen ? (
-          /* ===== 三级页：焦点地图 ===== */
-          <FocusMapView
-            aspiration={open}
-            cards={actionable}
-            onSetAxis={onSetBehaviorAxis}
-            onResetAxes={() => onResetBehaviorAxes(open.id)}
-            onDelete={onDeleteBehavior}
-            onReplaceText={onShrinkBehavior}
-            onAddExtra={(items) => onAddBehaviors(open.id, items)}
-            tasks={tasks}
-            onSchedule={onScheduleBehavior}
-            onUnschedule={onUnscheduleBehavior}
-            onAddHabit={handleAddHabit}
-            habitBehaviorIds={habitBehaviorIds}
-            onBack={() => setMapOpen(false)}
-          />
         ) : !open ? (
           /* ===== 一级页：我的愿望 ===== */
           <>
@@ -805,26 +788,65 @@ export default function HabitLabView({
               </span>
             </div>
 
-            {/* 焦点地图入口放最上面——放底下动线太长（进 tab → 点目标 → 一路下拉） */}
-            {actionable.length > 0 && (
-              <div className="w-full flex flex-col gap-1">
+            {/* 行为集群 / 焦点地图：平级两栏，不是下钻 */}
+            <div className="w-full flex gap-1 bg-[var(--color-bg-gray-light)] rounded-[10px] p-1">
+              {([[false, "行为集群"], [true, "焦点地图"]] as Array<[boolean, string]>).map(([isMap, label]) => (
                 <button
+                  key={label}
                   type="button"
-                  onClick={() => setMapOpen(true)}
-                  className="w-full flex items-center justify-center gap-1.5 rounded-[10px] py-2.5 text-[14px] font-semibold bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8] transition-colors"
+                  onClick={() => setMapOpen(isMap)}
+                  className={[
+                    "flex-1 flex items-center justify-center gap-1 rounded-lg px-2 py-2",
+                    mapOpen === isMap ? "bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]" : "",
+                  ].join(" ")}
                 >
-                  <Map className="w-4 h-4" />
-                  排焦点地图（{actionable.length} 条能做的行为）
+                  <span
+                    className={[
+                      "text-[13px]",
+                      mapOpen === isMap
+                        ? "text-[var(--color-text-primary)] font-semibold"
+                        : "text-[var(--color-text-secondary)] font-medium",
+                    ].join(" ")}
+                  >
+                    {label}
+                  </span>
+                  {!isMap && unsorted.length > 0 && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#EA580C]" title="有未判定的条目" />
+                  )}
+                  {isMap && goldenCount > 0 && (
+                    <span className="text-[11px] font-semibold text-[var(--color-primary)]">
+                      {goldenCount}★
+                    </span>
+                  )}
                 </button>
-                <span className="text-[11px] text-[var(--color-text-tertiary)] text-center">
-                  {goldenCount > 0
-                    ? `已筛出 ${goldenCount} 条黄金行为`
-                    : unsorted.length > 0
-                      ? "建议先把未判定的判完，免得漏掉可重复行为"
-                      : "两轮拖滑块，筛出真正该做的那几条"}
-                </span>
-              </div>
-            )}
+              ))}
+            </div>
+
+            {mapOpen ? (
+              actionable.length > 0 ? (
+                <FocusMapView
+                  aspiration={open}
+                  cards={actionable}
+                  tasks={tasks}
+                  onSetAxis={onSetBehaviorAxis}
+                  onResetAxes={() => onResetBehaviorAxes(open.id)}
+                  onDelete={onDeleteBehavior}
+                  onReplaceText={onShrinkBehavior}
+                  onAddExtra={(items) => onAddBehaviors(open.id, items)}
+                  onSchedule={onScheduleBehavior}
+                  onUnschedule={onUnscheduleBehavior}
+                  onAddHabit={handleAddHabit}
+                  habitBehaviorIds={habitBehaviorIds}
+                />
+              ) : (
+                <p className="text-[12px] leading-relaxed text-[var(--color-text-secondary)]">
+                  还没有能排的行为。先去「行为集群」把想到的倒进来、点一次判定——
+                  判成<strong>可重复行为 / 要戒掉 / 一次性任务</strong>的才会出现在这儿
+                  （愿望和成果执行不了，得先拆成行为）。
+                </p>
+              )
+            ) : (
+            <>
 
             {/* 收集口：回车即存，AI 不参与 */}
             <div className="w-full flex flex-col gap-2">
@@ -956,8 +978,8 @@ export default function HabitLabView({
                 <strong>先别 judge</strong>——那是焦点地图的事。想不出来就点魔法棒。
               </p>
             )}
-
-
+            </>
+            )}
           </>
         )}
       </div>
