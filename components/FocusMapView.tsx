@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import type { Aspiration, BehaviorCard, BehaviorType } from "@/components/todo/types";
+import type { Aspiration, BehaviorCard, BehaviorType, ISODate, Task } from "@/components/todo/types";
+import ScheduleOnetime from "@/components/ScheduleOnetime";
 import { callBehaviorAPI, toPendingItems, type PendingItem } from "@/components/todo/behaviorApi";
 import { TYPE_LABEL, TYPE_STYLE, goldenScore, isGolden, isHighImpact } from "@/components/todo/behavior";
 import { ArrowLeft, ChevronDown, ChevronUp, RotateCcw, Scissors, Star, Trash2 } from "lucide-react";
@@ -20,6 +21,10 @@ type Props = {
   onReplaceText: (id: string, text: string) => void;
   /** 改小时多选的其余版本，作为新候选收进集群 */
   onAddExtra: (items: Array<{ text: string; type: BehaviorType }>) => void;
+  /** 一次性任务不进地图（没有"重复"这回事），但要在这儿看得见、能安排 */
+  onetimeCards: BehaviorCard[];
+  tasks: Task[];
+  onSchedule: (cardId: string, title: string, date: ISODate) => void;
   onAddHabit: (card: BehaviorCard) => void;
   habitBehaviorIds: Set<string>;
   onBack: () => void;
@@ -49,6 +54,9 @@ export default function FocusMapView({
   onDelete,
   onReplaceText,
   onAddExtra,
+  onetimeCards,
+  tasks,
+  onSchedule,
   onAddHabit,
   habitBehaviorIds,
   onBack,
@@ -495,6 +503,38 @@ export default function FocusMapView({
                   {shrinkNote && shrinkingId === null && !shrink && (
                     <p className="text-[11px] text-[var(--color-text-secondary)] px-1">{shrinkNote}</p>
                   )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 一次性任务：做完就没了，不该占地图，但得有个出口 */}
+          {onetimeCards.length > 0 && (
+            <div className="w-full flex flex-col gap-2 pt-1">
+              <span className="text-[13px] font-semibold text-[#4F46E5]">
+                一次性任务 · {onetimeCards.length} 条
+              </span>
+              <p className="text-[11px] leading-relaxed text-[var(--color-text-secondary)]">
+                这些做完就没了，没有"重复"这回事，所以不上地图。挑个日子做掉，
+                <strong>它会直接进日视图</strong>。
+              </p>
+              {onetimeCards.map((b) => (
+                <div
+                  key={b.id}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 rounded-[10px] bg-[#F8F8FC] border border-[#C7D2FE]"
+                >
+                  <span className="flex-1 text-[13px] text-[var(--color-text-primary)] leading-snug">
+                    {b.text}
+                  </span>
+                  <ScheduleOnetime card={b} tasks={tasks} onSchedule={onSchedule} />
+                  <button
+                    type="button"
+                    onClick={() => onDelete(b.id)}
+                    className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0"
+                    aria-label="删掉这条"
+                  >
+                    <Trash2 className="w-[14px] h-[14px] text-[#A1A1AA]" />
+                  </button>
                 </div>
               ))}
             </div>

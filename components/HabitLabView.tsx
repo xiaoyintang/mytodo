@@ -9,6 +9,7 @@ import type {
   Habit,
   HabitLog,
   ISODate,
+  Task,
   TimeEntry,
   ViewMode,
 } from "@/components/todo/types";
@@ -27,6 +28,7 @@ import {
 } from "@/components/todo/behavior";
 import FocusMapView from "@/components/FocusMapView";
 import HabitTracker from "@/components/HabitTracker";
+import ScheduleOnetime from "@/components/ScheduleOnetime";
 import { AlertTriangle, ArrowLeft, ChevronRight, Map, Plus, Target, Trash2, Undo2, Wand2, X, Zap } from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
@@ -44,6 +46,8 @@ type Props = {
   onUpdateBehaviorText: (id: string, text: string) => void;
   onSetBehaviorType: (id: string, type: BehaviorType) => void;
   onShrinkBehavior: (id: string, text: string) => void;
+  onScheduleBehavior: (cardId: string, title: string, date: ISODate) => void;
+  tasks: Task[];
   onSetBehaviorAxis: (id: string, patch: { impact?: number; feasibility?: number }) => void;
   onResetBehaviorAxes: (aspirationId: string) => void;
   onUndo: () => void;
@@ -115,6 +119,8 @@ export default function HabitLabView({
   onUpdateBehaviorText,
   onSetBehaviorType,
   onShrinkBehavior,
+  onScheduleBehavior,
+  tasks,
   onSetBehaviorAxis,
   onResetBehaviorAxes,
   onUndo,
@@ -438,6 +444,12 @@ export default function HabitLabView({
           </span>
         )}
 
+        {b.type === "onetime" && !isEditing && (
+          <div className="w-full flex items-center">
+            <ScheduleOnetime card={b} tasks={tasks} onSchedule={onScheduleBehavior} />
+          </div>
+        )}
+
         {needsBreakdown(b.type) && !isEditing && (
           <button
             type="button"
@@ -620,6 +632,9 @@ export default function HabitLabView({
             onDelete={onDeleteBehavior}
             onReplaceText={onShrinkBehavior}
             onAddExtra={(items) => onAddBehaviors(open.id, items)}
+            onetimeCards={openCards.filter((b) => b.type === "onetime")}
+            tasks={tasks}
+            onSchedule={onScheduleBehavior}
             onAddHabit={handleAddHabit}
             habitBehaviorIds={habitBehaviorIds}
             onBack={() => setMapOpen(false)}

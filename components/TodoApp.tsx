@@ -328,6 +328,14 @@ export default function TodoApp() {
     );
   }
 
+  // 一次性任务 → 排进日视图。行为卡记下 taskId，别重复排
+  function scheduleBehavior(cardId: string, title: string, date: ISODate) {
+    const taskId = `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setTasks((prev) => [...prev, { id: taskId, title, date, status: "todo" as TaskStatus }]);
+    snapshotLab();
+    setBehaviorCards((prev) => prev.map((b) => (b.id === cardId ? { ...b, taskId } : b)));
+  }
+
   // 「改小」专用：换掉文字但保留类型（它还是同一种可重复行为，不该退回未判定），
   // 清掉可行性——旧分数是给"难版本"打的，改小之后必须重拖一次
   function shrinkBehavior(id: string, text: string) {
@@ -490,6 +498,8 @@ export default function TodoApp() {
           onUpdateBehaviorText={updateBehaviorText}
           onSetBehaviorType={setBehaviorType}
           onShrinkBehavior={shrinkBehavior}
+          onScheduleBehavior={scheduleBehavior}
+          tasks={safeTasks}
           onSetBehaviorAxis={setBehaviorAxis}
           onResetBehaviorAxes={resetBehaviorAxes}
           onUndo={undoLab}

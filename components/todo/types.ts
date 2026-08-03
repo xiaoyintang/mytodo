@@ -65,6 +65,8 @@ export interface BehaviorCard {
   /** 焦点地图两轴（二期填）：影响力 / 我能不能做到 */
   impact?: number;
   feasibility?: number;
+  /** 一次性任务排进日视图之后，关联的那个 Task 的 id */
+  taskId?: string;
 }
 
 /**
