@@ -4,9 +4,21 @@ import { useMemo, useState } from "react";
 import TodoDayView from "@/components/TodoDayView";
 import TodoWeekView from "@/components/TodoWeekView";
 import TimeLogView from "@/components/TimeLogView";
+import HabitLabView from "@/components/HabitLabView";
 import AddTaskModal from "@/components/AddTaskModal";
 import SyncModal from "@/components/SyncModal";
-import type { EntryCategory, ISODate, Task, TimeEntry, ViewMode, TaskStatus } from "@/components/todo/types";
+import type {
+  Aspiration,
+  AspirationKind,
+  BehaviorCard,
+  BehaviorType,
+  EntryCategory,
+  ISODate,
+  Task,
+  TimeEntry,
+  ViewMode,
+  TaskStatus,
+} from "@/components/todo/types";
 import { toISODate, parseISODate, addDays, startOfWeek } from "@/components/todo/date";
 import { useLocalStorageState } from "@/components/todo/storage";
 import { useCloudSync } from "@/components/todo/sync";
@@ -14,7 +26,12 @@ import { Cloud, CloudOff, RefreshCw } from "lucide-react";
 
 const STORAGE_KEY = "mytodo.tasks.v1";
 const ENTRIES_KEY = "mytodo.entries.v1";
+// 习惯实验室（一期只存本地，暂不进云同步）
+const ASPIRATIONS_KEY = "mytodo.aspirations.v1";
+const BEHAVIORS_KEY = "mytodo.behaviors.v1";
 const EMPTY_ENTRIES: TimeEntry[] = [];
+const EMPTY_ASPIRATIONS: Aspiration[] = [];
+const EMPTY_BEHAVIORS: BehaviorCard[] = [];
 
 function seedTasks(today: ISODate): Task[] {
   // Generate dates for the current week
@@ -83,6 +100,11 @@ export default function TodoApp() {
     EMPTY_ENTRIES,
   );
 
+  const { value: aspirations, setValue: setAspirations, hydrated: aspHydrated } =
+    useLocalStorageState<Aspiration[]>(ASPIRATIONS_KEY, EMPTY_ASPIRATIONS);
+  const { value: behaviorCards, setValue: setBehaviorCards, hydrated: behHydrated } =
+    useLocalStorageState<BehaviorCard[]>(BEHAVIORS_KEY, EMPTY_BEHAVIORS);
+
   const [viewMode, setViewMode] = useState<ViewMode>("day");
   const [selectedDate, setSelectedDate] = useState<ISODate>(todayIso);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -92,6 +114,8 @@ export default function TodoApp() {
 
   const safeTasks = hydrated ? tasks : seedTasks(todayIso);
   const safeEntries = entriesHydrated ? entries : EMPTY_ENTRIES;
+  const safeAspirations = aspHydrated ? aspirations : EMPTY_ASPIRATIONS;
+  const safeBehaviors = behHydrated ? behaviorCards : EMPTY_BEHAVIORS;
 
   // 多设备同步码
   const sync = useCloudSync({
@@ -204,6 +228,40 @@ export default function TodoApp() {
     setEntriesHistory((h) => h.slice(0, -1));
   }
 
+  // ===== 习惯实验室 =====
+
+  function createAspiration(title: string, kind: AspirationKind) {
+    const a: Aspiration = {
+      id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      title,
+      kind,
+      createdAt: Date.now(),
+    };
+    setAspirations((prev) => [...prev, a]);
+  }
+
+  // 删愿望连它下面的行为一起删，不留孤儿卡片
+  function deleteAspiration(id: string) {
+    setAspirations((prev) => prev.filter((a) => a.id !== id));
+    setBehaviorCards((prev) => prev.filter((b) => b.aspirationId !== id));
+  }
+
+  function addBehaviors(aspirationId: string, items: Array<{ text: string; type: BehaviorType }>) {
+    const now = Date.now();
+    const cards: BehaviorCard[] = items.map((it, i) => ({
+      id: `b-${now}-${i}-${Math.random().toString(36).slice(2, 7)}`,
+      aspirationId,
+      text: it.text,
+      type: it.type,
+      createdAt: now,
+    }));
+    setBehaviorCards((prev) => [...prev, ...cards]);
+  }
+
+  function deleteBehavior(id: string) {
+    setBehaviorCards((prev) => prev.filter((b) => b.id !== id));
+  }
+
   // Navigate to previous week (move selectedDate back 7 days)
   function goToPrevWeek() {
     const current = parseISODate(selectedDate);
@@ -253,6 +311,17 @@ export default function TodoApp() {
           onAddEntry={addEntry}
           onPrevWeek={goToPrevWeek}
           onNextWeek={goToNextWeek}
+        />
+      ) : viewMode === "habit" ? (
+        <HabitLabView
+          viewMode={viewMode}
+          onChangeViewMode={setViewMode}
+          aspirations={safeAspirations}
+          behaviors={safeBehaviors}
+          onCreateAspiration={createAspiration}
+          onDeleteAspiration={deleteAspiration}
+          onAddBehaviors={addBehaviors}
+          onDeleteBehavior={deleteBehavior}
         />
       ) : (
         <TimeLogView

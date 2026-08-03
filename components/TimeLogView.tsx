@@ -49,6 +49,7 @@ const TABS: Array<{ mode: ViewMode; label: string }> = [
   { mode: "day", label: "日视图" },
   { mode: "week", label: "周视图" },
   { mode: "log", label: "记录" },
+  { mode: "habit", label: "习惯" },
 ];
 
 // AI 解析请求：8 秒超时 + 失败自动重试一次（应对 VPN 抽风）。返回 null 表示彻底失败（由调用方降级规则）。
@@ -565,7 +566,7 @@ export default function TimeLogView({
               type="button"
               onClick={() => onChangeViewMode(tab.mode)}
               className={[
-                "flex-1 flex items-center justify-center rounded-lg px-4 py-[10px]",
+                "flex-1 flex items-center justify-center rounded-lg px-2 py-[10px]",
                 viewMode === tab.mode
                   ? "bg-[var(--color-bg-white)] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
                   : "",

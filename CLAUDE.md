@@ -50,6 +50,15 @@ TodoApp.tsx（状态管理中心）
 │   ├── 时间安排模式切换：固定时间段 / 时长目标（targetMinutes）
 │   └── TimePicker.tsx - 自定义时间选择器（小时/分钟滚动）
 │
+├── HabitLabView.tsx - 「习惯」视图 = 习惯实验室（福格行为设计，一期）
+│   ├── 一级页：我的愿望列表（愿望 aspiration / 结果 outcome，都不是行为）
+│   ├── 二级页：某个愿望的行为集群
+│   │   ├── 魔法棒按钮 → /api/behavior (mode: wand)，从愿望发散 8-10 个候选行为
+│   │   ├── 「我自己想到的」输入框 → /api/behavior (mode: judge)，判定愿望/结果/行为
+│   │   │   └── 判定为愿望/结果时顺手发散成候选行为（关键：光说"这不是行为"没用）
+│   │   └── 候选行为先预览勾选，确认后收进集群；按 新习惯/一次性/要戒掉 分组展示
+│   └── 数据只存本地（mytodo.aspirations.v1 / mytodo.behaviors.v1），暂未接云同步
+│
 └── TimeLogView.tsx - 「记录」视图（柳比歇夫时间记录法）
     ├── 自然语言快速记录框（配合手机键盘语音输入即可"口述记账"）
     ├── 解析优先走 /api/parse（AI），失败/未配 key 降级 nlparse.ts 规则解析
@@ -82,13 +91,32 @@ TodoApp.tsx（状态管理中心）
 
 分类存在 `TimeEntry` 上，跟着现有云同步走，多设备一致。AI 不可用（501/断网）时显示"未分类"，不影响其他功能。
 
+### 习惯实验室（福格行为设计）
+
+分三期做，目前**一期已完成**：
+
+| 期 | 内容 | 状态 |
+|---|---|---|
+| 一 | 愿望 + 行为集群收集（AI 判定 / 魔法棒发散） | ✅ |
+| 二 | 焦点地图：纵轴影响力、横轴能不能做到 → 右上角=黄金行为 | 待做 |
+| 三 | 黄金行为 → 微习惯，锚点从时间台账里推荐，打卡回流校正横轴 | 待做 |
+
+二期设计要点（别做成手指自由拖拽的二维画布）：福格的方法是**分两轮排**，一轮只判断一个维度，
+所以输入用一次一张卡的引导式打分（影响力 大/中/小 → 可行性 能/勉强/不能），**二维图作为结果呈现**。
+
+三期设计要点：微习惯分两种记法，由行为本身决定，不是每次让用户选——
+**计时型**（看书）照旧在「记录」里记一笔，习惯完成状态靠同名匹配自动推出，不要求打两次卡；
+**打卡型**（俯卧撑）只记 `habitId + date`，不算时长、不进时间台账，免得污染柳比歇夫统计。
+
 ### 关键类型（components/todo/types.ts）
 
 - `Task`：id, title, date (ISODate), startTime?, endTime?, status, priority?, tag?, targetMinutes?
 - `TimeEntry`：id, date, title, minutes, startTime?, endTime?, taskId?, category?, categorySource?
 - `EntryCategory`："正事" | "娱乐" | "休息"
+- `Aspiration`：id, title, kind（"aspiration" 愿望 | "outcome" 结果）, createdAt
+- `BehaviorCard`：id, aspirationId, text, type（"habit" | "onetime" | "stop"）, createdAt, impact?, feasibility?
 - `TaskStatus`："todo" | "in_progress" | "done"
-- `ViewMode`："day" | "week" | "log"
+- `ViewMode`："day" | "week" | "log" | "habit"
 - `ISODate`："YYYY-MM-DD" 格式字符串
 
 ### 样式系统
@@ -100,6 +128,8 @@ TodoApp.tsx（状态管理中心）
 ## 硬性约束
 
 - localStorage key 必须保持 `mytodo.tasks.v1`（任务）和 `mytodo.entries.v1`（时间记录）
+- 云同步（`sync.ts`）目前只同步 tasks + entries；习惯实验室的两个 key 还没接进去，
+  接的时候要单独改、单独验——那是用户数据的命根子
 - 任务状态字段用 `"done"`（不是 `"completed"`）
 - Task 类型的标签是单数 `tag?: TaskTag`（不是 `tags` 数组）
 - 禁止 `<button>` 嵌套 `<button>`（会导致 React hydration 错误）

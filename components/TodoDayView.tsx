@@ -173,13 +173,13 @@ export default function TodoDayView({
       <div className="w-full flex flex-col gap-4 px-6">
         {/* Tab Container */}
         <div className="w-full flex gap-1 bg-[var(--color-bg-gray-light)] rounded-[10px] p-1">
-          {([["day", "日视图"], ["week", "周视图"], ["log", "记录"]] as Array<[ViewMode, string]>).map(([mode, label]) => (
+          {([["day", "日视图"], ["week", "周视图"], ["log", "记录"], ["habit", "习惯"]] as Array<[ViewMode, string]>).map(([mode, label]) => (
             <button
               key={mode}
               type="button"
               onClick={() => onChangeViewMode(mode)}
               className={[
-                "flex-1 flex items-center justify-center rounded-lg px-4 py-[10px]",
+                "flex-1 flex items-center justify-center rounded-lg px-2 py-[10px]",
                 viewMode === mode
                   ? "bg-[var(--color-bg-white)] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
                   : "",

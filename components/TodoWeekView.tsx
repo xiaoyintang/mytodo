@@ -263,13 +263,13 @@ export default function TodoWeekView({
         {/* View Switcher + Stats */}
         <div className="w-full flex items-center justify-between px-4 pb-3">
           <div className="flex gap-1 bg-[var(--color-bg-gray-light)] rounded-[10px] p-1">
-            {([["day", "日"], ["week", "周"], ["log", "记录"]] as Array<[ViewMode, string]>).map(([mode, label]) => (
+            {([["day", "日"], ["week", "周"], ["log", "记录"], ["habit", "习惯"]] as Array<[ViewMode, string]>).map(([mode, label]) => (
               <button
                 key={mode}
                 type="button"
                 onClick={() => onChangeViewMode(mode)}
                 className={[
-                  "flex items-center justify-center rounded-lg px-4 py-2 transition-all",
+                  "flex items-center justify-center rounded-lg px-3 py-2 transition-all",
                   viewMode === mode
                     ? "bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
                     : "hover:bg-white/50",

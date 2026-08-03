@@ -1,4 +1,4 @@
-export type ViewMode = "day" | "week" | "log";
+export type ViewMode = "day" | "week" | "log" | "habit";
 
 export type TaskStatus = "todo" | "in_progress" | "done";
 
@@ -21,6 +21,34 @@ export interface Task {
   targetMinutes?: number;
   /** 手动完成进度 0-100（非时长目标任务用；与状态联动：0=待办 100=已完成 其余=进行中） */
   progress?: number;
+}
+
+// ===== 习惯实验室（福格行为设计）=====
+
+/** 愿望("想更健康"，抽象) vs 结果("一个月瘦5斤"，可衡量)——两者都不是行为 */
+export type AspirationKind = "aspiration" | "outcome";
+
+/** 一个愿望/结果，行为集群挂在它下面 */
+export interface Aspiration {
+  id: string;
+  title: string;
+  kind: AspirationKind;
+  createdAt: number;
+}
+
+/** 行为的三种类型（福格：一次性行为 / 新习惯 / 要戒掉的习惯） */
+export type BehaviorType = "onetime" | "habit" | "stop";
+
+/** 行为集群里的一张卡 */
+export interface BehaviorCard {
+  id: string;
+  aspirationId: string;
+  text: string;
+  type: BehaviorType;
+  createdAt: number;
+  /** 焦点地图两轴（二期填）：影响力 / 我能不能做到，1-3 */
+  impact?: number;
+  feasibility?: number;
 }
 
 /** 记录的大类，用于"今天时间都去哪了"的饼图 */
