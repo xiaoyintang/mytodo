@@ -153,6 +153,7 @@ export default function HabitLabView({
   const [deleteAspId, setDeleteAspId] = useState<string | null>(null);
 
   const [mapOpen, setMapOpen] = useState(false); // 三级页：焦点地图
+  const [sub, setSub] = useState<"today" | "goals">("today"); // 首页分两栏，习惯多了不用一路下拉
   const habitBehaviorIds = new Set(habits.filter((h) => !h.archived && h.behaviorId).map((h) => h.behaviorId!));
 
   const open = openId ? aspirations.find((a) => a.id === openId) ?? null : null;
@@ -160,6 +161,7 @@ export default function HabitLabView({
   const unsorted = openCards.filter((b) => b.type === "unsorted");
   const judged = openCards.filter((b) => b.type !== "unsorted");
   const repeatable = openCards.filter((b) => isRepeatable(b.type)); // 只有可重复行为进焦点地图
+  const liveHabits = habits.filter((h) => !h.archived);
   const goldenCount = repeatable.filter(isGolden).length;
 
   function resetTransient() {
@@ -543,8 +545,72 @@ export default function HabitLabView({
         </div>
       )}
 
+      {/* 子 tab：今天的习惯 / 目标和行为集群，两件事分开放 */}
+      <div className="w-full px-6 pt-3">
+        <div className="w-full flex gap-4 border-b border-[var(--color-border)]">
+          {([["today", `今天${liveHabits.length > 0 ? ` (${liveHabits.length})` : ""}`], ["goals", `目标${aspirations.length > 0 ? ` (${aspirations.length})` : ""}`]] as Array<["today" | "goals", string]>).map(
+            ([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setSub(key)}
+                className={[
+                  "pb-2 -mb-[1px] border-b-2 transition-colors",
+                  sub === key
+                    ? "border-[var(--color-primary)]"
+                    : "border-transparent",
+                ].join(" ")}
+              >
+                <span
+                  className={[
+                    "text-[14px]",
+                    sub === key
+                      ? "text-[var(--color-primary)] font-semibold"
+                      : "text-[var(--color-text-secondary)] font-medium",
+                  ].join(" ")}
+                >
+                  {label}
+                </span>
+              </button>
+            ),
+          )}
+        </div>
+      </div>
+
       <div className="w-full flex flex-col gap-5 px-6 pt-5 pb-6">
-        {open && mapOpen ? (
+        {sub === "today" ? (
+          liveHabits.length > 0 ? (
+            <HabitTracker
+              aspirations={aspirations}
+              habits={habits}
+              logs={habitLogs}
+              entries={entries}
+              today={today}
+              onLog={onLogHabit}
+              onUndoLog={onUndoHabitLog}
+              onSetAnchor={onSetHabitAnchor}
+              onToggleMeasure={onToggleHabitMeasure}
+              onDeleteHabit={onDeleteHabit}
+            />
+          ) : (
+            <div className="w-full flex flex-col gap-3 p-4 rounded-[10px] bg-[var(--color-bg-gray-lighter)] border border-[var(--color-border)]">
+              <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">
+                还没有要养的习惯
+              </span>
+              <p className="text-[12px] leading-relaxed text-[var(--color-text-secondary)]">
+                习惯不是想出来的，是<strong>筛出来的</strong>。去「目标」那边写下一个愿望，
+                把想到的行为都倒进去，排一遍焦点地图——落在右上角的黄金行为才配占你一个格子。
+              </p>
+              <button
+                type="button"
+                onClick={() => setSub("goals")}
+                className="self-start px-3 py-1.5 rounded-lg bg-[var(--color-primary)] text-white text-[13px] font-medium hover:bg-[#1d4ed8] transition-colors"
+              >
+                去「目标」 →
+              </button>
+            </div>
+          )
+        ) : open && mapOpen ? (
           /* ===== 三级页：焦点地图 ===== */
           <FocusMapView
             aspiration={open}
@@ -559,21 +625,8 @@ export default function HabitLabView({
             onBack={() => setMapOpen(false)}
           />
         ) : !open ? (
-          /* ===== 一级页：今天的习惯 + 我的愿望 ===== */
+          /* ===== 一级页：我的愿望 ===== */
           <>
-            <HabitTracker
-              aspirations={aspirations}
-              habits={habits}
-              logs={habitLogs}
-              entries={entries}
-              today={today}
-              onLog={onLogHabit}
-              onUndoLog={onUndoHabitLog}
-              onSetAnchor={onSetHabitAnchor}
-              onToggleMeasure={onToggleHabitMeasure}
-              onDeleteHabit={onDeleteHabit}
-            />
-
             <div className="w-full flex items-center justify-between">
               <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">我的愿望</span>
               <button
