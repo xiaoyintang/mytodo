@@ -83,6 +83,21 @@ export function looksLikeAspiration(text: string): boolean {
   return ASPIRATION_HINTS.some((k) => t.includes(k));
 }
 
+// 一看就知道要花整段时间的事，进习惯表时按"时长型"处理——
+// 它的次数和分钟数直接从时间台账读，不要求你打第二次卡。
+// 注意：不能把"分钟/小时"当信号——"睡前1小时调暗灯光"里的"1小时"说的是
+// 什么时候做，不是做多久，那条其实是发生型。猜错了用户能在习惯表里一键改。
+const DURATION_HINTS = [
+  "看书", "读书", "阅读", "学习", "复习", "背单词", "刷题", "做题", "练琴", "练习",
+  "跑步", "健身", "锻炼", "冥想", "打坐", "剪辑", "复盘", "养号", "运营", "写作", "写代码",
+];
+
+/** 猜这条行为该按时长记还是按次数记（进习惯表时用，用户之后可以改） */
+export function guessMeasure(text: string): "count" | "duration" {
+  const t = text.trim();
+  return DURATION_HINTS.some((k) => t.includes(k)) ? "duration" : "count";
+}
+
 /** 待判定的条目（用户手动改判过的不再动） */
 export function pendingJudgement(cards: BehaviorCard[]): BehaviorCard[] {
   return cards.filter((c) => c.type === "unsorted" && c.typeSource !== "user");

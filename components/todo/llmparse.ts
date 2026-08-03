@@ -148,6 +148,24 @@ ${BEHAVIOR_TYPES}
 3. 描述里带上什么时候/在哪做更好；小到几乎不需要意志力
 4. 别重复用户已经收集过的（会告诉你他已有哪些）`;
 
+const SHRINK_PROMPT = `你是福格行为设计（BJ Fogg, Tiny Habits）的教练。
+
+用户有一条行为：影响力很大，但他自己做不到。福格的解法不是放弃，是**把它改小**——
+小到不需要动用任何意志力，最好 30 秒内能做完，小到"就算今天状态最差也能做"。
+
+例：
+- "每天跑步30分钟" → "换上跑鞋"、"跑到小区门口就算完成"、"做2个开合跳"
+- "读30分钟书" → "读2分钟书"、"读一页"、"打开书读一段"
+- "睡前做5分钟拉伸" → "睡前拉伸一次腿"、"上床前做1个前屈"
+
+输出格式（必须是合法 JSON，不要输出其他内容）：
+{"behaviors":[{"text":"改小后的行为","type":"habit"}]}
+
+规则：
+1. 给 3 个，从小到更小，都保留原来的方向
+2. 每个都必须小到"不需要意志力"——这是唯一标准，不要给"稍微少一点"的版本
+3. type 用 habit；如果原行为是"不做某事"，用 stop`;
+
 const VALID_TYPE = new Set<string>(["aspiration", "outcome", "onetime", "habit", "stop"]);
 const WAND_TYPE = new Set<string>(["onetime", "habit", "stop"]);
 
@@ -201,6 +219,14 @@ export async function sortBehaviorsWithLLM(
       };
     })
     .filter((x): x is LLMJudgement => x !== null);
+}
+
+/** 改小：把"影响力大但做不到"的行为拆成不需要意志力的版本 */
+export async function shrinkWithLLM(text: string, goal?: string): Promise<LLMBehavior[] | null> {
+  const user = goal ? `我的目标：${goal}\n做不到的这条行为：${text}` : `做不到的这条行为：${text}`;
+  const parsed = await callLLMJson(SHRINK_PROMPT, user);
+  if (parsed === null) return null;
+  return pickBehaviors((parsed as { behaviors?: unknown })?.behaviors);
 }
 
 /** 魔法棒：从愿望/成果发散一批候选行为 */

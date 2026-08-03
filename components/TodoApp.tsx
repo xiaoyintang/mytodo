@@ -12,6 +12,8 @@ import type {
   AspirationKind,
   BehaviorCard,
   BehaviorType,
+  Habit,
+  HabitLog,
   EntryCategory,
   ISODate,
   Task,
@@ -29,9 +31,13 @@ const ENTRIES_KEY = "mytodo.entries.v1";
 // 习惯实验室（一期只存本地，暂不进云同步）
 const ASPIRATIONS_KEY = "mytodo.aspirations.v1";
 const BEHAVIORS_KEY = "mytodo.behaviors.v1";
+const HABITS_KEY = "mytodo.habits.v1";
+const HABIT_LOGS_KEY = "mytodo.habitlogs.v1";
 const EMPTY_ENTRIES: TimeEntry[] = [];
 const EMPTY_ASPIRATIONS: Aspiration[] = [];
 const EMPTY_BEHAVIORS: BehaviorCard[] = [];
+const EMPTY_HABITS: Habit[] = [];
+const EMPTY_HABIT_LOGS: HabitLog[] = [];
 
 function seedTasks(today: ISODate): Task[] {
   // Generate dates for the current week
@@ -105,6 +111,11 @@ export default function TodoApp() {
   const { value: behaviorCards, setValue: setBehaviorCards, hydrated: behHydrated } =
     useLocalStorageState<BehaviorCard[]>(BEHAVIORS_KEY, EMPTY_BEHAVIORS);
 
+  const { value: habits, setValue: setHabits, hydrated: habitsHydrated } =
+    useLocalStorageState<Habit[]>(HABITS_KEY, EMPTY_HABITS);
+  const { value: habitLogs, setValue: setHabitLogs, hydrated: logsHydrated } =
+    useLocalStorageState<HabitLog[]>(HABIT_LOGS_KEY, EMPTY_HABIT_LOGS);
+
   const [viewMode, setViewMode] = useState<ViewMode>("day");
   const [selectedDate, setSelectedDate] = useState<ISODate>(todayIso);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -118,6 +129,8 @@ export default function TodoApp() {
   const safeEntries = entriesHydrated ? entries : EMPTY_ENTRIES;
   const safeAspirations = aspHydrated ? aspirations : EMPTY_ASPIRATIONS;
   const safeBehaviors = behHydrated ? behaviorCards : EMPTY_BEHAVIORS;
+  const safeHabits = habitsHydrated ? habits : EMPTY_HABITS;
+  const safeHabitLogs = logsHydrated ? habitLogs : EMPTY_HABIT_LOGS;
 
   // 多设备同步码
   const sync = useCloudSync({
@@ -323,6 +336,64 @@ export default function TodoApp() {
     );
   }
 
+  // ===== 微习惯 =====
+
+  // 黄金行为毕业成微习惯。同一条行为不重复加
+  function addHabit(input: Omit<Habit, "id" | "createdAt">) {
+    if (input.behaviorId && habits.some((h) => h.behaviorId === input.behaviorId && !h.archived)) return;
+    const h: Habit = {
+      ...input,
+      id: `h-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      createdAt: Date.now(),
+    };
+    setHabits((prev) => [...prev, h]);
+  }
+
+  function setHabitAnchor(habitId: string, anchor: string) {
+    setHabits((prev) =>
+      prev.map((h) => (h.id === habitId ? { ...h, anchor: anchor || undefined } : h)),
+    );
+  }
+
+  // 时长型 / 发生型猜错了一键改
+  function toggleHabitMeasure(habitId: string) {
+    setHabits((prev) =>
+      prev.map((h) =>
+        h.id === habitId ? { ...h, measure: h.measure === "duration" ? "count" : "duration" } : h,
+      ),
+    );
+  }
+
+  function deleteHabit(habitId: string) {
+    setHabits((prev) => prev.filter((h) => h.id !== habitId));
+    setHabitLogs((prev) => prev.filter((l) => l.habitId !== habitId));
+  }
+
+  // 打卡：一天可以点很多次，每次一行（锚点一天可能触发好几次）
+  function logHabit(habitId: string) {
+    const d = new Date();
+    const log: HabitLog = {
+      id: `hl-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      habitId,
+      date: toISODate(d) as ISODate,
+      at: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`,
+    };
+    setHabitLogs((prev) => [...prev, log]);
+  }
+
+  // 点错了撤掉今天最后一次
+  function undoHabitLog(habitId: string) {
+    const todayIso2 = toISODate(new Date());
+    setHabitLogs((prev) => {
+      let lastIdx = -1;
+      prev.forEach((l, i) => {
+        if (l.habitId === habitId && l.date === todayIso2) lastIdx = i;
+      });
+      if (lastIdx < 0) return prev;
+      return prev.filter((_, i) => i !== lastIdx);
+    });
+  }
+
   // 焦点地图两轴（0-100，现在只落 25/75 两档）
   function setBehaviorAxis(id: string, patch: { impact?: number; feasibility?: number }) {
     setBehaviorCards((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
@@ -409,6 +480,16 @@ export default function TodoApp() {
           onResetBehaviorAxes={resetBehaviorAxes}
           onUndo={undoLab}
           canUndo={labHistory.length > 0}
+          entries={safeEntries}
+          today={todayIso}
+          habits={safeHabits}
+          habitLogs={safeHabitLogs}
+          onAddHabit={addHabit}
+          onLogHabit={logHabit}
+          onUndoHabitLog={undoHabitLog}
+          onSetHabitAnchor={setHabitAnchor}
+          onToggleHabitMeasure={toggleHabitMeasure}
+          onDeleteHabit={deleteHabit}
           onDeleteBehavior={deleteBehavior}
         />
       ) : (

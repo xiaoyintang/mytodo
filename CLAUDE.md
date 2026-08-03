@@ -100,19 +100,30 @@ TodoApp.tsx（状态管理中心）
 | 期 | 内容 | 状态 |
 |---|---|---|
 | 一 | 愿望 + 收集口 + 批量判定 + 改判 + 魔法棒 | ✅ |
-| 二 | 焦点地图：纵轴影响力、横轴能不能做到 → 右上角=黄金行为 | 待做 |
-| 三 | 黄金行为 → 微习惯，锚点从时间台账里推荐，打卡回流校正横轴 | 待做 |
+| 二 | 焦点地图（两根滑块）→ 黄金行为按 impact×feasibility 排序 | ✅ |
+| 三 | 黄金行为 → 微习惯 + 锚点 + 打卡计数 | ✅ |
+| 四 | 锚点从时间台账里推荐；打卡数据回流校正横轴 | 待做 |
 
 **铁律：收集与整理必须分离。**收集口回车即存,不调 AI、不问类型、不要求任何决定——
 用户的瓶颈是决策成本,任何在"倒想法"时插入的判断都会让他不用这个功能。
 判定是独立动作,他自己决定什么时候点。
 
-二期设计要点（别做成手指自由拖拽的二维画布）：福格的方法是**分两轮排**，一轮只判断一个维度，
-所以输入用一次一张卡的引导式打分（影响力 大/中/小 → 可行性 能/勉强/不能），**二维图作为结果呈现**。
+焦点地图的交互踩过两次坑，别退回去：
+1. 做成过「一次一张卡两个按钮」的向导 → 用户反馈"跟做问卷一样"，看不到全局、不能跳着来。改成整轮一张列表。
+2. 用过二选一（大/小）→ 只能给出"够不够格"，给不出"哪个最优"。改成 0-100 滑块。
+   横向滑块还顺带绕开了二维自由拖拽绕不开的问题：**横向手势不和页面上下滚动打架**。
+黄金行为排序用 `impact × feasibility` 而不是求和——乘积会惩罚任何一轴的短板。
 
-三期设计要点：微习惯分两种记法，由行为本身决定，不是每次让用户选——
-**计时型**（看书）照旧在「记录」里记一笔，习惯完成状态靠同名匹配自动推出，不要求打两次卡；
-**打卡型**（俯卧撑）只记 `habitId + date`，不算时长、不进时间台账，免得污染柳比歇夫统计。
+微习惯两种记法，由行为本身决定（`guessMeasure` 猜，用户可一键改）：
+- **duration 时长型**（看书）：照旧在「记录」里记一笔，习惯表按同名匹配自动读出今天的次数和分钟数，
+  **不要求打第二次卡**。别把"分钟/小时"当判断信号——"睡前1小时调暗灯光"里的"1小时"说的是什么时候做。
+- **count 发生型**（俯卧撑）：点一下存一条 `HabitLog{habitId,date,at}`。
+  必须是**累加**不是打钩——福格式锚点一天可能触发好几次（"上完厕所就做两个俯卧撑"）。
+  不算时长、不进时间台账，免得污染柳比歇夫统计。
+
+**点击本身就是奖励**（用户原话）——这正是福格的「庆祝」：习惯固化靠的是做完那一瞬间的正反馈。
+所以 +1 按钮要大、按下去要有即时回应（变绿 + 打勾 + 缩放）。**不做连续天数、不做完成率**，
+断了就是断了，不制造"破戒"感。
 
 ### 关键类型（components/todo/types.ts）
 
@@ -120,7 +131,10 @@ TodoApp.tsx（状态管理中心）
 - `TimeEntry`：id, date, title, minutes, startTime?, endTime?, taskId?, category?, categorySource?
 - `EntryCategory`："正事" | "娱乐" | "休息"
 - `Aspiration`：id, title, kind（"aspiration" 愿望 | "outcome" 结果）, createdAt
-- `BehaviorCard`：id, aspirationId, text, type（"habit" | "onetime" | "stop"）, createdAt, impact?, feasibility?
+- `BehaviorCard`：id, aspirationId, text, type, typeSource?, reason?, hasDecision?, impact?, feasibility?
+  - type: "unsorted" | "aspiration" | "outcome" | "onetime" | "habit" | "stop"
+- `Habit`：id, title, anchor?, measure（"count" | "duration"）, behaviorId?, aspirationId?, createdAt
+- `HabitLog`：id, habitId, date, at（发生型的一次打卡，一天可以多条）
 - `TaskStatus`："todo" | "in_progress" | "done"
 - `ViewMode`："day" | "week" | "log" | "habit"
 - `ISODate`："YYYY-MM-DD" 格式字符串
@@ -134,6 +148,7 @@ TodoApp.tsx（状态管理中心）
 ## 硬性约束
 
 - localStorage key 必须保持 `mytodo.tasks.v1`（任务）和 `mytodo.entries.v1`（时间记录）
+- 习惯实验室的 key：`mytodo.aspirations.v1` / `mytodo.behaviors.v1` / `mytodo.habits.v1` / `mytodo.habitlogs.v1`
 - 云同步（`sync.ts`）目前只同步 tasks + entries；习惯实验室的两个 key 还没接进去，
   接的时候要单独改、单独验——那是用户数据的命根子
 - 任务状态字段用 `"done"`（不是 `"completed"`）

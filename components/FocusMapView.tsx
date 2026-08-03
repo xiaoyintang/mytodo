@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { Aspiration, BehaviorCard } from "@/components/todo/types";
 import { TYPE_LABEL, TYPE_STYLE, goldenScore, isGolden, isHighImpact } from "@/components/todo/behavior";
-import { ArrowLeft, RotateCcw, Star } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronUp, RotateCcw, Scissors, Star, Trash2 } from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
 type AxisPatch = { impact?: number; feasibility?: number };
@@ -14,6 +14,11 @@ type Props = {
   cards: BehaviorCard[]; // 只传可重复行为（habit + stop）
   onSetAxis: (id: string, patch: AxisPatch) => void;
   onResetAxes: () => void;
+  onDelete: (id: string) => void;
+  onShrink: (card: BehaviorCard) => void;
+  shrinkingId: string | null;
+  onAddHabit: (card: BehaviorCard) => void;
+  habitBehaviorIds: Set<string>;
   onBack: () => void;
 };
 
@@ -33,9 +38,21 @@ const W = 336;
 const H = 200;
 const PAD = 10;
 
-export default function FocusMapView({ aspiration, cards, onSetAxis, onResetAxes, onBack }: Props) {
+export default function FocusMapView({
+  aspiration,
+  cards,
+  onSetAxis,
+  onResetAxes,
+  onDelete,
+  onShrink,
+  shrinkingId,
+  onAddHabit,
+  habitBehaviorIds,
+  onBack,
+}: Props) {
   const [step, setStep] = useState<Step>(1);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [restOpen, setRestOpen] = useState(false);
 
   const highs = cards.filter(isHighImpact);
   const golden = cards
@@ -43,6 +60,11 @@ export default function FocusMapView({ aspiration, cards, onSetAxis, onResetAxes
     .slice()
     .sort((a, b) => goldenScore(b) - goldenScore(a));
   const plotted = cards.filter((c) => c.impact != null && c.feasibility != null);
+
+  // 影响力高但做不到（左上）——福格的解法是改小，不是删
+  const wantCant = cards.filter((c) => isHighImpact(c) && c.feasibility != null && c.feasibility < 50);
+  // 剩下的：影响力一般的 + 还没排完的
+  const rest = cards.filter((c) => !isGolden(c) && !wantCant.includes(c));
 
   const r1Done = cards.filter((c) => c.impact != null).length;
   const r2Done = highs.filter((c) => c.feasibility != null).length;
@@ -78,6 +100,15 @@ export default function FocusMapView({ aspiration, cards, onSetAxis, onResetAxes
           >
             {placed ? value : "—"}
           </span>
+          <button
+            type="button"
+            onClick={() => onDelete(b.id)}
+            className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0"
+            aria-label="删掉这条"
+            title="排着排着觉得没用？直接删"
+          >
+            <Trash2 className="w-[14px] h-[14px] text-[#A1A1AA]" />
+          </button>
         </div>
         <input
           type="range"
@@ -270,38 +301,148 @@ export default function FocusMapView({ aspiration, cards, onSetAxis, onResetAxes
                 <Star className="w-3.5 h-3.5" fill="currentColor" strokeWidth={0} />
                 黄金行为 · {golden.length} 条（按优先级排序）
               </span>
-              {golden.map((b, i) => (
+              {golden.map((b, i) => {
+                const added = habitBehaviorIds.has(b.id);
+                return (
+                  <div
+                    key={b.id}
+                    className={[
+                      "w-full flex flex-col gap-2 px-3 py-2.5 rounded-[10px] border",
+                      i === 0
+                        ? "bg-[var(--color-primary-light)] border-[1.5px] border-[var(--color-primary)]"
+                        : "bg-white border-[var(--color-border)]",
+                    ].join(" ")}
+                  >
+                    <div className="w-full flex items-center gap-2.5">
+                      <span className="w-5 h-5 rounded-full bg-[var(--color-primary)] text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0">
+                        {i + 1}
+                      </span>
+                      <span className="flex-1 text-[13px] text-[var(--color-text-primary)] leading-snug">
+                        {b.text}
+                      </span>
+                      <span className="text-[10px] text-[var(--color-text-tertiary)] tabular-nums flex-shrink-0">
+                        {b.impact}/{b.feasibility}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => onDelete(b.id)}
+                        className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0"
+                        aria-label="删掉这条"
+                      >
+                        <Trash2 className="w-[14px] h-[14px] text-[#A1A1AA]" />
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onAddHabit(b)}
+                      disabled={added}
+                      className={[
+                        "w-full py-2 rounded-lg text-[13px] font-semibold transition-colors",
+                        added
+                          ? "bg-[var(--color-bg-gray-light)] text-[var(--color-text-tertiary)] cursor-default"
+                          : "bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8]",
+                      ].join(" ")}
+                    >
+                      {added ? "已在习惯表里 ✓" : "加入习惯表 →"}
+                    </button>
+                  </div>
+                );
+              })}
+              <p className="text-[11px] leading-relaxed text-[var(--color-text-secondary)]">
+                第 1 条是影响力和可行性都最高的那个，<strong>从它开始</strong>。
+                福格建议一次只养 1-3 个，别一口气全上。加进去之后在「习惯」首页配锚点、打卡。
+              </p>
+            </div>
+          ) : (
+            <p className="text-[12px] text-[var(--color-text-secondary)] leading-relaxed">
+              还没有落进右上角的行为。要么把下面「影响力高但做不到」那些
+              <strong>改小到不需要意志力</strong>，要么回集群里再想几条。
+            </p>
+          )}
+
+          {/* 影响力高但做不到：福格的解法是改小，不是删 */}
+          {wantCant.length > 0 && (
+            <div className="w-full flex flex-col gap-2 pt-1">
+              <span className="text-[13px] font-semibold text-[#B45309]">
+                影响力高，但做不到 · {wantCant.length} 条
+              </span>
+              <p className="text-[11px] leading-relaxed text-[var(--color-text-secondary)]">
+                <strong>这些别急着删</strong>——福格的解法是把它改小，小到不需要意志力
+                （「读30分钟书」做不到，「读2分钟」就做得到）。改完回第 2 轮重新拖一次。
+              </p>
+              {wantCant.map((b) => (
                 <div
                   key={b.id}
-                  className={[
-                    "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-[10px] border",
-                    i === 0
-                      ? "bg-[var(--color-primary-light)] border-[1.5px] border-[var(--color-primary)]"
-                      : "bg-white border-[var(--color-border)]",
-                  ].join(" ")}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 rounded-[10px] bg-[#FFFBEB] border border-[#FDE68A]"
                 >
-                  <span className="w-5 h-5 rounded-full bg-[var(--color-primary)] text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0">
-                    {i + 1}
-                  </span>
                   <span className="flex-1 text-[13px] text-[var(--color-text-primary)] leading-snug">
                     {b.text}
                   </span>
                   <span className="text-[10px] text-[var(--color-text-tertiary)] tabular-nums flex-shrink-0">
                     {b.impact}/{b.feasibility}
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => onShrink(b)}
+                    disabled={shrinkingId !== null}
+                    className="flex items-center gap-1 px-2 py-1 rounded-md border border-[#B45309] text-[11px] font-medium text-[#B45309] hover:bg-[#FEF3C7] transition-colors disabled:opacity-50 flex-shrink-0"
+                  >
+                    <Scissors className="w-3 h-3" />
+                    {shrinkingId === b.id ? "改小中..." : "改小"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDelete(b.id)}
+                    className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0"
+                    aria-label="删掉这条"
+                  >
+                    <Trash2 className="w-[14px] h-[14px] text-[#A1A1AA]" />
+                  </button>
                 </div>
               ))}
-              <p className="text-[11px] leading-relaxed text-[var(--color-text-secondary)]">
-                第 1 条是影响力和可行性都最高的那个，<strong>从它开始</strong>。
-                福格建议一次只养 1-3 个，别一口气全上。
-                下一步是配锚点——「在我 ___ 之后，我会 ___」，那部分还没做。
-              </p>
             </div>
-          ) : (
-            <p className="text-[12px] text-[var(--color-text-secondary)] leading-relaxed">
-              还没有落进右上角的行为。要么把左上角那些（想做但做不到）
-              <strong>改小到不需要意志力</strong>为止，要么回集群里再想几条。
-            </p>
+          )}
+
+          {/* 剩下两类：收起来，主要用途是删掉 */}
+          {rest.length > 0 && (
+            <div className="w-full flex flex-col gap-1.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setRestOpen((v) => !v)}
+                className="w-full flex items-center gap-1 text-[12px] text-[var(--color-text-tertiary)]"
+              >
+                其他 · {rest.length} 条（影响力一般 / 还没排完）
+                {restOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              </button>
+              {restOpen && (
+                <div className="w-full flex flex-col gap-1.5">
+                  <p className="text-[11px] text-[var(--color-text-tertiary)]">
+                    留着不占地方，觉得没用就删——清单变短才是这一步的意义
+                  </p>
+                  {rest.map((b) => (
+                    <div
+                      key={b.id}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-[10px] bg-[var(--color-bg-gray-lighter)] border border-[var(--color-border)]"
+                    >
+                      <span className="flex-1 text-[12px] text-[var(--color-text-secondary)] leading-snug">
+                        {b.text}
+                      </span>
+                      <span className="text-[10px] text-[var(--color-text-tertiary)] tabular-nums flex-shrink-0">
+                        {b.impact ?? "—"}/{b.feasibility ?? "—"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => onDelete(b.id)}
+                        className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0"
+                        aria-label="删掉这条"
+                      >
+                        <Trash2 className="w-[14px] h-[14px] text-[#A1A1AA]" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
 
           {plotted.length < cards.length && (

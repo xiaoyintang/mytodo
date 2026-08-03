@@ -67,6 +67,36 @@ export interface BehaviorCard {
   feasibility?: number;
 }
 
+/**
+ * 计量方式，由行为本身决定，不是每次让用户选：
+ * - count 发生型：俯卧撑、手机放客厅。锚点一天可能触发好几次，所以是累加次数，
+ *   不算时长、不进时间台账（"俯卧撑1分钟"会污染柳比歇夫统计）
+ * - duration 时长型：看书、练琴。你照旧在「记录」里记一笔，
+ *   习惯这边靠同名匹配自动读出今天的次数和分钟数，不用打第二次卡
+ */
+export type HabitMeasure = "count" | "duration";
+
+/** 从黄金行为毕业出来的微习惯 */
+export interface Habit {
+  id: string;
+  title: string;
+  /** 锚点（福格 MAP 里的 P）：「在我 ___ 之后，我会 ___」。可以先不填 */
+  anchor?: string;
+  measure: HabitMeasure;
+  behaviorId?: string; // 来自哪条黄金行为
+  aspirationId?: string; // 属于哪个愿望
+  createdAt: number;
+  archived?: boolean;
+}
+
+/** 发生型习惯的一次打卡。一天可以有多条——锚点一天可能触发好几次 */
+export interface HabitLog {
+  id: string;
+  habitId: string;
+  date: ISODate;
+  at: string; // "HH:mm"
+}
+
 /** 记录的大类，用于"今天时间都去哪了"的饼图 */
 export type EntryCategory = "正事" | "娱乐" | "休息";
 

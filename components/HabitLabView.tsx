@@ -1,13 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import type { Aspiration, AspirationKind, BehaviorCard, BehaviorType, ViewMode } from "@/components/todo/types";
+import type {
+  Aspiration,
+  AspirationKind,
+  BehaviorCard,
+  BehaviorType,
+  Habit,
+  HabitLog,
+  ISODate,
+  TimeEntry,
+  ViewMode,
+} from "@/components/todo/types";
 import {
   JUDGED_TYPES,
   TYPE_HINT,
   TYPE_LABEL,
   TYPE_ORDER,
   TYPE_STYLE,
+  guessMeasure,
   isGolden,
   isRepeatable,
   looksLikeAspiration,
@@ -15,6 +26,7 @@ import {
   pendingJudgement,
 } from "@/components/todo/behavior";
 import FocusMapView from "@/components/FocusMapView";
+import HabitTracker from "@/components/HabitTracker";
 import { AlertTriangle, ArrowLeft, ChevronRight, Map, Plus, Target, Trash2, Undo2, Wand2, X, Zap } from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
@@ -35,6 +47,16 @@ type Props = {
   onResetBehaviorAxes: (aspirationId: string) => void;
   onUndo: () => void;
   canUndo: boolean;
+  entries: TimeEntry[];
+  today: ISODate;
+  habits: Habit[];
+  habitLogs: HabitLog[];
+  onAddHabit: (input: Omit<Habit, "id" | "createdAt">) => void;
+  onLogHabit: (habitId: string) => void;
+  onUndoHabitLog: (habitId: string) => void;
+  onSetHabitAnchor: (habitId: string, anchor: string) => void;
+  onToggleHabitMeasure: (habitId: string) => void;
+  onDeleteHabit: (habitId: string) => void;
   onDeleteBehavior: (id: string) => void;
 };
 
@@ -49,7 +71,7 @@ const KIND_LABEL: Record<AspirationKind, string> = { aspiration: "愿望", outco
 
 // 魔法棒吐出来的候选，先勾选再入库
 type PendingItem = { text: string; type: BehaviorType; checked: boolean };
-type Pending = { note: string; items: PendingItem[] };
+type Pending = { note: string; items: PendingItem[]; replaceId?: string };
 
 async function callBehaviorAPI(
   body: Record<string, unknown>,
@@ -95,6 +117,16 @@ export default function HabitLabView({
   onResetBehaviorAxes,
   onUndo,
   canUndo,
+  entries,
+  today,
+  habits,
+  habitLogs,
+  onAddHabit,
+  onLogHabit,
+  onUndoHabitLog,
+  onSetHabitAnchor,
+  onToggleHabitMeasure,
+  onDeleteHabit,
   onDeleteBehavior,
 }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
@@ -119,6 +151,8 @@ export default function HabitLabView({
   const [deleteAspId, setDeleteAspId] = useState<string | null>(null);
 
   const [mapOpen, setMapOpen] = useState(false); // 三级页：焦点地图
+  const [shrinkingId, setShrinkingId] = useState<string | null>(null);
+  const habitBehaviorIds = new Set(habits.filter((h) => !h.archived && h.behaviorId).map((h) => h.behaviorId!));
 
   const open = openId ? aspirations.find((a) => a.id === openId) ?? null : null;
   const openCards = open ? behaviors.filter((b) => b.aspirationId === open.id) : [];
@@ -252,10 +286,54 @@ export default function HabitLabView({
     });
   }
 
+  // 「改小」：把做不到的行为拆成不需要意志力的版本，选一个替换原文字
+  async function handleShrink(card: BehaviorCard) {
+    if (!open || shrinkingId) return;
+    setShrinkingId(card.id);
+    setNote(null);
+    setPending(null);
+    const res = await callBehaviorAPI({ mode: "shrink", text: card.text, goal: open.title });
+    setShrinkingId(null);
+    if (!res.ok) {
+      setNote(res.noKey ? "没配 AI，改小得自己动手：点条目文字直接改" : "AI 没连上，稍后再试");
+      return;
+    }
+    const items = toPendingItems(res.data.behaviors);
+    if (items.length === 0) {
+      setNote("AI 没给出更小的版本，自己动手改改看");
+      return;
+    }
+    setWandSeed(card.id);
+    setPending({
+      note: `把「${card.text}」改小到不需要意志力。选一个替换它（也可以都收进来）：`,
+      items,
+      replaceId: card.id,
+    });
+  }
+
+  // 黄金行为 → 微习惯。时长型 vs 发生型由行为本身决定
+  function handleAddHabit(card: BehaviorCard) {
+    if (!open) return;
+    onAddHabit({
+      title: card.text,
+      measure: guessMeasure(card.text),
+      behaviorId: card.id,
+      aspirationId: open.id,
+    });
+  }
+
   function confirmPending() {
     if (!pending || !open) return;
     const picked = pending.items.filter((i) => i.checked).map(({ text, type }) => ({ text, type }));
-    if (picked.length > 0) onAddBehaviors(open.id, picked);
+    if (picked.length > 0) {
+      // 改小场景：第一条直接替换原行为（保留它在焦点地图里的位置），其余作为新候选收进来
+      if (pending.replaceId) {
+        onUpdateBehaviorText(pending.replaceId, picked[0].text);
+        if (picked.length > 1) onAddBehaviors(open.id, picked.slice(1));
+      } else {
+        onAddBehaviors(open.id, picked);
+      }
+    }
     resetTransient();
   }
 
@@ -505,11 +583,28 @@ export default function HabitLabView({
             cards={repeatable}
             onSetAxis={onSetBehaviorAxis}
             onResetAxes={() => onResetBehaviorAxes(open.id)}
+            onDelete={onDeleteBehavior}
+            onShrink={handleShrink}
+            shrinkingId={shrinkingId}
+            onAddHabit={handleAddHabit}
+            habitBehaviorIds={habitBehaviorIds}
             onBack={() => setMapOpen(false)}
           />
         ) : !open ? (
-          /* ===== 一级页：我的愿望 ===== */
+          /* ===== 一级页：今天的习惯 + 我的愿望 ===== */
           <>
+            <HabitTracker
+              habits={habits}
+              logs={habitLogs}
+              entries={entries}
+              today={today}
+              onLog={onLogHabit}
+              onUndoLog={onUndoHabitLog}
+              onSetAnchor={onSetHabitAnchor}
+              onToggleMeasure={onToggleHabitMeasure}
+              onDeleteHabit={onDeleteHabit}
+            />
+
             <div className="w-full flex items-center justify-between">
               <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">我的愿望</span>
               <button
@@ -555,6 +650,16 @@ export default function HabitLabView({
                     {newKind === "aspiration" ? "抽象的期望" : "可衡量的目标"}
                   </span>
                   <div className="flex-1" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdding(false);
+                      setNewTitle("");
+                    }}
+                    className="px-3 py-1.5 rounded text-[12px] text-[var(--color-text-secondary)] hover:bg-white transition-colors"
+                  >
+                    取消
+                  </button>
                   <button
                     type="button"
                     onClick={handleCreateAspiration}
