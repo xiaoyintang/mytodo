@@ -26,6 +26,7 @@ type Props = {
   onDeleteAspiration: (id: string) => void;
   onAddBehaviors: (aspirationId: string, items: Array<{ text: string; type?: BehaviorType }>) => void;
   onApplyJudgements: (results: Judgement[]) => void;
+  onUpdateBehaviorText: (id: string, text: string) => void;
   onSetBehaviorType: (id: string, type: BehaviorType) => void;
   onDeleteBehavior: (id: string) => void;
 };
@@ -81,6 +82,7 @@ export default function HabitLabView({
   onDeleteAspiration,
   onAddBehaviors,
   onApplyJudgements,
+  onUpdateBehaviorText,
   onSetBehaviorType,
   onDeleteBehavior,
 }: Props) {
@@ -100,6 +102,8 @@ export default function HabitLabView({
   // 结果和报错都渲染在触发它的地方，否则在长页面里点了像没反应。
   const [wandSeed, setWandSeed] = useState<string | null>(null);
   const [editingType, setEditingType] = useState<string | null>(null); // 正在改判的条目 id
+  const [editingText, setEditingText] = useState<string | null>(null); // 正在改文字的条目 id
+  const [draft, setDraft] = useState("");
 
   const [deleteAspId, setDeleteAspId] = useState<string | null>(null);
 
@@ -114,6 +118,41 @@ export default function HabitLabView({
     setBusy(null);
     setWandSeed(null);
     setEditingType(null);
+    setEditingText(null);
+  }
+
+  function startEditText(b: BehaviorCard) {
+    setEditingText(b.id);
+    setDraft(b.text);
+    setEditingType(null);
+  }
+
+  function saveEditText(id: string) {
+    const t = draft.trim();
+    if (t) onUpdateBehaviorText(id, t);
+    setEditingText(null);
+  }
+
+  // 点文字就地改；回车保存、Esc 取消
+  function renderTextEditor(id: string) {
+    return (
+      <div className="w-full flex items-center gap-2">
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing) return;
+            if (e.key === "Enter") saveEditText(id);
+            else if (e.key === "Escape") setEditingText(null);
+          }}
+          onBlur={() => saveEditText(id)}
+          autoFocus
+          className="flex-1 px-2 py-1.5 rounded-md border border-[var(--color-primary)] text-[13px] bg-white focus:outline-none"
+        />
+        <span className="text-[10px] text-[var(--color-text-tertiary)] flex-shrink-0">回车保存</span>
+      </div>
+    );
   }
 
   function handleCreateAspiration() {
@@ -289,8 +328,18 @@ export default function HabitLabView({
         key={b.id}
         className="w-full flex flex-col gap-1.5 px-3 py-2.5 rounded-[10px] bg-white border border-[var(--color-border)]"
       >
+        {editingText === b.id ? (
+          renderTextEditor(b.id)
+        ) : (
         <div className="w-full flex items-start gap-2">
-          <span className="flex-1 text-[13px] text-[var(--color-text-primary)] leading-snug">{b.text}</span>
+          <button
+            type="button"
+            onClick={() => startEditText(b)}
+            className="flex-1 text-[13px] text-[var(--color-text-primary)] leading-snug text-left"
+            title="点一下改文字"
+          >
+            {b.text}
+          </button>
           <button
             type="button"
             onClick={() => setEditingType(isEditing ? null : b.id)}
@@ -310,6 +359,7 @@ export default function HabitLabView({
             <X className="w-[15px] h-[15px] text-[#A1A1AA]" />
           </button>
         </div>
+        )}
 
         {b.reason && !isEditing && (
           <span className="text-[11px] text-[var(--color-text-tertiary)] leading-snug">{b.reason}</span>
@@ -642,10 +692,19 @@ export default function HabitLabView({
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-[10px] bg-[var(--color-bg-gray-lighter)] border border-[var(--color-border)]"
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-[#A1A1AA] flex-shrink-0" />
-                    <span className="flex-1 text-[13px] text-[var(--color-text-primary)] leading-snug">
-                      {b.text}
-                    </span>
-                    {looksLikeAspiration(b.text) && (
+                    {editingText === b.id ? (
+                      renderTextEditor(b.id)
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => startEditText(b)}
+                        className="flex-1 text-[13px] text-[var(--color-text-primary)] leading-snug text-left"
+                        title="点一下改文字"
+                      >
+                        {b.text}
+                      </button>
+                    )}
+                    {editingText !== b.id && looksLikeAspiration(b.text) && (
                       <span className="text-[10px] text-[var(--color-text-tertiary)] flex-shrink-0">
                         像愿望
                       </span>

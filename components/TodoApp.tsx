@@ -274,6 +274,25 @@ export default function TodoApp() {
     );
   }
 
+  // 改条目文字。文字变了，AI 之前那条判定就作废了（理由是针对旧文字说的），
+  // 退回未判定等下次重判；但你手动定过的类型保留——那是你的意图，不是对文字的推断。
+  function updateBehaviorText(id: string, text: string) {
+    setBehaviorCards((prev) =>
+      prev.map((b) => {
+        if (b.id !== id || b.text === text) return b;
+        const aiJudged = b.typeSource !== "user";
+        return {
+          ...b,
+          text,
+          type: aiJudged ? "unsorted" : b.type,
+          typeSource: aiJudged ? undefined : b.typeSource,
+          reason: undefined,
+          hasDecision: undefined,
+        };
+      }),
+    );
+  }
+
   // 手动改判：以后 AI 不再覆盖这条
   function setBehaviorType(id: string, type: BehaviorType) {
     setBehaviorCards((prev) =>
@@ -345,6 +364,7 @@ export default function TodoApp() {
           onDeleteAspiration={deleteAspiration}
           onAddBehaviors={addBehaviors}
           onApplyJudgements={applyJudgements}
+          onUpdateBehaviorText={updateBehaviorText}
           onSetBehaviorType={setBehaviorType}
           onDeleteBehavior={deleteBehavior}
         />
