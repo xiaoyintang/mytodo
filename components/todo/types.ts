@@ -36,8 +36,18 @@ export interface Aspiration {
   createdAt: number;
 }
 
-/** 行为的三种类型（福格：一次性行为 / 新习惯 / 要戒掉的习惯） */
-export type BehaviorType = "onetime" | "habit" | "stop";
+/**
+ * 条目类型。收集时一律是 unsorted，批量判定后才落到后面五类之一。
+ * 前两类（愿望/成果）执行不了，要拆成行为；onetime 做完就没了；
+ * habit / stop 是可重复行为，只有它们进焦点地图。
+ */
+export type BehaviorType =
+  | "unsorted"
+  | "aspiration"
+  | "outcome"
+  | "onetime"
+  | "habit"
+  | "stop";
 
 /** 行为集群里的一张卡 */
 export interface BehaviorCard {
@@ -46,7 +56,13 @@ export interface BehaviorCard {
   text: string;
   type: BehaviorType;
   createdAt: number;
-  /** 焦点地图两轴（二期填）：影响力 / 我能不能做到，1-3 */
+  /** "user" = 用户手动改判过，AI 不再覆盖 */
+  typeSource?: "ai" | "user";
+  /** AI 判定理由（一句话） */
+  reason?: string;
+  /** 这条行为内部藏着"需要当场判断"的成分（如"挑出有问题的那句"），建议改写成零决策版本 */
+  hasDecision?: boolean;
+  /** 焦点地图两轴（二期填）：影响力 / 我能不能做到 */
   impact?: number;
   feasibility?: number;
 }

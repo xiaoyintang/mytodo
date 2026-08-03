@@ -3,13 +3,19 @@
 import { useState } from "react";
 import type { Aspiration, AspirationKind, BehaviorCard, BehaviorType, ViewMode } from "@/components/todo/types";
 import {
-  BEHAVIOR_TYPE_LABEL,
-  BEHAVIOR_TYPE_ORDER,
-  BEHAVIOR_TYPE_STYLE,
+  JUDGED_TYPES,
+  TYPE_HINT,
+  TYPE_LABEL,
+  TYPE_ORDER,
+  TYPE_STYLE,
   looksLikeAspiration,
+  needsBreakdown,
+  pendingJudgement,
 } from "@/components/todo/behavior";
-import { ArrowLeft, ChevronRight, Plus, Sparkles, Target, Trash2, Wand2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ChevronRight, Plus, Target, Trash2, Wand2, X, Zap } from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
+
+type Judgement = { id: string; type: BehaviorType; reason?: string; hasDecision?: boolean };
 
 type Props = {
   viewMode: ViewMode;
@@ -18,7 +24,9 @@ type Props = {
   behaviors: BehaviorCard[];
   onCreateAspiration: (title: string, kind: AspirationKind) => void;
   onDeleteAspiration: (id: string) => void;
-  onAddBehaviors: (aspirationId: string, items: Array<{ text: string; type: BehaviorType }>) => void;
+  onAddBehaviors: (aspirationId: string, items: Array<{ text: string; type?: BehaviorType }>) => void;
+  onApplyJudgements: (results: Judgement[]) => void;
+  onSetBehaviorType: (id: string, type: BehaviorType) => void;
   onDeleteBehavior: (id: string) => void;
 };
 
@@ -31,7 +39,7 @@ const TABS: Array<[ViewMode, string]> = [
 
 const KIND_LABEL: Record<AspirationKind, string> = { aspiration: "愿望", outcome: "结果" };
 
-// 预览区里待确认的候选行为（可逐条勾选）
+// 魔法棒吐出来的候选，先勾选再入库
 type PendingItem = { text: string; type: BehaviorType; checked: boolean };
 type Pending = { note: string; items: PendingItem[] };
 
@@ -40,7 +48,7 @@ async function callBehaviorAPI(
 ): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; noKey: boolean }> {
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 20000); // 发散比解析慢，给足时间
+    const timer = setTimeout(() => controller.abort(), 30000); // 批量判定慢，给足时间
     const res = await fetch("/api/behavior", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -72,6 +80,8 @@ export default function HabitLabView({
   onCreateAspiration,
   onDeleteAspiration,
   onAddBehaviors,
+  onApplyJudgements,
+  onSetBehaviorType,
   onDeleteBehavior,
 }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
@@ -81,22 +91,25 @@ export default function HabitLabView({
   const [newTitle, setNewTitle] = useState("");
   const [newKind, setNewKind] = useState<AspirationKind>("aspiration");
 
-  // 行为集群收集
+  // 收集口 / 判定 / 魔法棒
   const [input, setInput] = useState("");
-  const [busy, setBusy] = useState<"judge" | "wand" | null>(null);
+  const [busy, setBusy] = useState<"sort" | "wand" | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
+  const [editingType, setEditingType] = useState<string | null>(null); // 正在改判的条目 id
 
   const [deleteAspId, setDeleteAspId] = useState<string | null>(null);
 
   const open = openId ? aspirations.find((a) => a.id === openId) ?? null : null;
-  const openBehaviors = open ? behaviors.filter((b) => b.aspirationId === open.id) : [];
+  const openCards = open ? behaviors.filter((b) => b.aspirationId === open.id) : [];
+  const unsorted = openCards.filter((b) => b.type === "unsorted");
+  const judged = openCards.filter((b) => b.type !== "unsorted");
 
-  function resetCollect() {
-    setInput("");
+  function resetTransient() {
     setPending(null);
     setNote(null);
     setBusy(null);
+    setEditingType(null);
   }
 
   function handleCreateAspiration() {
@@ -108,49 +121,46 @@ export default function HabitLabView({
     setAdding(false);
   }
 
-  // 我自己想到一句话 → AI 判定是愿望/结果/行为，不是行为就顺手发散
-  async function handleJudge() {
+  // 收集口：回车即存，不判定、不等 AI
+  function handleCollect() {
     const text = input.trim();
-    if (!text || !open || busy) return;
-    setBusy("judge");
+    if (!text || !open) return;
+    onAddBehaviors(open.id, [{ text }]);
+    setInput("");
     setNote(null);
-    setPending(null);
+  }
 
-    const res = await callBehaviorAPI({ mode: "judge", text, aspiration: open.title });
+  // 批量判定当前愿望下所有未判定条目
+  async function handleSort() {
+    if (!open || busy) return;
+    const todo = pendingJudgement(openCards);
+    if (todo.length === 0) return;
+    setBusy("sort");
+    setNote(null);
+
+    const res = await callBehaviorAPI({
+      mode: "sort",
+      goal: open.title,
+      items: todo.map((b) => ({ id: b.id, text: b.text })),
+    });
     setBusy(null);
 
     if (!res.ok) {
-      // AI 不可用：直接收着，别挡住你记东西；看着像愿望就提醒一句
-      const hint = res.noKey ? "没配 AI" : "AI 没连上";
-      onAddBehaviors(open.id, [{ text, type: "habit" }]);
-      setInput("");
-      setNote(
-        looksLikeAspiration(text)
-          ? `${hint}，先原样收进集群了。不过这句看着像愿望不像行为，回头改成"现在马上就能做"的说法更好`
-          : `${hint}，先原样收进集群了`,
-      );
+      setNote(res.noKey ? "没配 AI，判定用不了——可以点条目上的标签自己归类" : "AI 没连上，稍后再点一次");
       return;
     }
-
-    const kind = String(res.data.kind ?? "behavior");
-    // 去掉句尾标点，免得和下面拼的句子撞成"。。"
-    const reason = String(res.data.reason ?? "").trim().replace(/[。.!！\s]+$/, "");
-    const items = toPendingItems(res.data.behaviors);
-    if (items.length === 0) {
-      setNote("AI 没给出可用的行为，换个说法再试试");
+    const results = Array.isArray(res.data.results) ? (res.data.results as Judgement[]) : [];
+    if (results.length === 0) {
+      setNote("AI 这次没给出结果，再点一次试试");
       return;
     }
-    setPending({
-      note:
-        kind === "behavior"
-          ? `这是「行为」${reason ? `——${reason}` : ""}`
-          : `这是「${kind === "outcome" ? "结果" : "愿望"}」${reason ? `——${reason}` : ""}。下面是能马上做的行为：`,
-      items,
-    });
+    onApplyJudgements(results);
+    const missed = todo.length - results.length;
+    setNote(missed > 0 ? `判定了 ${results.length} 条，还剩 ${missed} 条没判到，再点一次` : null);
   }
 
-  // 魔法棒：假设毫不费力，从愿望直接发散一批
-  async function handleWand() {
+  // 魔法棒：从愿望本身、或从某条"愿望/成果"条目发散
+  async function handleWand(seed?: BehaviorCard) {
     if (!open || busy) return;
     setBusy("wand");
     setNote(null);
@@ -158,13 +168,14 @@ export default function HabitLabView({
 
     const res = await callBehaviorAPI({
       mode: "wand",
-      aspiration: open.title,
-      existing: openBehaviors.map((b) => b.text),
+      aspiration: seed ? seed.text : open.title,
+      context: open.title,
+      existing: openCards.map((b) => b.text),
     });
     setBusy(null);
 
     if (!res.ok) {
-      setNote(res.noKey ? "没配 AI，魔法棒用不了——手动往下面输入框里加吧" : "AI 没连上，稍后再试");
+      setNote(res.noKey ? "没配 AI，魔法棒用不了——直接往收集口里写吧" : "AI 没连上，稍后再试");
       return;
     }
     const items = toPendingItems(res.data.behaviors);
@@ -172,14 +183,19 @@ export default function HabitLabView({
       setNote("AI 这次没发散出东西，再点一次试试");
       return;
     }
-    setPending({ note: "假设毫不费力，这些是能实现它的行为。勾掉你不要的：", items });
+    setPending({
+      note: seed
+        ? `把「${seed.text}」拆成能做的行为。勾掉你不要的：`
+        : "假设毫不费力，这些是能实现它的行为。勾掉你不要的：",
+      items,
+    });
   }
 
   function confirmPending() {
     if (!pending || !open) return;
     const picked = pending.items.filter((i) => i.checked).map(({ text, type }) => ({ text, type }));
     if (picked.length > 0) onAddBehaviors(open.id, picked);
-    resetCollect();
+    resetTransient();
   }
 
   function togglePending(index: number) {
@@ -193,6 +209,95 @@ export default function HabitLabView({
     onDeleteAspiration(deleteAspId);
     if (openId === deleteAspId) setOpenId(null);
     setDeleteAspId(null);
+  }
+
+  // 一条已判定条目：文字 + 可点的类型标签 + 改判面板
+  function renderCard(b: BehaviorCard) {
+    const st = TYPE_STYLE[b.type];
+    const isEditing = editingType === b.id;
+    return (
+      <div
+        key={b.id}
+        className="w-full flex flex-col gap-1.5 px-3 py-2.5 rounded-[10px] bg-white border border-[var(--color-border)]"
+      >
+        <div className="w-full flex items-start gap-2">
+          <span className="flex-1 text-[13px] text-[var(--color-text-primary)] leading-snug">{b.text}</span>
+          <button
+            type="button"
+            onClick={() => setEditingType(isEditing ? null : b.id)}
+            className="px-1.5 py-[1px] rounded border text-[10px] font-medium flex-shrink-0 leading-[16px]"
+            style={{ backgroundColor: st.bg, borderColor: st.border, color: st.text }}
+            title="判错了？点一下改"
+          >
+            {TYPE_LABEL[b.type]}
+            {b.typeSource === "user" ? " ✓" : ""}
+          </button>
+          <button
+            type="button"
+            onClick={() => onDeleteBehavior(b.id)}
+            className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0"
+            aria-label="删除"
+          >
+            <X className="w-[15px] h-[15px] text-[#A1A1AA]" />
+          </button>
+        </div>
+
+        {b.reason && !isEditing && (
+          <span className="text-[11px] text-[var(--color-text-tertiary)] leading-snug">{b.reason}</span>
+        )}
+
+        {b.hasDecision && !isEditing && (
+          <span className="flex items-start gap-1 text-[11px] text-[#B45309] leading-snug">
+            <AlertTriangle className="w-3 h-3 mt-[2px] flex-shrink-0" />
+            这条里藏着"要当场判断"的成分，建议改写成不用动脑的版本
+          </span>
+        )}
+
+        {needsBreakdown(b.type) && !isEditing && (
+          <button
+            type="button"
+            onClick={() => handleWand(b)}
+            disabled={busy !== null}
+            className="self-start flex items-center gap-1 px-2 py-1 rounded-md border border-[var(--color-primary)] text-[11px] font-medium text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] transition-colors disabled:opacity-50"
+          >
+            <Wand2 className="w-3 h-3" />
+            {busy === "wand" ? "拆解中..." : "拆成行为"}
+          </button>
+        )}
+
+        {isEditing && (
+          <div className="w-full flex flex-col gap-1.5 pt-1">
+            <span className="text-[11px] text-[var(--color-text-tertiary)]">归为</span>
+            <div className="flex flex-wrap gap-1.5">
+              {JUDGED_TYPES.map((t) => {
+                const ts = TYPE_STYLE[t];
+                const active = b.type === t;
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => {
+                      onSetBehaviorType(b.id, t);
+                      setEditingType(null);
+                    }}
+                    className="px-2 py-1 rounded-md border text-[11px] font-medium transition-colors"
+                    style={{
+                      backgroundColor: active ? ts.text : ts.bg,
+                      borderColor: active ? ts.text : ts.border,
+                      color: active ? "#fff" : ts.text,
+                    }}
+                    title={TYPE_HINT[t]}
+                  >
+                    {TYPE_LABEL[t]}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="text-[10px] text-[var(--color-text-tertiary)]">{TYPE_HINT[b.type]}</span>
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -309,15 +414,25 @@ export default function HabitLabView({
                 <p className="text-[12px] leading-relaxed text-[var(--color-text-secondary)]">
                   1. 先写下一个愿望或结果——它们都<strong>不是行为</strong>，你没法"执行"一个愿望
                   <br />
-                  2. 用魔法棒发散：假设毫不费力，有哪些<strong>现在马上就能做</strong>的行为能实现它
+                  2. 想到什么就往收集口里倒，回车即存，<strong>先不判断好坏</strong>
                   <br />
-                  3. 攒够一堆候选行为（行为集群），下一步再用焦点地图筛出真正该做的那几个
+                  3. 攒够了点「一次判定」，AI 一次性分拣成 愿望/成果/一次性任务/可重复行为
+                  <br />
+                  4. 可重复行为下一步进焦点地图，筛出真正该做的那几个
                 </p>
               </div>
             ) : (
               <div className="w-full flex flex-col gap-2">
                 {aspirations.map((a) => {
-                  const count = behaviors.filter((b) => b.aspirationId === a.id).length;
+                  const cards = behaviors.filter((b) => b.aspirationId === a.id);
+                  const un = cards.filter((c) => c.type === "unsorted").length;
+                  const rep = cards.filter((c) => c.type === "habit" || c.type === "stop").length;
+                  const once = cards.filter((c) => c.type === "onetime").length;
+                  const parts = [
+                    un > 0 ? `${un} 未判定` : "",
+                    rep > 0 ? `${rep} 可重复` : "",
+                    once > 0 ? `${once} 一次性` : "",
+                  ].filter(Boolean);
                   return (
                     <div
                       key={a.id}
@@ -327,7 +442,8 @@ export default function HabitLabView({
                         type="button"
                         onClick={() => {
                           setOpenId(a.id);
-                          resetCollect();
+                          resetTransient();
+                          setInput("");
                         }}
                         className="flex-1 flex items-center gap-2.5 min-w-0 text-left"
                       >
@@ -337,7 +453,8 @@ export default function HabitLabView({
                             {a.title}
                           </span>
                           <span className="text-[11px] text-[var(--color-text-tertiary)]">
-                            {KIND_LABEL[a.kind]} · {count > 0 ? `${count} 个候选行为` : "还没有行为"}
+                            {KIND_LABEL[a.kind]}
+                            {parts.length > 0 ? ` · ${parts.join(" · ")}` : " · 还是空的"}
                           </span>
                         </div>
                         <ChevronRight className="w-4 h-4 text-[var(--color-text-tertiary)] flex-shrink-0" />
@@ -364,7 +481,8 @@ export default function HabitLabView({
                 type="button"
                 onClick={() => {
                   setOpenId(null);
-                  resetCollect();
+                  resetTransient();
+                  setInput("");
                 }}
                 className="w-8 h-8 rounded-lg border-[1.5px] border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors flex-shrink-0"
                 aria-label="返回"
@@ -379,62 +497,53 @@ export default function HabitLabView({
               </span>
             </div>
 
-            {/* 魔法棒 */}
+            {/* 收集口：回车即存，AI 不参与 */}
             <div className="w-full flex flex-col gap-2">
-              <p className="text-[12px] leading-relaxed text-[var(--color-text-secondary)]">
-                「如果有根魔法棒，我毫不费力就能做到任何事，我会让自己做<strong>哪些行为</strong>？」
-              </p>
-              <button
-                type="button"
-                onClick={handleWand}
-                disabled={busy !== null}
-                className={[
-                  "w-full flex items-center justify-center gap-1.5 rounded-[10px] py-2.5 text-[14px] font-semibold transition-colors",
-                  busy === null
-                    ? "bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8]"
-                    : "bg-[var(--color-bg-gray-light)] text-[var(--color-text-tertiary)] cursor-not-allowed",
-                ].join(" ")}
-              >
-                <Wand2 className="w-4 h-4" />
-                {busy === "wand" ? "发散中..." : "挥一下魔法棒"}
-              </button>
-            </div>
-
-            {/* 自己输入 */}
-            <div className="w-full flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-[var(--color-primary)]" />
-                <span className="text-[var(--color-text-primary)] text-[15px] font-semibold">我自己想到的</span>
-                <span className="text-[var(--color-text-tertiary)] text-[12px]">回车提交 · 可语音</span>
-              </div>
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                     e.preventDefault();
-                    handleJudge();
+                    handleCollect();
                   }
                 }}
-                placeholder="说一句话，AI 帮你看它是愿望、结果、还是真能做的行为"
+                placeholder="想到什么就倒进来，回车存下，接着写下一条"
                 enterKeyHint="send"
                 rows={2}
                 className="w-full px-3 py-2.5 rounded-[10px] border border-[var(--color-border)] text-[14px] leading-relaxed placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] resize-none"
               />
-              {busy === "judge" && (
-                <span className="text-[12px] text-[var(--color-text-tertiary)]">AI 判定中...</span>
-              )}
+              <div className="w-full flex items-center gap-2">
+                <span className="text-[11px] text-[var(--color-text-tertiary)]">
+                  回车即存 · 先别筛 · 可语音
+                </span>
+                <div className="flex-1" />
+                <button
+                  type="button"
+                  onClick={() => handleWand()}
+                  disabled={busy !== null}
+                  className={[
+                    "flex items-center gap-1 px-2.5 py-1.5 rounded-md border text-[12px] font-medium transition-colors",
+                    busy === null
+                      ? "border-[var(--color-primary)] text-[var(--color-primary)] hover:bg-[var(--color-primary-light)]"
+                      : "border-[var(--color-border)] text-[var(--color-text-tertiary)] cursor-not-allowed",
+                  ].join(" ")}
+                >
+                  <Wand2 className="w-3.5 h-3.5" />
+                  {busy === "wand" ? "发散中..." : "魔法棒"}
+                </button>
+              </div>
               {note && <p className="text-[12px] text-[var(--color-text-secondary)]">{note}</p>}
             </div>
 
-            {/* 候选行为预览 */}
+            {/* 魔法棒候选（先勾选再入库） */}
             {pending && (
               <div className="w-full flex flex-col gap-2 p-3 rounded-[10px] bg-[var(--color-bg-gray-lighter)] border border-[var(--color-border)]">
                 <p className="text-[12px] font-medium text-[var(--color-text-secondary)] leading-relaxed">
                   {pending.note}
                 </p>
                 {pending.items.map((it, i) => {
-                  const st = BEHAVIOR_TYPE_STYLE[it.type];
+                  const st = TYPE_STYLE[it.type];
                   return (
                     <button
                       key={i}
@@ -462,7 +571,7 @@ export default function HabitLabView({
                         className="px-1.5 py-[1px] rounded border text-[10px] font-medium flex-shrink-0"
                         style={{ backgroundColor: st.bg, borderColor: st.border, color: st.text }}
                       >
-                        {BEHAVIOR_TYPE_LABEL[it.type]}
+                        {TYPE_LABEL[it.type]}
                       </span>
                     </button>
                   );
@@ -470,7 +579,7 @@ export default function HabitLabView({
                 <div className="flex justify-end gap-2 mt-1">
                   <button
                     type="button"
-                    onClick={resetCollect}
+                    onClick={resetTransient}
                     className="px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] hover:bg-white rounded transition-colors"
                   >
                     取消
@@ -486,59 +595,89 @@ export default function HabitLabView({
               </div>
             )}
 
-            {/* 行为集群 */}
-            <div className="w-full flex flex-col gap-3">
-              <div className="w-full flex items-center justify-between">
-                <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">行为集群</span>
-                <span className="text-[var(--color-text-tertiary)] text-[13px] font-medium">
-                  {openBehaviors.length > 0 ? `${openBehaviors.length} 个行为` : "还是空的"}
-                </span>
+            {/* 未判定 */}
+            {unsorted.length > 0 && (
+              <div className="w-full flex flex-col gap-2">
+                <div className="w-full flex items-center justify-between">
+                  <span className="text-[var(--color-text-primary)] text-[15px] font-semibold">
+                    未判定 <span className="text-[var(--color-text-tertiary)]">{unsorted.length}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleSort}
+                    disabled={busy !== null}
+                    className={[
+                      "flex items-center gap-1 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-colors",
+                      busy === null
+                        ? "bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8]"
+                        : "bg-[var(--color-bg-gray-light)] text-[var(--color-text-tertiary)] cursor-not-allowed",
+                    ].join(" ")}
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    {busy === "sort" ? "判定中..." : `一次判定这 ${unsorted.length} 条`}
+                  </button>
+                </div>
+                {unsorted.map((b) => (
+                  <div
+                    key={b.id}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-[10px] bg-[var(--color-bg-gray-lighter)] border border-[var(--color-border)]"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#A1A1AA] flex-shrink-0" />
+                    <span className="flex-1 text-[13px] text-[var(--color-text-primary)] leading-snug">
+                      {b.text}
+                    </span>
+                    {looksLikeAspiration(b.text) && (
+                      <span className="text-[10px] text-[var(--color-text-tertiary)] flex-shrink-0">
+                        像愿望
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onDeleteBehavior(b.id)}
+                      className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0"
+                      aria-label="删除"
+                    >
+                      <X className="w-[15px] h-[15px] text-[#A1A1AA]" />
+                    </button>
+                  </div>
+                ))}
               </div>
+            )}
 
-              {openBehaviors.length === 0 ? (
-                <p className="text-[12px] leading-relaxed text-[var(--color-text-tertiary)]">
-                  先攒着，别筛。福格的建议是一口气想 10-20 个，越多越好，好不好、做不做得到都<strong>先别judge</strong>——那是下一步焦点地图的事。
-                </p>
-              ) : (
-                BEHAVIOR_TYPE_ORDER.map((type) => {
-                  const list = openBehaviors.filter((b) => b.type === type);
-                  if (list.length === 0) return null;
-                  const st = BEHAVIOR_TYPE_STYLE[type];
-                  return (
-                    <div key={type} className="w-full flex flex-col gap-2">
+            {/* 已判定，按类型分组 */}
+            {judged.length > 0 &&
+              TYPE_ORDER.map((type) => {
+                const list = judged.filter((b) => b.type === type);
+                if (list.length === 0) return null;
+                const st = TYPE_STYLE[type];
+                return (
+                  <div key={type} className="w-full flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
                       <span
-                        className="self-start px-1.5 py-[1px] rounded border text-[10px] font-medium"
+                        className="px-1.5 py-[1px] rounded border text-[10px] font-medium"
                         style={{ backgroundColor: st.bg, borderColor: st.border, color: st.text }}
                       >
-                        {BEHAVIOR_TYPE_LABEL[type]} · {list.length}
+                        {TYPE_LABEL[type]} · {list.length}
                       </span>
-                      {list.map((b) => (
-                        <div
-                          key={b.id}
-                          className="w-full flex items-center gap-2 px-3.5 py-2.5 rounded-[10px] bg-white border border-[var(--color-border)]"
-                        >
-                          <span className="flex-1 text-[13px] text-[var(--color-text-primary)] leading-snug">
-                            {b.text}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => onDeleteBehavior(b.id)}
-                            className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0"
-                            aria-label="删除这个行为"
-                          >
-                            <X className="w-[15px] h-[15px] text-[#A1A1AA]" />
-                          </button>
-                        </div>
-                      ))}
+                      <span className="text-[10px] text-[var(--color-text-tertiary)]">
+                        {TYPE_HINT[type]}
+                      </span>
                     </div>
-                  );
-                })
-              )}
-            </div>
+                    {list.map(renderCard)}
+                  </div>
+                );
+              })}
 
-            {openBehaviors.length >= 5 && (
+            {openCards.length === 0 && (
+              <p className="text-[12px] leading-relaxed text-[var(--color-text-tertiary)]">
+                先攒着，别筛。福格的建议是一口气想 10-20 个，好不好、做不做得到都
+                <strong>先别 judge</strong>——那是焦点地图的事。想不出来就点魔法棒。
+              </p>
+            )}
+
+            {judged.some((b) => b.type === "habit" || b.type === "stop") && unsorted.length === 0 && (
               <p className="text-[12px] text-[var(--color-text-tertiary)] text-center">
-                攒够了就该排焦点地图了 —— 二期做
+                可重复行为攒够了就该排焦点地图了 —— 下一步做
               </p>
             )}
           </>
@@ -551,7 +690,7 @@ export default function HabitLabView({
         description={(() => {
           const target = deleteAspId ? aspirations.find((a) => a.id === deleteAspId) : undefined;
           const n = deleteAspId ? behaviors.filter((b) => b.aspirationId === deleteAspId).length : 0;
-          return target ? `「${target.title}」和它下面的 ${n} 个行为都会删掉，且不可恢复` : undefined;
+          return target ? `「${target.title}」和它下面的 ${n} 个条目都会删掉，且不可恢复` : undefined;
         })()}
         onConfirm={handleDeleteAspiration}
         onCancel={() => setDeleteAspId(null)}

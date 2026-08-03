@@ -103,58 +103,63 @@ export async function classifyWithLLM(titles: string[]): Promise<Record<string, 
 
 // ===== 习惯实验室：行为集群 =====
 
-const BEHAVIOR_RULES = `你是福格行为设计（BJ Fogg, Tiny Habits）的教练。
+const BEHAVIOR_TYPES = `【五类】
+- aspiration 愿望：抽象的方向或状态，无法直接执行。例："想生活有秩序""变得健康"
+- outcome 成果：具体、可衡量的结果，但仍然无法直接执行。例："每天2点前睡""每周剪一个视频"
+- onetime 一次性任务：具体动作，做完就不需要再做。例："买个遮光窗帘""简历定稿""换个枕头"
+- habit 可重复行为：具体动作，做完之后还会一次次再做。例："12点前喝杯热牛奶""看完一集读2分钟书"
+- stop 要戒掉：要减少或停掉的旧习惯。例："睡前不刷短视频""下午4点后不喝咖啡"`;
 
-先分清三样东西：
-- 愿望(aspiration)：抽象的期望，如"想更健康""早点睡"。执行不了。
-- 结果(outcome)：可衡量的目标，如"一个月瘦5斤""考上研"。也执行不了。
-- 行为(behavior)：具体动作，能通过"掐一把测试"——我现在戳你一下，你能不能立刻做出来。如"晚上9点把手机放到客厅充电""做两个俯卧撑"。
+const SORT_PROMPT = `你是行为设计助手，依据 BJ Fogg 的定义给条目分类。
 
-行为分三型：
-- habit：要重复做的新习惯
-- onetime：只做一次的事（买跑步机、卸载抖音、把零食送人）
-- stop：要戒掉/减少的旧习惯
+${BEHAVIOR_TYPES}
 
-好行为的标准：具体到能立刻执行；小到几乎不需要意志力；描述里带上什么时候/在哪做更好；别写成"多运动""少玩手机"这种没法执行的。`;
+【三个测试，按顺序做】
+1. 立刻测试：现在这一秒能不能开始做它？不能 → aspiration 或 outcome
+2. 照片测试：能不能拍一张照片，照片里有人正在做它？拍不到 → aspiration 或 outcome
+   （"减肥"拍不到；"吃一根胡萝卜"拍得到）
+3. 重复测试：做完之后它还会再出现吗？不会 → onetime；会 → habit；如果内容是"不做/少做某事" → stop
 
-const JUDGE_PROMPT = `${BEHAVIOR_RULES}
+【aspiration 与 outcome 的区分】
+不可衡量、只是个方向 → aspiration；可衡量、是个具体结果 → outcome
 
-用户会给你两样东西：一个「背景愿望」和一句「待判定」的话。
-**你只判断「待判定」那句话**，背景愿望只是上下文，绝对不要去判定背景愿望本身。
+【注意】"做完X就做Y"这种自带触发时机的说法是很好的可重复行为，别误判成愿望。
 
-输出格式（必须是合法 JSON，不要输出其他内容）：
-{"kind":"behavior","reason":"一句话说明为什么","behaviors":[{"text":"行为描述","type":"habit"}]}
+【额外标记 hasDecision】
+如果一条行为内部含有"需要当场判断/挑选/评估"的成分，返回 hasDecision: true，
+并在 reason 里点出是哪个词带来了判断。
+例："挑出有问题的一句话去改写" → hasDecision: true（"有问题的"需要当场判断）
 
-规则：
-1. kind 只能是 "aspiration"、"outcome"、"behavior" 之一，指的是「待判定」那句话属于哪种
-2. 如果是行为：behaviors 只放这一条（可以帮他润色得更具体，但别改变原意）。
-   注意"做完X就做Y"这种带触发时机的说法是**很好的行为**，别误判成愿望
-3. 如果是愿望或结果：用"魔法棒"发散——假设他毫不费力就能做到，列出 5-6 个能实现它的具体行为，三种型都可以有
-4. reason 用中文，一句话，说人话别说教，引用的是「待判定」那句话`;
+【输出】必须是合法 JSON，不要输出其他内容：
+{"results":[{"id":"原样返回输入的id","type":"habit","reason":"不超过20字","hasDecision":false}]}
+输入几条就输出几条，一条都不能少，id 必须原样返回。`;
 
-const WAND_PROMPT = `${BEHAVIOR_RULES}
+const WAND_PROMPT = `你是福格行为设计（BJ Fogg, Tiny Habits）的教练。用户会给出一个愿望或成果。
+用"魔法棒"发散：假设有根魔法棒，他毫不费力就能做到任何事，列出能实现它的具体行为。
 
-用户会给出一个愿望或结果。用"魔法棒"发散：假设有根魔法棒，他毫不费力就能做到任何事，列出能实现它的具体行为。
+${BEHAVIOR_TYPES}
 
 输出格式（必须是合法 JSON，不要输出其他内容）：
 {"behaviors":[{"text":"行为描述","type":"habit"}]}
 
 规则：
-1. 给 8-10 个，尽量不同角度，三种型（habit / onetime / stop）都要有
-2. 每条都必须过"掐一把测试"：现在马上就能做
-3. 别重复用户已经收集过的行为（会告诉你他已有哪些）`;
+1. 给 8-10 个，尽量不同角度，onetime / habit / stop 三种都要有（不要输出 aspiration 和 outcome）
+2. 每条都必须过"照片测试"：能拍到一张照片，照片里有人正在做它
+3. 描述里带上什么时候/在哪做更好；小到几乎不需要意志力
+4. 别重复用户已经收集过的（会告诉你他已有哪些）`;
 
-const VALID_KIND = new Set(["aspiration", "outcome", "behavior"]);
-const VALID_TYPE = new Set<string>(["habit", "onetime", "stop"]);
+const VALID_TYPE = new Set<string>(["aspiration", "outcome", "onetime", "habit", "stop"]);
+const WAND_TYPE = new Set<string>(["onetime", "habit", "stop"]);
 
 export type LLMBehavior = { text: string; type: BehaviorType };
-export type BehaviorJudgement = {
-  kind: "aspiration" | "outcome" | "behavior";
+export type LLMJudgement = {
+  id: string;
+  type: BehaviorType;
   reason: string;
-  behaviors: LLMBehavior[];
+  hasDecision: boolean;
 };
 
-// 从模型输出里挑出合法的行为条目
+// 从模型输出里挑出合法的行为条目（魔法棒用，只收可执行的三类）
 function pickBehaviors(raw: unknown): LLMBehavior[] {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -163,42 +168,51 @@ function pickBehaviors(raw: unknown): LLMBehavior[] {
       const text = String(o?.text ?? "").trim();
       const type = String(o?.type ?? "habit").trim();
       if (!text || text.length > 60) return null;
-      return { text, type: (VALID_TYPE.has(type) ? type : "habit") as BehaviorType };
+      return { text, type: (WAND_TYPE.has(type) ? type : "habit") as BehaviorType };
     })
     .filter((x): x is LLMBehavior => x !== null)
     .slice(0, 12);
 }
 
-/** 判断一句话是愿望/结果/行为；不是行为就顺手发散成候选行为 */
-export async function judgeBehaviorWithLLM(
-  text: string,
-  aspiration?: string,
-): Promise<BehaviorJudgement | null> {
-  const user = aspiration
-    ? `背景愿望（不要判定它）：${aspiration}\n待判定：${text}`
-    : `待判定：${text}`;
-  const parsed = await callLLMJson(JUDGE_PROMPT, user);
+/** 批量判定：一次给一堆条目分类，返回 {id, type, reason, hasDecision} */
+export async function sortBehaviorsWithLLM(
+  items: Array<{ id: string; text: string }>,
+  goal?: string,
+): Promise<LLMJudgement[] | null> {
+  const payload = JSON.stringify({ goal: goal ?? "", items });
+  const parsed = await callLLMJson(SORT_PROMPT, payload);
   if (parsed === null) return null;
 
-  const o = parsed as Record<string, unknown>;
-  const kind = String(o.kind ?? "").trim();
-  if (!VALID_KIND.has(kind)) return null;
-  return {
-    kind: kind as BehaviorJudgement["kind"],
-    reason: String(o.reason ?? "").trim(),
-    behaviors: pickBehaviors(o.behaviors),
-  };
+  const raw = (parsed as { results?: unknown })?.results;
+  if (!Array.isArray(raw)) return null;
+
+  const known = new Set(items.map((i) => i.id));
+  return raw
+    .map((r): LLMJudgement | null => {
+      const o = r as Record<string, unknown>;
+      const id = String(o?.id ?? "").trim();
+      const type = String(o?.type ?? "").trim();
+      if (!known.has(id) || !VALID_TYPE.has(type)) return null;
+      return {
+        id,
+        type: type as BehaviorType,
+        reason: String(o?.reason ?? "").trim().slice(0, 40),
+        hasDecision: o?.hasDecision === true,
+      };
+    })
+    .filter((x): x is LLMJudgement => x !== null);
 }
 
-/** 魔法棒：从愿望直接发散一批候选行为 */
+/** 魔法棒：从愿望/成果发散一批候选行为 */
 export async function magicWandWithLLM(
   aspiration: string,
   existing: string[],
+  context?: string,
 ): Promise<LLMBehavior[] | null> {
-  const user = existing.length
-    ? `愿望：${aspiration}\n已经收集过的行为（别重复）：${existing.join("、")}`
-    : `愿望：${aspiration}`;
-  const parsed = await callLLMJson(WAND_PROMPT, user);
+  const lines = [`愿望/成果：${aspiration}`];
+  if (context && context !== aspiration) lines.push(`它属于我的大目标：${context}`);
+  if (existing.length) lines.push(`已经收集过的（别重复）：${existing.join("、")}`);
+  const parsed = await callLLMJson(WAND_PROMPT, lines.join("\n"));
   if (parsed === null) return null;
   return pickBehaviors((parsed as { behaviors?: unknown })?.behaviors);
 }

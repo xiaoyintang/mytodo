@@ -246,16 +246,39 @@ export default function TodoApp() {
     setBehaviorCards((prev) => prev.filter((b) => b.aspirationId !== id));
   }
 
-  function addBehaviors(aspirationId: string, items: Array<{ text: string; type: BehaviorType }>) {
+  // 收集口回车即存：不带 type → 未判定；魔法棒收进来的自带 type
+  function addBehaviors(aspirationId: string, items: Array<{ text: string; type?: BehaviorType }>) {
     const now = Date.now();
     const cards: BehaviorCard[] = items.map((it, i) => ({
       id: `b-${now}-${i}-${Math.random().toString(36).slice(2, 7)}`,
       aspirationId,
       text: it.text,
-      type: it.type,
+      type: it.type ?? "unsorted",
+      typeSource: it.type ? "ai" : undefined,
       createdAt: now,
     }));
     setBehaviorCards((prev) => [...prev, ...cards]);
+  }
+
+  // 批量判定结果写回；用户手动改判过的不动
+  function applyJudgements(
+    results: Array<{ id: string; type: BehaviorType; reason?: string; hasDecision?: boolean }>,
+  ) {
+    const byId = new Map(results.map((r) => [r.id, r]));
+    setBehaviorCards((prev) =>
+      prev.map((b) => {
+        const r = byId.get(b.id);
+        if (!r || b.typeSource === "user") return b;
+        return { ...b, type: r.type, typeSource: "ai", reason: r.reason, hasDecision: r.hasDecision };
+      }),
+    );
+  }
+
+  // 手动改判：以后 AI 不再覆盖这条
+  function setBehaviorType(id: string, type: BehaviorType) {
+    setBehaviorCards((prev) =>
+      prev.map((b) => (b.id === id ? { ...b, type, typeSource: "user" } : b)),
+    );
   }
 
   function deleteBehavior(id: string) {
@@ -321,6 +344,8 @@ export default function TodoApp() {
           onCreateAspiration={createAspiration}
           onDeleteAspiration={deleteAspiration}
           onAddBehaviors={addBehaviors}
+          onApplyJudgements={applyJudgements}
+          onSetBehaviorType={setBehaviorType}
           onDeleteBehavior={deleteBehavior}
         />
       ) : (
