@@ -233,18 +233,18 @@ export default function TodoWeekView({
     <>
       <div className="w-[420px] bg-white flex flex-col rounded-[16px] overflow-hidden border border-[var(--color-border)]">
         {/* Header */}
-        <div className="w-full flex items-center justify-between px-4 pt-5 pb-3">
-          <div className="flex flex-col gap-0.5">
-            <h1 className="text-[var(--color-text-primary)] text-[24px] font-bold tracking-[-0.5px]">
+        <div className="w-full flex items-center justify-between px-6 pt-6 pb-4">
+          <div className="flex flex-col gap-1">
+            <h1 className="text-[var(--color-text-primary)] text-[28px] font-bold tracking-[-0.5px]">
               Todo
             </h1>
-            <p className="text-[var(--color-text-secondary)] text-[13px] font-medium">{rangeLabel}</p>
+            <p className="text-[var(--color-text-secondary)] text-[14px] font-medium">{rangeLabel}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={onPrevWeek}
-              className="w-8 h-8 rounded-lg border border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors"
+              className="w-9 h-9 rounded-lg border-[1.5px] border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors"
               aria-label="上一周"
             >
               <ChevronLeft className="w-4 h-4 text-[var(--color-text-secondary)]" />
@@ -252,7 +252,7 @@ export default function TodoWeekView({
             <button
               type="button"
               onClick={onNextWeek}
-              className="w-8 h-8 rounded-lg border border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors"
+              className="w-9 h-9 rounded-lg border-[1.5px] border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors"
               aria-label="下一周"
             >
               <ChevronRight className="w-4 h-4 text-[var(--color-text-secondary)]" />
@@ -260,24 +260,24 @@ export default function TodoWeekView({
           </div>
         </div>
 
-        {/* View Switcher + Stats */}
-        <div className="w-full flex items-center justify-between px-4 pb-3">
-          <div className="flex gap-1 bg-[var(--color-bg-gray-light)] rounded-[10px] p-1">
-            {([["day", "日"], ["week", "周"], ["log", "记录"], ["habit", "习惯"]] as Array<[ViewMode, string]>).map(([mode, label]) => (
+        {/* View Switcher（和日视图/记录/习惯完全一致，切换时按钮不移位） */}
+        <div className="w-full px-6">
+          <div className="w-full flex gap-1 bg-[var(--color-bg-gray-light)] rounded-[10px] p-1">
+            {([["day", "日视图"], ["week", "周视图"], ["log", "记录"], ["habit", "习惯"]] as Array<[ViewMode, string]>).map(([mode, label]) => (
               <button
                 key={mode}
                 type="button"
                 onClick={() => onChangeViewMode(mode)}
                 className={[
-                  "flex items-center justify-center rounded-lg px-3 py-2 transition-all",
+                  "flex-1 flex items-center justify-center rounded-lg px-2 py-[10px]",
                   viewMode === mode
-                    ? "bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
-                    : "hover:bg-white/50",
+                    ? "bg-[var(--color-bg-white)] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
+                    : "",
                 ].join(" ")}
               >
                 <span
                   className={[
-                    "text-[13px]",
+                    "text-[14px]",
                     viewMode === mode
                       ? "text-[var(--color-text-primary)] font-semibold"
                       : "text-[var(--color-text-secondary)] font-medium",
@@ -288,22 +288,22 @@ export default function TodoWeekView({
               </button>
             ))}
           </div>
+        </div>
 
-          {/* Stats */}
-          <div className="flex items-center gap-3 text-[12px] font-medium">
-            <div className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-[#16A34A]" />
-              <span className="text-[var(--color-text-secondary)]">{doneTasks}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-[#DC2626]" />
-              <span className="text-[var(--color-text-secondary)]">{totalTasks - doneTasks}</span>
-            </div>
+        {/* 本周完成/未完成（原来挤在 tab 右边，把 tab 挤窄了，切过来按钮就移位） */}
+        <div className="w-full flex items-center gap-3 px-6 pt-2.5 text-[12px] font-medium">
+          <div className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-[#16A34A]" />
+            <span className="text-[var(--color-text-secondary)]">已完成 {doneTasks}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-[#DC2626]" />
+            <span className="text-[var(--color-text-secondary)]">未完成 {totalTasks - doneTasks}</span>
           </div>
         </div>
 
         {/* AI 一句话建任务 */}
-        <div className="px-4 pb-3">
+        <div className="px-6 pt-4 pb-4">
           <QuickAddTask onCreate={onCreateTask} />
         </div>
 

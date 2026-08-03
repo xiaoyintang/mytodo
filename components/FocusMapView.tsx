@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Aspiration, BehaviorCard } from "@/components/todo/types";
 import { TYPE_LABEL, TYPE_STYLE, goldenScore, isGolden, isHighImpact } from "@/components/todo/behavior";
 import { ArrowLeft, RotateCcw, Star } from "lucide-react";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 type AxisPatch = { impact?: number; feasibility?: number };
 type Step = 1 | 2 | 3;
@@ -34,6 +35,7 @@ const PAD = 10;
 
 export default function FocusMapView({ aspiration, cards, onSetAxis, onResetAxes, onBack }: Props) {
   const [step, setStep] = useState<Step>(1);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const highs = cards.filter(isHighImpact);
   const golden = cards
@@ -206,7 +208,7 @@ export default function FocusMapView({ aspiration, cards, onSetAxis, onResetAxes
             <span className="text-[12px] text-[var(--color-text-tertiary)]">影响力 ↑</span>
             <button
               type="button"
-              onClick={onResetAxes}
+              onClick={() => setConfirmReset(true)}
               className="flex items-center gap-1 text-[12px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]"
             >
               <RotateCcw className="w-3 h-3" />
@@ -312,6 +314,19 @@ export default function FocusMapView({ aspiration, cards, onSetAxis, onResetAxes
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmReset}
+        title="重排？"
+        description={`会清空这 ${cards.length} 条行为的两轴位置，一根滑块都不留。清错了可以点上面的「撤回」找回`}
+        confirmLabel="清空重排"
+        onConfirm={() => {
+          onResetAxes();
+          setConfirmReset(false);
+          setStep(1);
+        }}
+        onCancel={() => setConfirmReset(false)}
+      />
     </div>
   );
 }

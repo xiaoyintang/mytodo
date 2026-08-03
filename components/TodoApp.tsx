@@ -111,6 +111,8 @@ export default function TodoApp() {
   const [isSyncOpen, setIsSyncOpen] = useState(false);
   // 时间记录撤回栈：每次用户改动记录前先存一份快照，最多留 30 步
   const [entriesHistory, setEntriesHistory] = useState<TimeEntry[][]>([]);
+  // 习惯实验室的撤回栈（愿望 + 行为一起快照）
+  const [labHistory, setLabHistory] = useState<Array<{ aspirations: Aspiration[]; behaviors: BehaviorCard[] }>>([]);
 
   const safeTasks = hydrated ? tasks : seedTasks(todayIso);
   const safeEntries = entriesHydrated ? entries : EMPTY_ENTRIES;
@@ -230,7 +232,23 @@ export default function TodoApp() {
 
   // ===== 习惯实验室 =====
 
+  // 撤回栈：愿望和行为一起存快照（删愿望会连带删它的行为，得一起退回来）。
+  // 注意：拖滑块不进栈（一次拖动会触发几十次 onChange，会把栈冲爆），
+  // 但「重排」进栈——所以误点重排能把所有滑块位置退回来。
+  function snapshotLab() {
+    setLabHistory((h) => [...h.slice(-29), { aspirations, behaviors: behaviorCards }]);
+  }
+
+  function undoLab() {
+    if (labHistory.length === 0) return;
+    const prev = labHistory[labHistory.length - 1];
+    setAspirations(prev.aspirations);
+    setBehaviorCards(prev.behaviors);
+    setLabHistory((h) => h.slice(0, -1));
+  }
+
   function createAspiration(title: string, kind: AspirationKind) {
+    snapshotLab();
     const a: Aspiration = {
       id: `a-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       title,
@@ -242,12 +260,14 @@ export default function TodoApp() {
 
   // 删愿望连它下面的行为一起删，不留孤儿卡片
   function deleteAspiration(id: string) {
+    snapshotLab();
     setAspirations((prev) => prev.filter((a) => a.id !== id));
     setBehaviorCards((prev) => prev.filter((b) => b.aspirationId !== id));
   }
 
   // 收集口回车即存：不带 type → 未判定；魔法棒收进来的自带 type
   function addBehaviors(aspirationId: string, items: Array<{ text: string; type?: BehaviorType }>) {
+    snapshotLab();
     const now = Date.now();
     const cards: BehaviorCard[] = items.map((it, i) => ({
       id: `b-${now}-${i}-${Math.random().toString(36).slice(2, 7)}`,
@@ -264,6 +284,7 @@ export default function TodoApp() {
   function applyJudgements(
     results: Array<{ id: string; type: BehaviorType; reason?: string; hasDecision?: boolean }>,
   ) {
+    snapshotLab();
     const byId = new Map(results.map((r) => [r.id, r]));
     setBehaviorCards((prev) =>
       prev.map((b) => {
@@ -277,6 +298,7 @@ export default function TodoApp() {
   // 改条目文字。文字变了，AI 之前那条判定就作废了（理由是针对旧文字说的），
   // 退回未判定等下次重判；但你手动定过的类型保留——那是你的意图，不是对文字的推断。
   function updateBehaviorText(id: string, text: string) {
+    snapshotLab();
     setBehaviorCards((prev) =>
       prev.map((b) => {
         if (b.id !== id || b.text === text) return b;
@@ -295,6 +317,7 @@ export default function TodoApp() {
 
   // 手动改判：以后 AI 不再覆盖这条
   function setBehaviorType(id: string, type: BehaviorType) {
+    snapshotLab();
     setBehaviorCards((prev) =>
       prev.map((b) => (b.id === id ? { ...b, type, typeSource: "user" } : b)),
     );
@@ -307,6 +330,7 @@ export default function TodoApp() {
 
   // 重排：清掉这个愿望下所有可重复行为的两轴
   function resetBehaviorAxes(aspirationId: string) {
+    snapshotLab();
     setBehaviorCards((prev) =>
       prev.map((b) =>
         b.aspirationId === aspirationId ? { ...b, impact: undefined, feasibility: undefined } : b,
@@ -315,6 +339,7 @@ export default function TodoApp() {
   }
 
   function deleteBehavior(id: string) {
+    snapshotLab();
     setBehaviorCards((prev) => prev.filter((b) => b.id !== id));
   }
 
@@ -382,6 +407,8 @@ export default function TodoApp() {
           onSetBehaviorType={setBehaviorType}
           onSetBehaviorAxis={setBehaviorAxis}
           onResetBehaviorAxes={resetBehaviorAxes}
+          onUndo={undoLab}
+          canUndo={labHistory.length > 0}
           onDeleteBehavior={deleteBehavior}
         />
       ) : (

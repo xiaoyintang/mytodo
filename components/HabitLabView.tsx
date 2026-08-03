@@ -15,7 +15,7 @@ import {
   pendingJudgement,
 } from "@/components/todo/behavior";
 import FocusMapView from "@/components/FocusMapView";
-import { AlertTriangle, ArrowLeft, ChevronRight, Map, Plus, Target, Trash2, Wand2, X, Zap } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ChevronRight, Map, Plus, Target, Trash2, Undo2, Wand2, X, Zap } from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
 type Judgement = { id: string; type: BehaviorType; reason?: string; hasDecision?: boolean };
@@ -33,6 +33,8 @@ type Props = {
   onSetBehaviorType: (id: string, type: BehaviorType) => void;
   onSetBehaviorAxis: (id: string, patch: { impact?: number; feasibility?: number }) => void;
   onResetBehaviorAxes: (aspirationId: string) => void;
+  onUndo: () => void;
+  canUndo: boolean;
   onDeleteBehavior: (id: string) => void;
 };
 
@@ -91,6 +93,8 @@ export default function HabitLabView({
   onSetBehaviorType,
   onSetBehaviorAxis,
   onResetBehaviorAxes,
+  onUndo,
+  canUndo,
   onDeleteBehavior,
 }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
@@ -478,6 +482,20 @@ export default function HabitLabView({
           ))}
         </div>
       </div>
+
+      {canUndo && (
+        <div className="w-full flex justify-end px-6 pt-2">
+          <button
+            type="button"
+            onClick={onUndo}
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-[12px] font-semibold text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] transition-colors"
+            title="撤回上一步（删除 / 重排 / 改判 / 新增都能退回）"
+          >
+            <Undo2 className="w-3.5 h-3.5" />
+            撤回
+          </button>
+        </div>
+      )}
 
       <div className="w-full flex flex-col gap-5 px-6 pt-5 pb-6">
         {open && mapOpen ? (
