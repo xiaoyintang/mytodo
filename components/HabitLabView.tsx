@@ -96,6 +96,9 @@ export default function HabitLabView({
   const [busy, setBusy] = useState<"sort" | "wand" | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
+  // 魔法棒是从哪条卡片点的（null = 从顶上的总魔法棒点的）。
+  // 结果和报错都渲染在触发它的地方，否则在长页面里点了像没反应。
+  const [wandSeed, setWandSeed] = useState<string | null>(null);
   const [editingType, setEditingType] = useState<string | null>(null); // 正在改判的条目 id
 
   const [deleteAspId, setDeleteAspId] = useState<string | null>(null);
@@ -109,6 +112,7 @@ export default function HabitLabView({
     setPending(null);
     setNote(null);
     setBusy(null);
+    setWandSeed(null);
     setEditingType(null);
   }
 
@@ -128,6 +132,7 @@ export default function HabitLabView({
     onAddBehaviors(open.id, [{ text }]);
     setInput("");
     setNote(null);
+    setWandSeed(null);
   }
 
   // 批量判定当前愿望下所有未判定条目
@@ -137,6 +142,7 @@ export default function HabitLabView({
     if (todo.length === 0) return;
     setBusy("sort");
     setNote(null);
+    setWandSeed(null); // 判定的提示归顶上，别串到某张卡片里
 
     const res = await callBehaviorAPI({
       mode: "sort",
@@ -165,6 +171,7 @@ export default function HabitLabView({
     setBusy("wand");
     setNote(null);
     setPending(null);
+    setWandSeed(seed?.id ?? null);
 
     const res = await callBehaviorAPI({
       mode: "wand",
@@ -209,6 +216,68 @@ export default function HabitLabView({
     onDeleteAspiration(deleteAspId);
     if (openId === deleteAspId) setOpenId(null);
     setDeleteAspId(null);
+  }
+
+  // 魔法棒候选预览（顶上的总魔法棒 / 某条卡片的「拆成行为」共用，渲染在触发处）
+  function renderPendingBlock() {
+    if (!pending) return null;
+    return (
+      <div className="w-full flex flex-col gap-2 p-3 rounded-[10px] bg-[var(--color-bg-gray-lighter)] border border-[var(--color-primary)]">
+        <p className="text-[12px] font-medium text-[var(--color-text-secondary)] leading-relaxed">
+          {pending.note}
+        </p>
+        {pending.items.map((it, i) => {
+          const st = TYPE_STYLE[it.type];
+          return (
+            <button
+              key={i}
+              type="button"
+              onClick={() => togglePending(i)}
+              className={[
+                "w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition-colors",
+                it.checked
+                  ? "bg-white border-[var(--color-primary)]"
+                  : "bg-transparent border-[var(--color-border)] opacity-50",
+              ].join(" ")}
+            >
+              <span
+                className={[
+                  "w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border",
+                  it.checked
+                    ? "bg-[var(--color-primary)] border-[var(--color-primary)]"
+                    : "border-[var(--color-border)]",
+                ].join(" ")}
+              >
+                {it.checked && <span className="text-white text-[10px] leading-none">✓</span>}
+              </span>
+              <span className="flex-1 text-[13px] text-[var(--color-text-primary)]">{it.text}</span>
+              <span
+                className="px-1.5 py-[1px] rounded border text-[10px] font-medium flex-shrink-0"
+                style={{ backgroundColor: st.bg, borderColor: st.border, color: st.text }}
+              >
+                {TYPE_LABEL[it.type]}
+              </span>
+            </button>
+          );
+        })}
+        <div className="flex justify-end gap-2 mt-1">
+          <button
+            type="button"
+            onClick={resetTransient}
+            className="px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] hover:bg-white rounded transition-colors"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={confirmPending}
+            className="px-4 py-1.5 text-[12px] bg-[var(--color-primary)] text-white rounded hover:bg-[#1d4ed8] transition-colors font-medium"
+          >
+            收进集群（{pending.items.filter((i) => i.checked).length}）
+          </button>
+        </div>
+      </div>
+    );
   }
 
   // 一条已判定条目：文字 + 可点的类型标签 + 改判面板
@@ -261,9 +330,15 @@ export default function HabitLabView({
             className="self-start flex items-center gap-1 px-2 py-1 rounded-md border border-[var(--color-primary)] text-[11px] font-medium text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] transition-colors disabled:opacity-50"
           >
             <Wand2 className="w-3 h-3" />
-            {busy === "wand" ? "拆解中..." : "拆成行为"}
+            {busy === "wand" && wandSeed === b.id ? "拆解中，10 秒左右..." : "拆成行为"}
           </button>
         )}
+
+        {/* 拆解结果 / 报错就地显示，别跑到页面顶上去 */}
+        {wandSeed === b.id && note && (
+          <p className="text-[11px] text-[var(--color-text-secondary)] leading-snug">{note}</p>
+        )}
+        {wandSeed === b.id && pending && renderPendingBlock()}
 
         {isEditing && (
           <div className="w-full flex flex-col gap-1.5 pt-1">
@@ -533,67 +608,11 @@ export default function HabitLabView({
                   {busy === "wand" ? "发散中..." : "魔法棒"}
                 </button>
               </div>
-              {note && <p className="text-[12px] text-[var(--color-text-secondary)]">{note}</p>}
+              {!wandSeed && note && <p className="text-[12px] text-[var(--color-text-secondary)]">{note}</p>}
             </div>
 
-            {/* 魔法棒候选（先勾选再入库） */}
-            {pending && (
-              <div className="w-full flex flex-col gap-2 p-3 rounded-[10px] bg-[var(--color-bg-gray-lighter)] border border-[var(--color-border)]">
-                <p className="text-[12px] font-medium text-[var(--color-text-secondary)] leading-relaxed">
-                  {pending.note}
-                </p>
-                {pending.items.map((it, i) => {
-                  const st = TYPE_STYLE[it.type];
-                  return (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => togglePending(i)}
-                      className={[
-                        "w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition-colors",
-                        it.checked
-                          ? "bg-white border-[var(--color-primary)]"
-                          : "bg-transparent border-[var(--color-border)] opacity-50",
-                      ].join(" ")}
-                    >
-                      <span
-                        className={[
-                          "w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border",
-                          it.checked
-                            ? "bg-[var(--color-primary)] border-[var(--color-primary)]"
-                            : "border-[var(--color-border)]",
-                        ].join(" ")}
-                      >
-                        {it.checked && <span className="text-white text-[10px] leading-none">✓</span>}
-                      </span>
-                      <span className="flex-1 text-[13px] text-[var(--color-text-primary)]">{it.text}</span>
-                      <span
-                        className="px-1.5 py-[1px] rounded border text-[10px] font-medium flex-shrink-0"
-                        style={{ backgroundColor: st.bg, borderColor: st.border, color: st.text }}
-                      >
-                        {TYPE_LABEL[it.type]}
-                      </span>
-                    </button>
-                  );
-                })}
-                <div className="flex justify-end gap-2 mt-1">
-                  <button
-                    type="button"
-                    onClick={resetTransient}
-                    className="px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] hover:bg-white rounded transition-colors"
-                  >
-                    取消
-                  </button>
-                  <button
-                    type="button"
-                    onClick={confirmPending}
-                    className="px-4 py-1.5 text-[12px] bg-[var(--color-primary)] text-white rounded hover:bg-[#1d4ed8] transition-colors font-medium"
-                  >
-                    收进集群（{pending.items.filter((i) => i.checked).length}）
-                  </button>
-                </div>
-              </div>
-            )}
+            {/* 魔法棒候选：从顶上的总魔法棒点的才显示在这儿；从卡片点的显示在那张卡下面 */}
+            {!wandSeed && pending && renderPendingBlock()}
 
             {/* 未判定 */}
             {unsorted.length > 0 && (
