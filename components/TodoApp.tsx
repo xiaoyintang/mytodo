@@ -328,6 +328,19 @@ export default function TodoApp() {
     );
   }
 
+  // 「改小」专用：换掉文字但保留类型（它还是同一种可重复行为，不该退回未判定），
+  // 清掉可行性——旧分数是给"难版本"打的，改小之后必须重拖一次
+  function shrinkBehavior(id: string, text: string) {
+    snapshotLab();
+    setBehaviorCards((prev) =>
+      prev.map((b) =>
+        b.id === id
+          ? { ...b, text, feasibility: undefined, reason: undefined, hasDecision: undefined }
+          : b,
+      ),
+    );
+  }
+
   // 手动改判：以后 AI 不再覆盖这条
   function setBehaviorType(id: string, type: BehaviorType) {
     snapshotLab();
@@ -476,6 +489,7 @@ export default function TodoApp() {
           onApplyJudgements={applyJudgements}
           onUpdateBehaviorText={updateBehaviorText}
           onSetBehaviorType={setBehaviorType}
+          onShrinkBehavior={shrinkBehavior}
           onSetBehaviorAxis={setBehaviorAxis}
           onResetBehaviorAxes={resetBehaviorAxes}
           onUndo={undoLab}

@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import type { Habit, HabitLog, ISODate, TimeEntry } from "@/components/todo/types";
+import type { Aspiration, Habit, HabitLog, ISODate, TimeEntry } from "@/components/todo/types";
 import { formatMinutes } from "@/components/todo/time";
-import { Check, Clock, Link2, Plus, Trash2, Undo2 } from "lucide-react";
+import { Check, Clock, Link2, Plus, Target, Trash2, Undo2 } from "lucide-react";
 
 type Props = {
+  aspirations: Aspiration[];
   habits: Habit[];
   logs: HabitLog[];
   entries: TimeEntry[];
@@ -25,6 +26,7 @@ function fromLedger(habit: Habit, entries: TimeEntry[], today: ISODate) {
 }
 
 export default function HabitTracker({
+  aspirations,
   habits,
   logs,
   entries,
@@ -41,6 +43,15 @@ export default function HabitTracker({
 
   const live = habits.filter((h) => !h.archived);
   if (live.length === 0) return null;
+
+  // 按目标分组：习惯多了以后得知道每条是为哪个愿望服务的
+  const groups: Array<{ key: string; title: string | null; items: Habit[] }> = [];
+  for (const a of aspirations) {
+    const items = live.filter((h) => h.aspirationId === a.id);
+    if (items.length > 0) groups.push({ key: a.id, title: a.title, items });
+  }
+  const orphans = live.filter((h) => !h.aspirationId || !aspirations.some((a) => a.id === h.aspirationId));
+  if (orphans.length > 0) groups.push({ key: "__none__", title: null, items: orphans });
 
   function tap(h: Habit) {
     onLog(h.id);
@@ -63,8 +74,18 @@ export default function HabitTracker({
         </span>
       </div>
 
-      <div className="w-full flex flex-col gap-2">
-        {live.map((h) => {
+      {groups.map((g) => (
+        <div key={g.key} className="w-full flex flex-col gap-2">
+          <div className="w-full flex items-center gap-1.5">
+            <Target className="w-3 h-3 text-[var(--color-primary)] flex-shrink-0" />
+            <span className="text-[12px] font-semibold text-[var(--color-text-secondary)] truncate">
+              {g.title ?? "没有归属的目标"}
+            </span>
+            <span className="text-[11px] text-[var(--color-text-tertiary)] flex-shrink-0">
+              {g.items.length} 个习惯
+            </span>
+          </div>
+        {g.items.map((h) => {
           const isDuration = h.measure === "duration";
           const ledger = isDuration ? fromLedger(h, entries, today) : null;
           const count = isDuration
@@ -206,7 +227,8 @@ export default function HabitTracker({
             </div>
           );
         })}
-      </div>
+        </div>
+      ))}
     </div>
   );
 }

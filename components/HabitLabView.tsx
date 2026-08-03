@@ -43,6 +43,7 @@ type Props = {
   onApplyJudgements: (results: Judgement[]) => void;
   onUpdateBehaviorText: (id: string, text: string) => void;
   onSetBehaviorType: (id: string, type: BehaviorType) => void;
+  onShrinkBehavior: (id: string, text: string) => void;
   onSetBehaviorAxis: (id: string, patch: { impact?: number; feasibility?: number }) => void;
   onResetBehaviorAxes: (aspirationId: string) => void;
   onUndo: () => void;
@@ -71,7 +72,7 @@ const KIND_LABEL: Record<AspirationKind, string> = { aspiration: "愿望", outco
 
 // 魔法棒吐出来的候选，先勾选再入库
 type PendingItem = { text: string; type: BehaviorType; checked: boolean };
-type Pending = { note: string; items: PendingItem[]; replaceId?: string };
+type Pending = { note: string; items: PendingItem[] };
 
 async function callBehaviorAPI(
   body: Record<string, unknown>,
@@ -113,6 +114,7 @@ export default function HabitLabView({
   onApplyJudgements,
   onUpdateBehaviorText,
   onSetBehaviorType,
+  onShrinkBehavior,
   onSetBehaviorAxis,
   onResetBehaviorAxes,
   onUndo,
@@ -151,7 +153,6 @@ export default function HabitLabView({
   const [deleteAspId, setDeleteAspId] = useState<string | null>(null);
 
   const [mapOpen, setMapOpen] = useState(false); // 三级页：焦点地图
-  const [shrinkingId, setShrinkingId] = useState<string | null>(null);
   const habitBehaviorIds = new Set(habits.filter((h) => !h.archived && h.behaviorId).map((h) => h.behaviorId!));
 
   const open = openId ? aspirations.find((a) => a.id === openId) ?? null : null;
@@ -286,31 +287,6 @@ export default function HabitLabView({
     });
   }
 
-  // 「改小」：把做不到的行为拆成不需要意志力的版本，选一个替换原文字
-  async function handleShrink(card: BehaviorCard) {
-    if (!open || shrinkingId) return;
-    setShrinkingId(card.id);
-    setNote(null);
-    setPending(null);
-    const res = await callBehaviorAPI({ mode: "shrink", text: card.text, goal: open.title });
-    setShrinkingId(null);
-    if (!res.ok) {
-      setNote(res.noKey ? "没配 AI，改小得自己动手：点条目文字直接改" : "AI 没连上，稍后再试");
-      return;
-    }
-    const items = toPendingItems(res.data.behaviors);
-    if (items.length === 0) {
-      setNote("AI 没给出更小的版本，自己动手改改看");
-      return;
-    }
-    setWandSeed(card.id);
-    setPending({
-      note: `把「${card.text}」改小到不需要意志力。选一个替换它（也可以都收进来）：`,
-      items,
-      replaceId: card.id,
-    });
-  }
-
   // 黄金行为 → 微习惯。时长型 vs 发生型由行为本身决定
   function handleAddHabit(card: BehaviorCard) {
     if (!open) return;
@@ -325,15 +301,7 @@ export default function HabitLabView({
   function confirmPending() {
     if (!pending || !open) return;
     const picked = pending.items.filter((i) => i.checked).map(({ text, type }) => ({ text, type }));
-    if (picked.length > 0) {
-      // 改小场景：第一条直接替换原行为（保留它在焦点地图里的位置），其余作为新候选收进来
-      if (pending.replaceId) {
-        onUpdateBehaviorText(pending.replaceId, picked[0].text);
-        if (picked.length > 1) onAddBehaviors(open.id, picked.slice(1));
-      } else {
-        onAddBehaviors(open.id, picked);
-      }
-    }
+    if (picked.length > 0) onAddBehaviors(open.id, picked);
     resetTransient();
   }
 
@@ -584,8 +552,8 @@ export default function HabitLabView({
             onSetAxis={onSetBehaviorAxis}
             onResetAxes={() => onResetBehaviorAxes(open.id)}
             onDelete={onDeleteBehavior}
-            onShrink={handleShrink}
-            shrinkingId={shrinkingId}
+            onReplaceText={onShrinkBehavior}
+            onAddExtra={(items) => onAddBehaviors(open.id, items)}
             onAddHabit={handleAddHabit}
             habitBehaviorIds={habitBehaviorIds}
             onBack={() => setMapOpen(false)}
@@ -594,6 +562,7 @@ export default function HabitLabView({
           /* ===== 一级页：今天的习惯 + 我的愿望 ===== */
           <>
             <HabitTracker
+              aspirations={aspirations}
               habits={habits}
               logs={habitLogs}
               entries={entries}
@@ -770,6 +739,27 @@ export default function HabitLabView({
               </span>
             </div>
 
+            {/* 焦点地图入口放最上面——放底下动线太长（进 tab → 点目标 → 一路下拉） */}
+            {repeatable.length > 0 && (
+              <div className="w-full flex flex-col gap-1">
+                <button
+                  type="button"
+                  onClick={() => setMapOpen(true)}
+                  className="w-full flex items-center justify-center gap-1.5 rounded-[10px] py-2.5 text-[14px] font-semibold bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8] transition-colors"
+                >
+                  <Map className="w-4 h-4" />
+                  排焦点地图（{repeatable.length} 条可重复行为）
+                </button>
+                <span className="text-[11px] text-[var(--color-text-tertiary)] text-center">
+                  {goldenCount > 0
+                    ? `已筛出 ${goldenCount} 条黄金行为`
+                    : unsorted.length > 0
+                      ? "建议先把未判定的判完，免得漏掉可重复行为"
+                      : "两轮拖滑块，筛出真正该做的那几条"}
+                </span>
+              </div>
+            )}
+
             {/* 收集口：回车即存，AI 不参与 */}
             <div className="w-full flex flex-col gap-2">
               <textarea
@@ -901,25 +891,7 @@ export default function HabitLabView({
               </p>
             )}
 
-            {repeatable.length > 0 && (
-              <div className="w-full flex flex-col gap-1.5 pt-1 border-t border-[var(--color-border)]">
-                <button
-                  type="button"
-                  onClick={() => setMapOpen(true)}
-                  className="w-full flex items-center justify-center gap-1.5 rounded-[10px] py-2.5 text-[14px] font-semibold bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8] transition-colors"
-                >
-                  <Map className="w-4 h-4" />
-                  排焦点地图（{repeatable.length} 条可重复行为）
-                </button>
-                <span className="text-[11px] text-[var(--color-text-tertiary)] text-center">
-                  {goldenCount > 0
-                    ? `已筛出 ${goldenCount} 条黄金行为`
-                    : unsorted.length > 0
-                      ? "建议先把未判定的判完，免得漏掉可重复行为"
-                      : "两轮二选一，筛出真正该做的那几条"}
-                </span>
-              </div>
-            )}
+
           </>
         )}
       </div>
