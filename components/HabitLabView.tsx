@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   Aspiration,
   AspirationKind,
@@ -27,6 +27,7 @@ import {
   needsBreakdown,
   pendingJudgement,
 } from "@/components/todo/behavior";
+import { callBehaviorAPI, toPendingItems, type PendingItem } from "@/components/todo/behaviorApi";
 import FocusMapView from "@/components/FocusMapView";
 import HabitTracker from "@/components/HabitTracker";
 import { AlertTriangle, ArrowLeft, ChevronRight, Plus, Target, Trash2, Undo2, Wand2, X, Zap } from "lucide-react";
@@ -79,37 +80,7 @@ const TABS: Array<[ViewMode, string]> = [
 const KIND_LABEL: Record<AspirationKind, string> = { aspiration: "愿望", outcome: "结果" };
 
 // 魔法棒吐出来的候选，先勾选再入库
-type PendingItem = { text: string; type: BehaviorType; checked: boolean };
 type Pending = { note: string; items: PendingItem[] };
-
-async function callBehaviorAPI(
-  body: Record<string, unknown>,
-): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; noKey: boolean }> {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 30000); // 批量判定慢，给足时间
-    const res = await fetch("/api/behavior", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    if (res.status === 501) return { ok: false, noKey: true };
-    if (!res.ok) return { ok: false, noKey: false };
-    return { ok: true, data: await res.json() };
-  } catch {
-    return { ok: false, noKey: false };
-  }
-}
-
-function toPendingItems(raw: unknown): PendingItem[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.map((b) => {
-    const o = b as { text?: string; type?: BehaviorType };
-    return { text: String(o.text ?? ""), type: (o.type ?? "habit") as BehaviorType, checked: true };
-  });
-}
 
 export default function HabitLabView({
   viewMode,
@@ -176,7 +147,9 @@ export default function HabitLabView({
   const unsorted = openCards.filter((b) => b.type === "unsorted");
   const judged = openCards.filter((b) => b.type !== "unsorted");
   // 可重复行为 + 一次性任务都上焦点地图（一次性任务也要筛：又难又没用的就别做了）
-  const actionable = openCards.filter((b) => isActionable(b.type));
+  // 这个愿望下的全部条目都进地图：能打分的正常排；未判定的标"判定中"；
+  // 判成愿望/成果的留在原地并说明它执行不了——**你刚打进去的东西不能凭空消失**
+  const actionable = openCards;
   const repeatable = openCards.filter((b) => isRepeatable(b.type));
   const liveHabits = habits.filter((h) => !h.archived);
   const goldenCount = actionable.filter(isGolden).length;
@@ -251,7 +224,41 @@ export default function HabitLabView({
     setWandSeed(null);
   }
 
-  // 批量判定当前愿望下所有未判定条目
+  // 新加进来的条目自己就会去判定，不用你点按钮。
+  // 非阻塞：行立刻出现（标着"判定中"），2 秒左右类型自己填上，你可以接着往下打。
+  // 连着加几条会攒成一次请求。
+  const autoJudgedRef = useRef<Set<string>>(new Set());
+  const pendingIds = open ? pendingJudgement(openCards).map((b) => b.id) : [];
+  const pendingKey = pendingIds.join("|");
+
+  useEffect(() => {
+    if (!open || busy) return;
+    const todo = pendingJudgement(behaviors.filter((b) => b.aspirationId === open.id)).filter(
+      (b) => !autoJudgedRef.current.has(b.id),
+    );
+    if (todo.length === 0) return;
+    const timer = setTimeout(() => {
+      todo.forEach((b) => autoJudgedRef.current.add(b.id));
+      void (async () => {
+        const res = await callBehaviorAPI({
+          mode: "sort",
+          goal: open.title,
+          items: todo.map((b) => ({ id: b.id, text: b.text })),
+        });
+        if (!res.ok) {
+          // 判不了就留在"未判定"，上面那个按钮可以手动重试
+          todo.forEach((b) => autoJudgedRef.current.delete(b.id));
+          return;
+        }
+        const results = Array.isArray(res.data.results) ? (res.data.results as Judgement[]) : [];
+        if (results.length > 0) onApplyJudgements(results);
+      })();
+    }, 700); // 攒一下，连着打字不会一条一个请求
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingKey, openId]);
+
+  // 批量判定当前愿望下所有未判定条目（自动判失败时手动重试用）
   async function handleSort() {
     if (!open || busy) return;
     const todo = pendingJudgement(openCards);
@@ -883,7 +890,7 @@ export default function HabitLabView({
                   onDelete={onDeleteBehavior}
                   onReplaceText={onShrinkBehavior}
                   onAddExtra={(items) => onAddBehaviors(open.id, items)}
-                  onAdd={(text) => onAddBehaviors(open.id, [{ text, type: "habit" }])}
+                  onAdd={(text) => onAddBehaviors(open.id, [{ text }])}
                   onEditText={onEditBehaviorText}
                   onSetType={onSetBehaviorType}
                   onSchedule={onScheduleBehavior}

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { Aspiration, BehaviorCard, BehaviorType, ISODate, Task } from "@/components/todo/types";
 import { callBehaviorAPI, toPendingItems, type PendingItem } from "@/components/todo/behaviorApi";
-import { TYPE_LABEL, TYPE_STYLE, goldenScore, isGolden, isRepeatable } from "@/components/todo/behavior";
+import { TYPE_LABEL, TYPE_STYLE, goldenScore, isGolden, isRepeatable, needsBreakdown } from "@/components/todo/behavior";
 import { addDays, toISODate } from "@/components/todo/date";
 import { ArrowUpDown, Check, RotateCcw, Scissors, Star, Trash2, X } from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -104,6 +104,7 @@ export default function FocusMapView({
   const goldenRank = new Map(golden.map((g, i) => [g.id, i + 1]));
   const plotted = cards.filter((c) => c.impact != null && c.feasibility != null);
   const rated = cards.filter((c) => c.impact != null || c.feasibility != null).length;
+  const rateable = cards.filter((c) => c.type !== "unsorted" && !needsBreakdown(c.type)).length;
 
   // 影响力够高但做不到的——福格的解法是改小。单独拎出来，否则藏在几十行里根本找不着
   const stuck = cards.filter((c) => (c.impact ?? 0) >= 50 && c.feasibility != null && c.feasibility < 50);
@@ -331,7 +332,7 @@ export default function FocusMapView({
           <div className="w-full flex items-center justify-between text-[11px] text-[var(--color-text-tertiary)] px-1">
             <span>← 做不到</span>
             <span className="text-[var(--color-primary)] font-medium">
-              右上角 {golden.length} 条 · 已排 {rated}/{cards.length}
+              右上角 {golden.length} 条 · 已排 {rated}/{rateable}
             </span>
             <span>能做到 →</span>
           </div>
@@ -495,9 +496,9 @@ export default function FocusMapView({
                   onClick={() => setTypingId(typingId === b.id ? null : b.id)}
                   className="px-1.5 py-[1px] rounded border text-[9px] font-medium flex-shrink-0"
                   style={{ backgroundColor: st.bg, borderColor: st.border, color: st.text }}
-                  title="判错了？点一下改"
+                  title={b.type === "unsorted" ? "AI 正在判它是什么，也可以自己点一个" : "判错了？点一下改"}
                 >
-                  {TYPE_LABEL[b.type]}
+                  {b.type === "unsorted" ? "判定中…" : TYPE_LABEL[b.type]}
                 </button>
                 <button
                   type="button"
@@ -540,8 +541,16 @@ export default function FocusMapView({
                 </div>
               )}
 
-              {renderSlider(b, "impact")}
-              {renderSlider(b, "feasibility")}
+              {b.type === "unsorted" ? (
+                <span className="text-[10px] text-[var(--color-text-tertiary)] py-1">
+                  AI 正在判它是不是行为，判完就能打分（也可以直接点上面的标签自己定）
+                </span>
+              ) : (
+                <>
+                  {renderSlider(b, "impact")}
+                  {renderSlider(b, "feasibility")}
+                </>
+              )}
 
               {edited.has(b.id) && (
                 <div className="w-full flex items-center gap-1.5 text-[10px] text-[#B45309]">
@@ -596,6 +605,14 @@ export default function FocusMapView({
                     <X className="w-3 h-3" />
                     撤回
                   </button>
+                </div>
+              )}
+
+              {needsBreakdown(b.type) && (
+                <div className="w-full flex items-center gap-1.5 py-1">
+                  <span className="flex-1 text-[10px] text-[#B45309] leading-snug">
+                    这条执行不了（{TYPE_LABEL[b.type]}），没法打分。回「行为集群」点「拆成行为」
+                  </span>
                 </div>
               )}
 
