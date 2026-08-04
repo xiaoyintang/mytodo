@@ -64,6 +64,9 @@ export default function FocusMapView({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [scheduling, setScheduling] = useState(false);
   const [onlyStuck, setOnlyStuck] = useState(false);
+  // 点上去看是哪条：hover 是鼠标预览，pinned 是点/触摸钉住（手机没有 hover）
+  const [hoverId, setHoverId] = useState<string | null>(null);
+  const [pinnedId, setPinnedId] = useState<string | null>(null);
 
   const [shrinkingId, setShrinkingId] = useState<string | null>(null);
   const [shrink, setShrink] = useState<{ forId: string; items: PendingItem[] } | null>(null);
@@ -103,6 +106,9 @@ export default function FocusMapView({
       return next;
     });
   }
+
+  const activeId = hoverId ?? pinnedId;
+  const active = activeId ? cards.find((c) => c.id === activeId) ?? null : null;
 
   const chosen = cards.filter((c) => selected.has(c.id));
   const chosenHabits = chosen.filter((c) => isRepeatable(c.type) && !habitBehaviorIds.has(c.id));
@@ -209,18 +215,46 @@ export default function FocusMapView({
             const cx = PAD + ((b.feasibility ?? 0) / 100) * (W - PAD * 2);
             const cy = H - PAD - ((b.impact ?? 0) / 100) * (H - PAD * 2);
             const rank = goldenRank.get(b.id);
-            const dim = selected.size > 0 && !selected.has(b.id);
+            const isActive = activeId === b.id;
+            const dim =
+              (selected.size > 0 && !selected.has(b.id)) || (activeId !== null && !isActive);
             return (
-              <g key={b.id} opacity={dim ? 0.25 : 1}>
+              <g
+                key={b.id}
+                opacity={dim ? 0.22 : 1}
+                className="cursor-pointer"
+                onMouseEnter={() => setHoverId(b.id)}
+                onMouseLeave={() => setHoverId(null)}
+                onPointerDown={(e) => {
+                  if (e.pointerType === "mouse") return; // 鼠标走 hover，别在这儿抢
+                  setPinnedId((p) => (p === b.id ? null : b.id));
+                }}
+                onClick={(e) => {
+                  if (e.detail === 0) return;
+                  setPinnedId((p) => (p === b.id ? null : b.id));
+                }}
+              >
+                {/* 透明的大热区，手指点得中 */}
+                <circle cx={cx} cy={cy} r={15} fill="transparent" />
                 <circle
                   cx={cx}
                   cy={cy}
-                  r={rank ? 9 : 5}
+                  r={isActive ? (rank ? 11 : 8) : rank ? 9 : 5}
                   fill={rank ? "var(--color-primary)" : "#A1A1AA"}
                   opacity={rank ? 1 : 0.6}
+                  stroke={isActive ? "var(--color-text-primary)" : "none"}
+                  strokeWidth={isActive ? 2 : 0}
                 />
                 {rank && (
-                  <text x={cx} y={cy + 3.5} textAnchor="middle" fontSize={10} fontWeight={700} fill="#fff">
+                  <text
+                    x={cx}
+                    y={cy + 3.5}
+                    textAnchor="middle"
+                    fontSize={10}
+                    fontWeight={700}
+                    fill="#fff"
+                    pointerEvents="none"
+                  >
                     {rank}
                   </text>
                 )}
@@ -228,13 +262,30 @@ export default function FocusMapView({
             );
           })}
         </svg>
-        <div className="w-full flex items-center justify-between text-[11px] text-[var(--color-text-tertiary)] px-1">
-          <span>← 做不到</span>
-          <span className="text-[var(--color-primary)] font-medium">
-            右上角 {golden.length} 条 · 已排 {rated}/{cards.length}
-          </span>
-          <span>能做到 →</span>
-        </div>
+        {active ? (
+          <div className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg bg-[var(--color-text-primary)] text-white">
+            {goldenRank.get(active.id) && (
+              <span className="w-4 h-4 rounded-full bg-white text-[var(--color-text-primary)] text-[9px] font-bold flex items-center justify-center flex-shrink-0">
+                {goldenRank.get(active.id)}
+              </span>
+            )}
+            <span className="flex-1 text-[12px] leading-snug">{active.text}</span>
+            <span className="text-[11px] tabular-nums opacity-70 flex-shrink-0">
+              影响 {active.impact} · 能做 {active.feasibility}
+            </span>
+          </div>
+        ) : (
+          <div className="w-full flex items-center justify-between text-[11px] text-[var(--color-text-tertiary)] px-1">
+            <span>← 做不到</span>
+            <span className="text-[var(--color-primary)] font-medium">
+              右上角 {golden.length} 条 · 已排 {rated}/{cards.length}
+            </span>
+            <span>能做到 →</span>
+          </div>
+        )}
+        <span className="text-[10px] text-[var(--color-text-tertiary)]">
+          点圆点看是哪一条{active ? "（再点一下取消）" : ""}
+        </span>
       </div>
 
       {/* 排序：想比较第 9 和第 4？排一下它俩就挨着了 */}
@@ -298,11 +349,13 @@ export default function FocusMapView({
               key={b.id}
               className={[
                 "w-full flex flex-col gap-1 px-3 py-2.5 rounded-[10px] border transition-colors",
-                picked
-                  ? "bg-[var(--color-primary-light)] border-[var(--color-primary)]"
-                  : rank
-                    ? "bg-white border-[var(--color-primary)]"
-                    : "bg-white border-[var(--color-border)]",
+                activeId === b.id
+                  ? "bg-white border-[var(--color-text-primary)] ring-1 ring-[var(--color-text-primary)]"
+                  : picked
+                    ? "bg-[var(--color-primary-light)] border-[var(--color-primary)]"
+                    : rank
+                      ? "bg-white border-[var(--color-primary)]"
+                      : "bg-white border-[var(--color-border)]",
               ].join(" ")}
             >
               <div className="w-full flex items-start gap-2">

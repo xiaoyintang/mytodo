@@ -770,7 +770,11 @@ export default function HabitLabView({
                         type="button"
                         onClick={() => {
                           setOpenId(a.id);
-                          setMapOpen(false);
+                          // 默认落在焦点地图——那才是"我到底该做什么"。
+                          // 但这个愿望还没有可排的行为时，落在焦点地图只会看到空页
+                          setMapOpen(
+                            behaviors.some((b) => b.aspirationId === a.id && isActionable(b.type)),
+                          );
                           resetTransient();
                           setInput("");
                         }}
