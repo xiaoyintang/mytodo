@@ -670,7 +670,7 @@ export default function FocusMapView({
                     );
                   })}
                   <span className="text-[9px] text-[var(--color-text-tertiary)]">
-                    愿望/成果得回集群页拆
+                    判成愿望/成果的，用那行的「拆成行为」
                   </span>
                 </div>
               )}

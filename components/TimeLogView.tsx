@@ -566,10 +566,10 @@ export default function TimeLogView({
               type="button"
               onClick={() => onChangeViewMode(tab.mode)}
               className={[
-                "flex-1 flex items-center justify-center rounded-lg px-2 py-[10px]",
+                "flex-1 flex items-center justify-center rounded-lg px-2 py-[10px] transition-colors",
                 viewMode === tab.mode
                   ? "bg-[var(--color-bg-white)] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
-                  : "",
+                  : "hover:bg-white/60",
               ].join(" ")}
             >
               <span

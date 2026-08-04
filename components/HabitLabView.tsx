@@ -229,8 +229,8 @@ export default function HabitLabView({
               type="button"
               onClick={() => onChangeViewMode(mode)}
               className={[
-                "flex-1 flex items-center justify-center rounded-lg px-2 py-[10px]",
-                viewMode === mode ? "bg-[var(--color-bg-white)] shadow-[0_1px_2px_rgba(0,0,0,0.05)]" : "",
+                "flex-1 flex items-center justify-center rounded-lg px-2 py-[10px] transition-colors",
+                viewMode === mode ? "bg-[var(--color-bg-white)] shadow-[0_1px_2px_rgba(0,0,0,0.05)]" : "hover:bg-white/60",
               ].join(" ")}
             >
               <span
@@ -272,18 +272,19 @@ export default function HabitLabView({
                 type="button"
                 onClick={() => setSub(key)}
                 className={[
-                  "pb-2 -mb-[1px] border-b-2 transition-colors",
+                  "pb-2 -mb-[1px] border-b-2 transition-colors group",
                   sub === key
                     ? "border-[var(--color-primary)]"
-                    : "border-transparent",
+                    : "border-transparent hover:border-[var(--color-border)]",
                 ].join(" ")}
               >
                 <span
                   className={[
                     "text-[14px]",
+                    "transition-colors",
                     sub === key
                       ? "text-[var(--color-primary)] font-semibold"
-                      : "text-[var(--color-text-secondary)] font-medium",
+                      : "text-[var(--color-text-secondary)] font-medium group-hover:text-[var(--color-text-primary)]",
                   ].join(" ")}
                 >
                   {label}
@@ -439,13 +440,28 @@ export default function HabitLabView({
                   怎么用（福格行为设计）
                 </span>
                 <p className="text-[12px] leading-relaxed text-[var(--color-text-secondary)]">
-                  1. 先写下一个愿望或结果——它们都<strong>不是行为</strong>，你没法"执行"一个愿望
+                  <strong>1. 先写下一个愿望</strong>
                   <br />
-                  2. 想到什么就往收集口里倒，回车即存，<strong>先不判断好坏</strong>
+                  就是那种你想要、但没法直接"去做"的事：<em>想早点睡</em>、<em>想瘦下来</em>、
+                  <em>想把自媒体做起来</em>、<em>想考上研</em>。
                   <br />
-                  3. 攒够了点「一次判定」，AI 一次性分拣成 愿望/成果/一次性任务/可重复行为
+                  这些都不是行为——你没法执行一句"想早点睡"，所以才需要往下拆。
                   <br />
-                  4. 可重复行为下一步进焦点地图，筛出真正该做的那几个
+                  <br />
+                  <strong>2. 点进去，把能想到的做法都写进去</strong>
+                  <br />
+                  一条一句话，回车一条，别管好坏、别管做不做得到，先写出来再说。
+                  想不出来就点「魔法棒」，AI 一次给你十条。
+                  <br />
+                  <br />
+                  <strong>3. 每条拖两根滑块</strong>
+                  <br />
+                  这事对愿望有多大用 / 你有多容易做到。
+                  <br />
+                  <br />
+                  <strong>4. 落在右上角的就是黄金行为</strong>
+                  <br />
+                  又有用、又做得到的那几条。加进习惯表，每天做——就这几条，不用多。
                 </p>
               </div>
             ) : (

@@ -269,7 +269,7 @@ export default function TodoWeekView({
                 type="button"
                 onClick={() => onChangeViewMode(mode)}
                 className={[
-                  "flex-1 flex items-center justify-center rounded-lg px-2 py-[10px]",
+                  "flex-1 flex items-center justify-center rounded-lg px-2 py-[10px] transition-colors",
                   viewMode === mode
                     ? "bg-[var(--color-bg-white)] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
                     : "",

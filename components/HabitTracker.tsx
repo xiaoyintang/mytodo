@@ -69,7 +69,12 @@ export default function HabitTracker({
     onLog(h.id);
     // 点一下要有回应——这一下就是奖励本身（福格的「庆祝」）
     setJustTapped(h.id);
-    setTimeout(() => setJustTapped((cur) => (cur === h.id ? null : cur)), 600);
+    try {
+      navigator.vibrate?.(12); // 安卓上多一层触感；iOS 不支持，静默忽略
+    } catch {
+      /* ignore */
+    }
+    setTimeout(() => setJustTapped((cur) => (cur === h.id ? null : cur)), 750);
   }
 
   function isShut(key: string): boolean {
@@ -144,6 +149,7 @@ export default function HabitTracker({
                 key={h.id}
                 className={[
                   "w-full flex flex-col gap-0.5 px-3 py-2 rounded-[10px] border transition-colors duration-300",
+                  flash ? "animate-habit-glow " : "",
                   flash
                     ? "bg-[#F0FDF4] border-[#16A34A]"
                     : count > 0
@@ -205,9 +211,11 @@ export default function HabitTracker({
 
                   {/* 今天的成绩，一小段，不单独占行 */}
                   <span
+                    key={`${h.id}-${count}`}
                     className={[
                       "text-[11px] tabular-nums flex-shrink-0 mt-[3px]",
                       count > 0 ? "text-[var(--color-primary)] font-semibold" : "text-[var(--color-text-tertiary)]",
+                      flash ? "animate-habit-pop text-[#16A34A]" : "",
                     ].join(" ")}
                   >
                     {isDuration
@@ -241,22 +249,29 @@ export default function HabitTracker({
                           <Undo2 className="w-3.5 h-3.5 text-[#A1A1AA]" />
                         </button>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => tap(h)}
-                        className={[
-                          "w-11 h-8 rounded-lg flex items-center justify-center flex-shrink-0",
-                          "text-white transition-all active:scale-90",
-                          flash ? "bg-[#16A34A] scale-105" : "bg-[var(--color-primary)] hover:bg-[#1d4ed8]",
-                        ].join(" ")}
-                        aria-label={`记一次「${h.title}」`}
-                      >
-                        {flash ? (
-                          <Check className="w-4 h-4" strokeWidth={3} />
-                        ) : (
-                          <Plus className="w-4 h-4" strokeWidth={3} />
+                      <div className="relative flex-shrink-0">
+                        {flash && (
+                          <span className="animate-habit-float-up pointer-events-none absolute -top-1 left-1/2 -translate-x-1/2 text-[15px] font-bold text-[#16A34A]">
+                            +1
+                          </span>
                         )}
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => tap(h)}
+                          className={[
+                            "w-11 h-8 rounded-lg flex items-center justify-center",
+                            "text-white transition-all duration-200 active:scale-90",
+                            flash ? "bg-[#16A34A] scale-110" : "bg-[var(--color-primary)] hover:bg-[#1d4ed8]",
+                          ].join(" ")}
+                          aria-label={`记一次「${h.title}」`}
+                        >
+                          {flash ? (
+                            <Check className="w-4 h-4" strokeWidth={3} />
+                          ) : (
+                            <Plus className="w-4 h-4" strokeWidth={3} />
+                          )}
+                        </button>
+                      </div>
                     </>
                   )}
 
