@@ -5,6 +5,7 @@ import TodoDayView from "@/components/TodoDayView";
 import TodoWeekView from "@/components/TodoWeekView";
 import TimeLogView from "@/components/TimeLogView";
 import HabitLabView from "@/components/HabitLabView";
+import GoalsView from "@/components/GoalsView";
 import AddTaskModal from "@/components/AddTaskModal";
 import SyncModal from "@/components/SyncModal";
 import type {
@@ -12,6 +13,7 @@ import type {
   AspirationKind,
   BehaviorCard,
   BehaviorType,
+  DayPlan,
   Habit,
   HabitLog,
   EntryCategory,
@@ -24,6 +26,7 @@ import type {
 import { toISODate, parseISODate, addDays, startOfWeek } from "@/components/todo/date";
 import { useLocalStorageState } from "@/components/todo/storage";
 import { useCloudSync } from "@/components/todo/sync";
+import { nextGoalColor } from "@/components/todo/goal";
 import { Cloud, CloudOff, RefreshCw } from "lucide-react";
 
 const STORAGE_KEY = "mytodo.tasks.v1";
@@ -33,11 +36,13 @@ const ASPIRATIONS_KEY = "mytodo.aspirations.v1";
 const BEHAVIORS_KEY = "mytodo.behaviors.v1";
 const HABITS_KEY = "mytodo.habits.v1";
 const HABIT_LOGS_KEY = "mytodo.habitlogs.v1";
+const DAY_PLANS_KEY = "mytodo.dayplans.v1";
 const EMPTY_ENTRIES: TimeEntry[] = [];
 const EMPTY_ASPIRATIONS: Aspiration[] = [];
 const EMPTY_BEHAVIORS: BehaviorCard[] = [];
 const EMPTY_HABITS: Habit[] = [];
 const EMPTY_HABIT_LOGS: HabitLog[] = [];
+const EMPTY_DAY_PLANS: Record<string, DayPlan> = {};
 
 function seedTasks(today: ISODate): Task[] {
   // Generate dates for the current week
@@ -116,7 +121,12 @@ export default function TodoApp() {
   const { value: habitLogs, setValue: setHabitLogs, hydrated: logsHydrated } =
     useLocalStorageState<HabitLog[]>(HABIT_LOGS_KEY, EMPTY_HABIT_LOGS);
 
+  // 每天的安排（主线/必做）。按日期做 key，不建 MainLine 实体
+  const { value: dayPlans, setValue: setDayPlans, hydrated: plansHydrated } =
+    useLocalStorageState<Record<string, DayPlan>>(DAY_PLANS_KEY, EMPTY_DAY_PLANS);
+
   const [viewMode, setViewMode] = useState<ViewMode>("day");
+  const [goalsOpen, setGoalsOpen] = useState(false); // 从常驻条进的目标管理页
   const [selectedDate, setSelectedDate] = useState<ISODate>(todayIso);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSyncOpen, setIsSyncOpen] = useState(false);
@@ -133,6 +143,7 @@ export default function TodoApp() {
   const safeBehaviors = behHydrated ? behaviorCards : EMPTY_BEHAVIORS;
   const safeHabits = habitsHydrated ? habits : EMPTY_HABITS;
   const safeHabitLogs = logsHydrated ? habitLogs : EMPTY_HABIT_LOGS;
+  const safeDayPlans = plansHydrated ? dayPlans : EMPTY_DAY_PLANS;
 
   // 多设备同步码
   const sync = useCloudSync({
@@ -280,6 +291,7 @@ export default function TodoApp() {
       title,
       kind,
       createdAt: Date.now(),
+      color: nextGoalColor(aspirations),
     };
     setAspirations((prev) => [...prev, a]);
   }
@@ -508,6 +520,18 @@ export default function TodoApp() {
     setBehaviorCards((prev) => prev.filter((b) => b.id !== id));
   }
 
+  /** 把某个目标加进/移出某天的主线 */
+  function toggleMainline(date: ISODate, aspirationId: string) {
+    setDayPlans((prev) => {
+      const cur = prev[date] ?? { date, primaryAspirationIds: [] };
+      const has = cur.primaryAspirationIds.includes(aspirationId);
+      const ids = has
+        ? cur.primaryAspirationIds.filter((id) => id !== aspirationId)
+        : [...cur.primaryAspirationIds, aspirationId];
+      return { ...prev, [date]: { ...cur, primaryAspirationIds: ids } };
+    });
+  }
+
   // Navigate to previous week (move selectedDate back 7 days)
   function goToPrevWeek() {
     const current = parseISODate(selectedDate);
@@ -524,7 +548,31 @@ export default function TodoApp() {
 
   return (
     <main className="h-full w-full bg-[#F5F5F5] flex items-start justify-center p-8 overflow-auto">
-      {viewMode === "day" ? (
+      {goalsOpen ? (
+        <GoalsView
+          aspirations={safeAspirations}
+          behaviors={safeBehaviors}
+          tasks={safeTasks}
+          habits={safeHabits}
+          onBack={() => setGoalsOpen(false)}
+          onCreateAspiration={createAspiration}
+          onDeleteAspiration={deleteAspiration}
+          onAddBehaviors={addBehaviors}
+          onApplyJudgements={applyJudgements}
+          onSetBehaviorType={setBehaviorType}
+          onShrinkBehavior={shrinkBehavior}
+          onEditBehaviorText={editBehaviorText}
+          onScheduleBehavior={scheduleBehavior}
+          onUnscheduleBehavior={unscheduleBehavior}
+          onSetBehaviorAxis={setBehaviorAxis}
+          onResetBehaviorAxes={resetBehaviorAxes}
+          onDeleteBehavior={deleteBehavior}
+          onAddHabit={addHabit}
+          onRemoveHabitByBehavior={removeHabitByBehavior}
+          onUndo={undoLab}
+          canUndo={labHistory.length > 0}
+        />
+      ) : viewMode === "day" ? (
         <TodoDayView
           viewMode={viewMode}
           onChangeViewMode={setViewMode}
@@ -538,6 +586,10 @@ export default function TodoApp() {
           onDeleteTask={deleteTask}
           onUpdateTask={updateTask}
           onAddEntry={addEntry}
+          today={todayIso}
+          aspirations={safeAspirations}
+          dayPlans={safeDayPlans}
+          onOpenGoals={() => setGoalsOpen(true)}
           onPrevWeek={goToPrevWeek}
           onNextWeek={goToNextWeek}
         />
@@ -555,6 +607,10 @@ export default function TodoApp() {
           onDeleteTask={deleteTask}
           onUpdateTask={updateTask}
           onAddEntry={addEntry}
+          today={todayIso}
+          aspirations={safeAspirations}
+          dayPlans={safeDayPlans}
+          onOpenGoals={() => setGoalsOpen(true)}
           onPrevWeek={goToPrevWeek}
           onNextWeek={goToNextWeek}
         />
@@ -562,36 +618,20 @@ export default function TodoApp() {
         <HabitLabView
           viewMode={viewMode}
           onChangeViewMode={setViewMode}
-          aspirations={safeAspirations}
-          behaviors={safeBehaviors}
-          onCreateAspiration={createAspiration}
-          onDeleteAspiration={deleteAspiration}
-          onAddBehaviors={addBehaviors}
-          onApplyJudgements={applyJudgements}
-          onUpdateBehaviorText={updateBehaviorText}
-          onSetBehaviorType={setBehaviorType}
-          onShrinkBehavior={shrinkBehavior}
-          onEditBehaviorText={editBehaviorText}
-          onScheduleBehavior={scheduleBehavior}
-          onUnscheduleBehavior={unscheduleBehavior}
-          tasks={safeTasks}
-          onSetBehaviorAxis={setBehaviorAxis}
-          onResetBehaviorAxes={resetBehaviorAxes}
-          onUndo={undoLab}
-          canUndo={labHistory.length > 0}
-          entries={safeEntries}
           today={todayIso}
+          aspirations={safeAspirations}
+          dayPlans={safeDayPlans}
+          onOpenGoals={() => setGoalsOpen(true)}
+          entries={safeEntries}
           habits={safeHabits}
           habitLogs={safeHabitLogs}
           onAddHabit={addHabit}
-          onRemoveHabitByBehavior={removeHabitByBehavior}
           habitHasLogs={habitHasLogs}
           onLogHabit={logHabit}
           onUndoHabitLog={undoHabitLog}
           onSetHabitAnchor={setHabitAnchor}
           onToggleHabitMeasure={toggleHabitMeasure}
           onDeleteHabit={deleteHabit}
-          onDeleteBehavior={deleteBehavior}
         />
       ) : (
         <TimeLogView
@@ -608,6 +648,10 @@ export default function TodoApp() {
           onApplyCategories={applyEntryCategories}
           onUndoEntries={undoEntries}
           canUndoEntries={entriesHistory.length > 0}
+          today={todayIso}
+          aspirations={safeAspirations}
+          dayPlans={safeDayPlans}
+          onOpenGoals={() => setGoalsOpen(true)}
           onPrevWeek={goToPrevWeek}
           onNextWeek={goToNextWeek}
         />

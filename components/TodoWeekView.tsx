@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import type { ISODate, Task, TimeEntry, ViewMode } from "@/components/todo/types";
+import type { Aspiration, DayPlan, ISODate, Task, TimeEntry, ViewMode } from "@/components/todo/types";
 import { CN_WEEKDAY, addDays, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
 import { Plus, ChevronLeft, ChevronRight, Check, Flag, Timer } from "lucide-react";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
 import TaskBottomSheet from "@/components/TaskBottomSheet";
 import QuickAddTask from "@/components/QuickAddTask";
+import MainlineBar from "@/components/MainlineBar";
 
 type Props = {
   viewMode: ViewMode;
@@ -21,6 +22,10 @@ type Props = {
   onDeleteTask: (taskId: string) => void;
   onUpdateTask: (taskId: string, updates: Partial<Omit<Task, "id">>) => void;
   onAddEntry: (entry: Omit<TimeEntry, "id">) => void;
+  today: ISODate;
+  aspirations: Aspiration[];
+  dayPlans: Record<string, DayPlan>;
+  onOpenGoals: () => void;
   onPrevWeek: () => void;
   onNextWeek: () => void;
 };
@@ -196,6 +201,10 @@ export default function TodoWeekView({
   onDeleteTask,
   onUpdateTask,
   onAddEntry,
+  today,
+  aspirations,
+  dayPlans,
+  onOpenGoals,
   onPrevWeek,
   onNextWeek,
 }: Props) {
@@ -259,6 +268,13 @@ export default function TodoWeekView({
             </button>
           </div>
         </div>
+
+      <MainlineBar
+        today={today}
+        aspirations={aspirations}
+        dayPlans={dayPlans}
+        onOpenGoals={onOpenGoals}
+      />
 
         {/* View Switcher（和日视图/记录/习惯完全一致，切换时按钮不移位） */}
         <div className="w-full px-6">

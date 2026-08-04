@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import type { ISODate, Task, TimeEntry, ViewMode } from "@/components/todo/types";
+import type { Aspiration, DayPlan, ISODate, Task, TimeEntry, ViewMode } from "@/components/todo/types";
 import { CN_WEEKDAY, addDays, formatCNDateTitle, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
 import { Plus, Check, Flag, Trash2, ChevronLeft, ChevronRight, Pencil, Timer } from "lucide-react";
 import TaskBottomSheet from "@/components/TaskBottomSheet";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import QuickAddTask from "@/components/QuickAddTask";
+import MainlineBar from "@/components/MainlineBar";
 
 type Props = {
   viewMode: ViewMode;
@@ -22,6 +23,10 @@ type Props = {
   onDeleteTask: (taskId: string) => void;
   onUpdateTask: (taskId: string, updates: Partial<Omit<Task, "id">>) => void;
   onAddEntry: (entry: Omit<TimeEntry, "id">) => void;
+  today: ISODate;
+  aspirations: Aspiration[];
+  dayPlans: Record<string, DayPlan>;
+  onOpenGoals: () => void;
   onPrevWeek: () => void;
   onNextWeek: () => void;
 };
@@ -86,6 +91,10 @@ export default function TodoDayView({
   onDeleteTask,
   onUpdateTask,
   onAddEntry,
+  today,
+  aspirations,
+  dayPlans,
+  onOpenGoals,
   onPrevWeek,
   onNextWeek,
 }: Props) {
@@ -168,6 +177,13 @@ export default function TodoDayView({
           </button>
         </div>
       </div>
+
+      <MainlineBar
+        today={today}
+        aspirations={aspirations}
+        dayPlans={dayPlans}
+        onOpenGoals={onOpenGoals}
+      />
 
       {/* View Switcher Section */}
       <div className="w-full flex flex-col gap-4 px-6">

@@ -155,12 +155,28 @@ TodoApp.tsx（状态管理中心）
 所以 +1 按钮要大、按下去要有即时回应（变绿 + 打勾 + 缩放）。**不做连续天数、不做完成率**，
 断了就是断了，不制造"破戒"感。
 
+### 主线 / 目标作用域（方案 A，规格见 09-app重构规格.md）
+
+**「主线」不是新实体**——就是"某天主推哪几个目标"，底层是 `DayPlan.primaryAspirationIds`
+挂 Aspiration id，不建 MainLine 表。
+
+- **底部 tab 一个不动**（日/周/记录/习惯）。目标不是它们的同级——
+  日/周/记录是"受日期约束的东西"，习惯是"不受日期约束的东西"，
+  **目标是这些东西的来源**，是正交维度，所以放作用域条，不放并列项
+- **常驻条**（`MainlineBar`）：标题下方、tab 栏上方，四个 tab 通用。
+  两重身份：今日主线的只读展示 + 目标管理页入口
+- **今日主线只读**，改只能去周视图——决策集中在周规划，日常执行零决策
+- **习惯不受主线过滤**，每天照常全部出现（硬约束）。
+  任务靠日程触发、习惯靠锚点触发，两套机制不能混
+- 目标管理页（`GoalsView`）从常驻条进，不是 tab；「我的目标」子 tab 已从习惯 tab 搬走
+
 ### 关键类型（components/todo/types.ts）
 
-- `Task`：id, title, date (ISODate), startTime?, endTime?, status, priority?, tag?, targetMinutes?
+- `Task`：id, title, date, aspirationId?, startTime?, endTime?, status, priority?, tag?, targetMinutes?
 - `TimeEntry`：id, date, title, minutes, startTime?, endTime?, taskId?, category?, categorySource?
 - `EntryCategory`："正事" | "娱乐" | "休息"
-- `Aspiration`：id, title, kind（"aspiration" 愿望 | "outcome" 结果）, createdAt
+- `Aspiration`：id, title, kind, createdAt, color?, weeklyLimit?（每周投入天数上限，null=不限）
+- `DayPlan`：date, primaryAspirationIds（今日主线，可多条）, mustDoTaskId?
 - `BehaviorCard`：id, aspirationId, text, type, typeSource?, reason?, hasDecision?, impact?, feasibility?
   - type: "unsorted" | "aspiration" | "outcome" | "onetime" | "habit" | "stop"
 - `Habit`：id, title, anchor?, measure（"count" | "duration"）, behaviorId?, aspirationId?, createdAt
@@ -178,7 +194,7 @@ TodoApp.tsx（状态管理中心）
 ## 硬性约束
 
 - localStorage key 必须保持 `mytodo.tasks.v1`（任务）和 `mytodo.entries.v1`（时间记录）
-- 习惯实验室的 key：`mytodo.aspirations.v1` / `mytodo.behaviors.v1` / `mytodo.habits.v1` / `mytodo.habitlogs.v1`
+- 习惯实验室的 key：`mytodo.aspirations.v1` / `mytodo.behaviors.v1` / `mytodo.habits.v1` / `mytodo.habitlogs.v1` / `mytodo.dayplans.v1`
 - 云同步（`sync.ts`）目前只同步 tasks + entries；习惯实验室的两个 key 还没接进去，
   接的时候要单独改、单独验——那是用户数据的命根子
 - 任务状态字段用 `"done"`（不是 `"completed"`）

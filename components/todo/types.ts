@@ -12,6 +12,8 @@ export interface Task {
   id: string;
   title: string;
   date: ISODate;
+  /** 属于哪个目标（可选，不强制。新建任务时默认沿用上次选的） */
+  aspirationId?: string;
   startTime?: string; // "HH:mm"
   endTime?: string; // "HH:mm"
   status: TaskStatus;
@@ -34,6 +36,22 @@ export interface Aspiration {
   title: string;
   kind: AspirationKind;
   createdAt: number;
+  /** 目标色（任务卡、主线条、投入图上都用它）。旧数据没有，按序号兜底 */
+  color?: string;
+  /** 每周投入天数上限 1-7；null / undefined = 不限。超了只提示不拦 */
+  weeklyLimit?: number | null;
+}
+
+/**
+ * 某一天的安排。**不是新实体**——"主线"就是"这天主推哪几个目标"，
+ * 底层只是 Aspiration id + 日期的关联，不建 MainLine 表。
+ */
+export interface DayPlan {
+  date: ISODate;
+  /** 今日主线，可多条 */
+  primaryAspirationIds: string[];
+  /** 今天那 1 件必做（阶段二用），全局每天最多 1 个 */
+  mustDoTaskId?: string;
 }
 
 /**
@@ -111,6 +129,7 @@ export interface TimeEntry {
   startTime?: string; // "HH:mm"，事后补记可以没有
   endTime?: string; // "HH:mm"
   taskId?: string; // 关联的任务（计入该任务的时长目标进度）
+  aspirationId?: string; // 属于哪个目标（阶段三：计时时默认填今日主线）
   category?: EntryCategory; // 大类（关键词规则或 AI 判定）
   categorySource?: "user" | "ai"; // "user"=手动改过，以后同名记录都听它的，AI 不再覆盖
 }

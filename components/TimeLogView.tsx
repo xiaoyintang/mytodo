@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef, Fragment } from "react";
-import type { EntryCategory, ISODate, Task, TimeEntry, ViewMode } from "@/components/todo/types";
+import type { Aspiration, DayPlan, EntryCategory, ISODate, Task, TimeEntry, ViewMode } from "@/components/todo/types";
 import { CN_WEEKDAY, addDays, formatCNDateTitle, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
 import { formatMinutes, matchTaskByTitle, timeToMinutes, minutesToTime } from "@/components/todo/time";
 import { parseTimeEntries, type ParsedEntry } from "@/components/todo/nlparse";
@@ -16,6 +16,7 @@ import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Mic, Sparkles, Trash
 import TimePicker from "@/components/TimePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import TimerPanel from "@/components/TimerPanel";
+import MainlineBar from "@/components/MainlineBar";
 import CategoryDonut, { type DonutSlice } from "@/components/CategoryDonut";
 import { useTimer } from "@/components/todo/useTimer";
 
@@ -33,6 +34,10 @@ type Props = {
   onApplyCategories: (byTitle: Record<string, EntryCategory>) => void;
   onUndoEntries: () => void;
   canUndoEntries: boolean;
+  today: ISODate;
+  aspirations: Aspiration[];
+  dayPlans: Record<string, DayPlan>;
+  onOpenGoals: () => void;
   onPrevWeek: () => void;
   onNextWeek: () => void;
 };
@@ -113,6 +118,10 @@ export default function TimeLogView({
   onApplyCategories,
   onUndoEntries,
   canUndoEntries,
+  today,
+  aspirations,
+  dayPlans,
+  onOpenGoals,
   onPrevWeek,
   onNextWeek,
 }: Props) {
@@ -556,6 +565,13 @@ export default function TimeLogView({
           </button>
         </div>
       </div>
+
+      <MainlineBar
+        today={today}
+        aspirations={aspirations}
+        dayPlans={dayPlans}
+        onOpenGoals={onOpenGoals}
+      />
 
       {/* Tabs + Date Picker */}
       <div className="w-full flex flex-col gap-4 px-6">
