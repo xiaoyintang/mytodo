@@ -27,6 +27,9 @@ type Props = {
   aspirations: Aspiration[];
   dayPlans: Record<string, DayPlan>;
   onOpenGoals: () => void;
+  running: { title: string; startedAt: number } | null;
+  elapsedMs: number;
+  onStopTimer: () => void;
   onToggleMainline: (date: ISODate, aspirationId: string) => void;
   onPrevWeek: () => void;
   onNextWeek: () => void;
@@ -207,6 +210,9 @@ export default function TodoWeekView({
   aspirations,
   dayPlans,
   onOpenGoals,
+  running,
+  elapsedMs,
+  onStopTimer,
   onToggleMainline,
   onPrevWeek,
   onNextWeek,
@@ -277,6 +283,9 @@ export default function TodoWeekView({
         aspirations={aspirations}
         dayPlans={dayPlans}
         onOpenGoals={onOpenGoals}
+        running={running}
+        elapsedMs={elapsedMs}
+        onStopTimer={onStopTimer}
       />
 
         {/* View Switcher（和日视图/记录/习惯完全一致，切换时按钮不移位） */}

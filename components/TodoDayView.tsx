@@ -27,6 +27,9 @@ type Props = {
   aspirations: Aspiration[];
   dayPlans: Record<string, DayPlan>;
   onOpenGoals: () => void;
+  running: { title: string; startedAt: number } | null;
+  elapsedMs: number;
+  onStopTimer: () => void;
   onPrevWeek: () => void;
   onNextWeek: () => void;
 };
@@ -95,6 +98,9 @@ export default function TodoDayView({
   aspirations,
   dayPlans,
   onOpenGoals,
+  running,
+  elapsedMs,
+  onStopTimer,
   onPrevWeek,
   onNextWeek,
 }: Props) {
@@ -183,6 +189,9 @@ export default function TodoDayView({
         aspirations={aspirations}
         dayPlans={dayPlans}
         onOpenGoals={onOpenGoals}
+        running={running}
+        elapsedMs={elapsedMs}
+        onStopTimer={onStopTimer}
       />
 
       {/* View Switcher Section */}

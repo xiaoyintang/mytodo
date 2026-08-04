@@ -625,6 +625,9 @@ export default function TodoApp() {
           aspirations={safeAspirations}
           dayPlans={safeDayPlans}
           onOpenGoals={() => setGoalsOpen(true)}
+          running={timer.running}
+          elapsedMs={timer.elapsedMs}
+          onStopTimer={timer.stop}
           onPrevWeek={goToPrevWeek}
           onNextWeek={goToNextWeek}
         />
@@ -647,6 +650,9 @@ export default function TodoApp() {
           aspirations={safeAspirations}
           dayPlans={safeDayPlans}
           onOpenGoals={() => setGoalsOpen(true)}
+          running={timer.running}
+          elapsedMs={timer.elapsedMs}
+          onStopTimer={timer.stop}
           onPrevWeek={goToPrevWeek}
           onNextWeek={goToNextWeek}
         />
@@ -658,6 +664,9 @@ export default function TodoApp() {
           aspirations={safeAspirations}
           dayPlans={safeDayPlans}
           onOpenGoals={() => setGoalsOpen(true)}
+          running={timer.running}
+          elapsedMs={timer.elapsedMs}
+          onStopTimer={timer.stop}
           entries={safeEntries}
           habits={safeHabits}
           habitLogs={safeHabitLogs}
@@ -689,6 +698,9 @@ export default function TodoApp() {
           aspirations={safeAspirations}
           dayPlans={safeDayPlans}
           onOpenGoals={() => setGoalsOpen(true)}
+          running={timer.running}
+          elapsedMs={timer.elapsedMs}
+          onStopTimer={timer.stop}
           onPrevWeek={goToPrevWeek}
           onNextWeek={goToNextWeek}
         />

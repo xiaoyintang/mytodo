@@ -21,6 +21,9 @@ type Props = {
   aspirations: Aspiration[];
   dayPlans: Record<string, DayPlan>;
   onOpenGoals: () => void;
+  running: { title: string; startedAt: number } | null;
+  elapsedMs: number;
+  onStopTimer: () => void;
   entries: TimeEntry[];
   habits: Habit[];
   habitLogs: HabitLog[];
@@ -52,6 +55,9 @@ export default function HabitLabView({
   aspirations,
   dayPlans,
   onOpenGoals,
+  running,
+  elapsedMs,
+  onStopTimer,
   entries,
   habits,
   habitLogs,
@@ -89,6 +95,9 @@ export default function HabitLabView({
         aspirations={aspirations}
         dayPlans={dayPlans}
         onOpenGoals={onOpenGoals}
+        running={running}
+        elapsedMs={elapsedMs}
+        onStopTimer={onStopTimer}
       />
 
       <div className="w-full px-6 pt-4">

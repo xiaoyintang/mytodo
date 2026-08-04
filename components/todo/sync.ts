@@ -306,6 +306,31 @@ export function useCloudSync({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks, entries, lab, timer]);
 
+  // 定时轮询：光靠"打开页面/切回页面"不够——页面一直开着就永远不会去问云端，
+  // 于是手机上开始的计时，电脑上死活看不到。
+  // 有计时在跑时 15 秒一次（要看秒表跳），平时 60 秒一次。页面在后台完全不轮询。
+  useEffect(() => {
+    if (!hydrated || !code) return;
+    let cancelled = false;
+    let handle: ReturnType<typeof setTimeout> | null = null;
+
+    const tick = () => {
+      const gap = timerRef.current.running ? 15000 : 60000;
+      handle = setTimeout(async () => {
+        if (cancelled) return;
+        // 后台标签页不打扰，等切回来那次 visibilitychange 会补上
+        if (document.visibilityState === "visible" && pulledRef.current) await pull();
+        if (!cancelled) tick();
+      }, gap);
+    };
+    tick();
+
+    return () => {
+      cancelled = true;
+      if (handle) clearTimeout(handle);
+    };
+  }, [hydrated, code, pull]);
+
   // 切回页面自动同步：离开时把本地改动推上去，回来时拉最新
   // （比如刚用 Siri / 快捷指令记了一笔，切回 app 就能看到，不用退出重进）
   useEffect(() => {

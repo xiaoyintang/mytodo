@@ -45,6 +45,9 @@ type Props = {
   aspirations: Aspiration[];
   dayPlans: Record<string, DayPlan>;
   onOpenGoals: () => void;
+  running: { title: string; startedAt: number } | null;
+  elapsedMs: number;
+  onStopTimer: () => void;
   onPrevWeek: () => void;
   onNextWeek: () => void;
 };
@@ -130,6 +133,9 @@ export default function TimeLogView({
   aspirations,
   dayPlans,
   onOpenGoals,
+  running,
+  elapsedMs,
+  onStopTimer,
   onPrevWeek,
   onNextWeek,
 }: Props) {
@@ -577,6 +583,9 @@ export default function TimeLogView({
         aspirations={aspirations}
         dayPlans={dayPlans}
         onOpenGoals={onOpenGoals}
+        running={running}
+        elapsedMs={elapsedMs}
+        onStopTimer={onStopTimer}
       />
 
       {/* Tabs + Date Picker */}
