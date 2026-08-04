@@ -22,6 +22,7 @@ type Props = {
   onReplaceText: (id: string, text: string) => void;
   onAddExtra: (items: Array<{ text: string; type: BehaviorType }>) => void;
   onAddHabit: (card: BehaviorCard) => void;
+  onRemoveHabit: (behaviorId: string) => void;
   onSchedule: (cardId: string, title: string, date: ISODate) => void;
   onUnschedule: (cardId: string) => void;
   /** 就地增删改，省得为了加一条/改个错字还要切回行为集群 */
@@ -65,6 +66,7 @@ export default function FocusMapView({
   onReplaceText,
   onAddExtra,
   onAddHabit,
+  onRemoveHabit,
   onSchedule,
   onUnschedule,
   onAdd,
@@ -583,10 +585,18 @@ export default function FocusMapView({
                 </div>
               )}
               {inHabits && (
-                <span className="flex items-center gap-1 text-[11px] text-[var(--color-success)]">
+                <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-success)]">
                   <Check className="w-3 h-3" />
                   已在习惯表里
-                </span>
+                  <button
+                    type="button"
+                    onClick={() => onRemoveHabit(b.id)}
+                    className="ml-1 flex items-center gap-0.5 text-[var(--color-text-tertiary)] hover:text-[var(--color-danger)]"
+                  >
+                    <X className="w-3 h-3" />
+                    撤回
+                  </button>
+                </div>
               )}
 
               {/* 影响力高但做不到 → 改小（福格的解法，不是删） */}

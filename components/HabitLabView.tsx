@@ -59,6 +59,8 @@ type Props = {
   habits: Habit[];
   habitLogs: HabitLog[];
   onAddHabit: (input: Omit<Habit, "id" | "createdAt">) => void;
+  onRemoveHabitByBehavior: (behaviorId: string) => void;
+  habitHasLogs: (habitId: string) => boolean;
   onLogHabit: (habitId: string) => void;
   onUndoHabitLog: (habitId: string) => void;
   onSetHabitAnchor: (habitId: string, anchor: string) => void;
@@ -134,6 +136,8 @@ export default function HabitLabView({
   habits,
   habitLogs,
   onAddHabit,
+  onRemoveHabitByBehavior,
+  habitHasLogs,
   onLogHabit,
   onUndoHabitLog,
   onSetHabitAnchor,
@@ -641,6 +645,7 @@ export default function HabitLabView({
               onSetAnchor={onSetHabitAnchor}
               onToggleMeasure={onToggleHabitMeasure}
               onDeleteHabit={onDeleteHabit}
+              hasLogs={habitHasLogs}
             />
           ) : (
             <div className="w-full flex flex-col gap-3 p-4 rounded-[10px] bg-[var(--color-bg-gray-lighter)] border border-[var(--color-border)]">
@@ -884,6 +889,7 @@ export default function HabitLabView({
                   onSchedule={onScheduleBehavior}
                   onUnschedule={onUnscheduleBehavior}
                   onAddHabit={handleAddHabit}
+                  onRemoveHabit={onRemoveHabitByBehavior}
                   habitBehaviorIds={habitBehaviorIds}
                 />
               ) : (

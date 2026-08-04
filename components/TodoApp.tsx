@@ -398,13 +398,34 @@ export default function TodoApp() {
 
   // 黄金行为毕业成微习惯。同一条行为不重复加
   function addHabit(input: Omit<Habit, "id" | "createdAt">) {
-    if (input.behaviorId && habits.some((h) => h.behaviorId === input.behaviorId && !h.archived)) return;
+    if (input.behaviorId) {
+      if (habits.some((h) => h.behaviorId === input.behaviorId && !h.archived)) return;
+      // 以前移出去过（打卡记录还留着）→ 直接恢复，别建重复的
+      const archived = habits.find((h) => h.behaviorId === input.behaviorId && h.archived);
+      if (archived) {
+        setHabits((prev) =>
+          prev.map((h) => (h.id === archived.id ? { ...h, archived: undefined } : h)),
+        );
+        return;
+      }
+    }
     const h: Habit = {
       ...input,
       id: `h-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       createdAt: Date.now(),
     };
     setHabits((prev) => [...prev, h]);
+  }
+
+  /** 这个习惯有没有打卡记录（决定移出去时是归档还是真删） */
+  function habitHasLogs(habitId: string): boolean {
+    return habitLogs.some((l) => l.habitId === habitId);
+  }
+
+  /** 按行为卡撤回：从焦点地图上点「撤回」用 */
+  function removeHabitByBehavior(behaviorId: string) {
+    const h = habits.find((x) => x.behaviorId === behaviorId && !x.archived);
+    if (h) deleteHabit(h.id);
   }
 
   function setHabitAnchor(habitId: string, anchor: string) {
@@ -422,9 +443,14 @@ export default function TodoApp() {
     );
   }
 
+  // 移出习惯表：打过卡的归档（记录留着，加回来还能接上），没打过卡的直接删干净。
+  // 无论哪种，行为卡都还在焦点地图上，随时能再加回来。
   function deleteHabit(habitId: string) {
+    if (habitLogs.some((l) => l.habitId === habitId)) {
+      setHabits((prev) => prev.map((h) => (h.id === habitId ? { ...h, archived: true } : h)));
+      return;
+    }
     setHabits((prev) => prev.filter((h) => h.id !== habitId));
-    setHabitLogs((prev) => prev.filter((l) => l.habitId !== habitId));
   }
 
   // 打卡：一天可以点很多次，每次一行（锚点一天可能触发好几次）
@@ -558,6 +584,8 @@ export default function TodoApp() {
           habits={safeHabits}
           habitLogs={safeHabitLogs}
           onAddHabit={addHabit}
+          onRemoveHabitByBehavior={removeHabitByBehavior}
+          habitHasLogs={habitHasLogs}
           onLogHabit={logHabit}
           onUndoHabitLog={undoHabitLog}
           onSetHabitAnchor={setHabitAnchor}

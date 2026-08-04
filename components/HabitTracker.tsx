@@ -5,6 +5,7 @@ import type { Aspiration, Habit, HabitLog, ISODate, TimeEntry } from "@/componen
 import { formatMinutes } from "@/components/todo/time";
 import { Check, ChevronDown, ChevronRight, Clock, Plus, Target, Trash2, Undo2 } from "lucide-react";
 import { useLocalStorageState } from "@/components/todo/storage";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 type Props = {
   aspirations: Aspiration[];
@@ -17,6 +18,7 @@ type Props = {
   onSetAnchor: (habitId: string, anchor: string) => void;
   onToggleMeasure: (habitId: string) => void;
   onDeleteHabit: (habitId: string) => void;
+  hasLogs: (habitId: string) => boolean;
 };
 
 const EMPTY_COLLAPSED: string[] = [];
@@ -39,6 +41,7 @@ export default function HabitTracker({
   onSetAnchor,
   onToggleMeasure,
   onDeleteHabit,
+  hasLogs,
 }: Props) {
   // 收起哪些目标分组（记在本地，刷新后还是你上次那样）
   const { value: collapsed, setValue: setCollapsed } = useLocalStorageState<string[]>(
@@ -48,6 +51,7 @@ export default function HabitTracker({
   const [editAnchor, setEditAnchor] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [justTapped, setJustTapped] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<Habit | null>(null);
 
   const live = habits.filter((h) => !h.archived);
   if (live.length === 0) return null;
@@ -258,9 +262,10 @@ export default function HabitTracker({
 
                   <button
                     type="button"
-                    onClick={() => onDeleteHabit(h.id)}
+                    onClick={() => setConfirmRemove(h)}
                     className="w-4 h-8 flex items-center justify-center flex-shrink-0"
                     aria-label="移出习惯表"
+                    title="移出习惯表（行为还在焦点地图上，随时能加回来）"
                   >
                     <Trash2 className="w-[13px] h-[13px] text-[#A1A1AA]" />
                   </button>
@@ -270,6 +275,28 @@ export default function HabitTracker({
           })}
         </div>
       ))}
+
+      <ConfirmDialog
+        isOpen={confirmRemove !== null}
+        title="移出习惯表？"
+        description={
+          confirmRemove
+            ? confirmRemove.behaviorId
+              ? hasLogs(confirmRemove.id)
+                ? `「${confirmRemove.title}」不再出现在这儿。打卡记录会留着，以后从焦点地图再加回来还能接上。行为本身还在焦点地图上，不会删。`
+                : `「${confirmRemove.title}」不再出现在这儿。行为本身还在焦点地图上，随时能再加回来。`
+              : hasLogs(confirmRemove.id)
+                ? `「${confirmRemove.title}」是你直接加的，没有对应的行为卡。移出后打卡记录会留着，但要再养它得重新加一遍。`
+                : `「${confirmRemove.title}」是你直接加的，移出后就没了（可以随时再写一遍）。`
+            : undefined
+        }
+        confirmLabel="移出"
+        onConfirm={() => {
+          if (confirmRemove) onDeleteHabit(confirmRemove.id);
+          setConfirmRemove(null);
+        }}
+        onCancel={() => setConfirmRemove(null)}
+      />
     </div>
   );
 }
