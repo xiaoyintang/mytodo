@@ -24,11 +24,15 @@ type Props = {
   onAddHabit: (card: BehaviorCard) => void;
   onSchedule: (cardId: string, title: string, date: ISODate) => void;
   onUnschedule: (cardId: string) => void;
+  /** 就地增删改，省得为了加一条/改个错字还要切回行为集群 */
+  onAdd: (text: string) => void;
+  onEditText: (id: string, text: string) => void;
+  onSetType: (id: string, type: BehaviorType) => void;
   habitBehaviorIds: Set<string>;
 };
 
 const SORTS: Array<[SortMode, string]> = [
-  ["default", "收集顺序"], // 你倒进来的先后。本身没含义，但它稳定——拖滑块时行不会动
+  ["default", "不排序"], // 就是列表本来的顺序（你收集进来的先后）。好处只有一个：拖滑块时行不动
   ["impact", "影响力高→低"],
   ["score", "最该先做"], // = 影响力 × 可行性，两边都强的排前面
   ["unrated", "还没排的"], // 20 条排了 14 条，剩下那 6 条自己找很烦
@@ -56,6 +60,9 @@ export default function FocusMapView({
   onAddHabit,
   onSchedule,
   onUnschedule,
+  onAdd,
+  onEditText,
+  onSetType,
   habitBehaviorIds,
 }: Props) {
   const [confirmReset, setConfirmReset] = useState(false);
@@ -66,6 +73,10 @@ export default function FocusMapView({
   const [scheduling, setScheduling] = useState(false);
   const [onlyStuck, setOnlyStuck] = useState(false);
   // 点上去看是哪条：hover 是鼠标预览，pinned 是点/触摸钉住（手机没有 hover）
+  const [draft, setDraft] = useState("");           // 顶上直接加一条
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  const [typingId, setTypingId] = useState<string | null>(null); // 正在改类型的那条
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [pinnedId, setPinnedId] = useState<string | null>(null);
 
@@ -103,6 +114,19 @@ export default function FocusMapView({
             (c) => (c.impact == null ? 2 : 0) + (c.feasibility == null ? 1 : 0)
           : goldenScore;
     setOrder([...cards].sort((a, b) => key(b) - key(a)).map((c) => c.id));
+  }
+
+  function submitAdd() {
+    const t = draft.trim();
+    if (!t) return;
+    onAdd(t);
+    setDraft("");
+  }
+
+  function saveEdit(id: string) {
+    const t = editText.trim();
+    if (t) onEditText(id, t);
+    setEditingId(null);
   }
 
   function toggleSelect(id: string) {
@@ -295,6 +319,34 @@ export default function FocusMapView({
         </span>
       </div>
 
+      {/* 直接加一条，不用切回行为集群 */}
+      <div className="w-full flex items-center gap-2">
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.nativeEvent.isComposing) submitAdd();
+          }}
+          placeholder="想到一条就直接加，回车"
+          enterKeyHint="done"
+          className="flex-1 min-w-0 px-3 py-2 rounded-[10px] border border-[var(--color-border)] text-[13px] placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)]"
+        />
+        <button
+          type="button"
+          onClick={submitAdd}
+          disabled={!draft.trim()}
+          className={[
+            "px-3 py-2 rounded-[10px] text-[13px] font-medium transition-colors flex-shrink-0",
+            draft.trim()
+              ? "bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8]"
+              : "bg-[var(--color-bg-gray-light)] text-[var(--color-text-tertiary)] cursor-not-allowed",
+          ].join(" ")}
+        >
+          加
+        </button>
+      </div>
+
       {/* 排序：想比较第 9 和第 4？排一下它俩就挨着了 */}
       <div className="w-full flex items-center gap-1.5 flex-wrap">
         <span className="flex items-center gap-1 text-[11px] text-[var(--color-text-tertiary)] flex-shrink-0">
@@ -318,7 +370,7 @@ export default function FocusMapView({
         ))}
         <span className="w-full text-[10px] text-[var(--color-text-tertiary)] leading-relaxed">
           {sort === "default"
-            ? "收集顺序 = 你倒进来的先后。它不随打分变，适合从上到下一条条过"
+            ? "不排序 = 保持你收集进来的先后。好处是拖滑块时行不会动，适合从上到下一条条过"
             : sort === "impact"
               ? "想比较两条谁更重要？这样排一下它俩就挨着了。拖完想重排，再点一次这个按钮"
               : sort === "score"
@@ -388,19 +440,43 @@ export default function FocusMapView({
                     {rank}
                   </span>
                 )}
+                {editingId === b.id ? (
+                  <input
+                    type="text"
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.nativeEvent.isComposing) return;
+                      if (e.key === "Enter") saveEdit(b.id);
+                      else if (e.key === "Escape") setEditingId(null);
+                    }}
+                    onBlur={() => saveEdit(b.id)}
+                    autoFocus
+                    className="flex-1 min-w-0 px-2 py-1 rounded border border-[var(--color-primary)] text-[13px] bg-white focus:outline-none"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingId(b.id);
+                      setEditText(b.text);
+                      setTypingId(null);
+                    }}
+                    className="flex-1 text-[13px] text-[var(--color-text-primary)] leading-snug text-left"
+                    title="点一下改文字"
+                  >
+                    {b.text}
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => toggleSelect(b.id)}
-                  className="flex-1 text-[13px] text-[var(--color-text-primary)] leading-snug text-left"
-                >
-                  {b.text}
-                </button>
-                <span
+                  onClick={() => setTypingId(typingId === b.id ? null : b.id)}
                   className="px-1.5 py-[1px] rounded border text-[9px] font-medium flex-shrink-0"
                   style={{ backgroundColor: st.bg, borderColor: st.border, color: st.text }}
+                  title="判错了？点一下改"
                 >
                   {TYPE_LABEL[b.type]}
-                </span>
+                </button>
                 <button
                   type="button"
                   onClick={() => onDelete(b.id)}
@@ -410,6 +486,37 @@ export default function FocusMapView({
                   <Trash2 className="w-[13px] h-[13px] text-[#A1A1AA]" />
                 </button>
               </div>
+
+              {typingId === b.id && (
+                <div className="w-full flex items-center gap-1.5 py-1">
+                  <span className="text-[10px] text-[var(--color-text-tertiary)]">归为</span>
+                  {(["habit", "stop", "onetime"] as BehaviorType[]).map((t) => {
+                    const ts = TYPE_STYLE[t];
+                    const on = b.type === t;
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => {
+                          onSetType(b.id, t);
+                          setTypingId(null);
+                        }}
+                        className="px-2 py-[3px] rounded-md border text-[10px] font-medium"
+                        style={{
+                          backgroundColor: on ? ts.text : ts.bg,
+                          borderColor: on ? ts.text : ts.border,
+                          color: on ? "#fff" : ts.text,
+                        }}
+                      >
+                        {TYPE_LABEL[t]}
+                      </button>
+                    );
+                  })}
+                  <span className="text-[9px] text-[var(--color-text-tertiary)]">
+                    愿望/成果得回集群页拆
+                  </span>
+                </div>
+              )}
 
               {renderSlider(b, "impact")}
               {renderSlider(b, "feasibility")}

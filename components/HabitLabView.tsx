@@ -46,6 +46,7 @@ type Props = {
   onUpdateBehaviorText: (id: string, text: string) => void;
   onSetBehaviorType: (id: string, type: BehaviorType) => void;
   onShrinkBehavior: (id: string, text: string) => void;
+  onEditBehaviorText: (id: string, text: string) => void;
   onScheduleBehavior: (cardId: string, title: string, date: ISODate) => void;
   onUnscheduleBehavior: (cardId: string) => void;
   tasks: Task[];
@@ -120,6 +121,7 @@ export default function HabitLabView({
   onUpdateBehaviorText,
   onSetBehaviorType,
   onShrinkBehavior,
+  onEditBehaviorText,
   onScheduleBehavior,
   onUnscheduleBehavior,
   tasks,
@@ -876,6 +878,9 @@ export default function HabitLabView({
                   onDelete={onDeleteBehavior}
                   onReplaceText={onShrinkBehavior}
                   onAddExtra={(items) => onAddBehaviors(open.id, items)}
+                  onAdd={(text) => onAddBehaviors(open.id, [{ text, type: "habit" }])}
+                  onEditText={onEditBehaviorText}
+                  onSetType={onSetBehaviorType}
                   onSchedule={onScheduleBehavior}
                   onUnschedule={onUnscheduleBehavior}
                   onAddHabit={handleAddHabit}

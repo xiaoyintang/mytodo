@@ -366,6 +366,13 @@ export default function TodoApp() {
     setBehaviorCards((prev) => prev.map((b) => (b.id === cardId ? { ...b, taskId: undefined } : b)));
   }
 
+  // 就地改文字（焦点地图里用）：只换措辞，保留类型和两轴——
+  // 在地图上你已经确认过它是个行为了，不该像集群页那样退回未判定
+  function editBehaviorText(id: string, text: string) {
+    snapshotLab();
+    setBehaviorCards((prev) => prev.map((b) => (b.id === id ? { ...b, text } : b)));
+  }
+
   // 「改小」专用：换掉文字但保留类型（它还是同一种可重复行为，不该退回未判定），
   // 清掉可行性——旧分数是给"难版本"打的，改小之后必须重拖一次
   function shrinkBehavior(id: string, text: string) {
@@ -538,6 +545,7 @@ export default function TodoApp() {
           onUpdateBehaviorText={updateBehaviorText}
           onSetBehaviorType={setBehaviorType}
           onShrinkBehavior={shrinkBehavior}
+          onEditBehaviorText={editBehaviorText}
           onScheduleBehavior={scheduleBehavior}
           onUnscheduleBehavior={unscheduleBehavior}
           tasks={safeTasks}
