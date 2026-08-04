@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Aspiration, BehaviorCard, DayPlan, Habit, HabitLog, Task, TimeEntry } from "./types";
+import type { TimerState } from "./useTimer";
 
 export type SyncStatus = "off" | "syncing" | "synced" | "error" | "not_configured";
 
@@ -31,9 +32,12 @@ type Args = {
   tasks: Task[];
   entries: TimeEntry[];
   lab: LabData;
+  /** 正在跑的计时。只传"什么时候开始的"，各设备自己算过了多久 */
+  timer: TimerState;
   setTasks: (t: Task[]) => void;
   setEntries: (e: TimeEntry[]) => void;
   setLab: (patch: Partial<LabData>) => void;
+  adoptTimer: (t: TimerState) => void;
 };
 
 /** DayPlan 按日期 key 合并（同一天以本地为准，本地带着还没传上去的改动） */
@@ -48,7 +52,17 @@ function mergePlans(
 // - 设了码：进入页面拉云端（以云端为准替换本地），本地改动 800ms 防抖推送
 // - 云端为空：把本地数据上传（首台设备）
 // 不做实时推送，切换设备刷新即可拿到最新。
-export function useCloudSync({ hydrated, tasks, entries, lab, setTasks, setEntries, setLab }: Args) {
+export function useCloudSync({
+  hydrated,
+  tasks,
+  entries,
+  lab,
+  timer,
+  setTasks,
+  setEntries,
+  setLab,
+  adoptTimer,
+}: Args) {
   const [code, setCodeState] = useState("");
   const [status, setStatus] = useState<SyncStatus>("off");
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
@@ -61,6 +75,8 @@ export function useCloudSync({ hydrated, tasks, entries, lab, setTasks, setEntri
   entriesRef.current = entries;
   const labRef = useRef(lab);
   labRef.current = lab;
+  const timerRef = useRef(timer);
+  timerRef.current = timer;
   const pulledRef = useRef(false);
   const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 本地是否有还没成功传上云的改动（跨刷新持久化，避免重开后被旧云端覆盖）
@@ -105,7 +121,7 @@ export function useCloudSync({ hydrated, tasks, entries, lab, setTasks, setEntri
       setStatus("syncing");
       const body = JSON.stringify({
         code: c,
-        payload: { tasks: tks, entries: ents, ...lb, updatedAt: Date.now() },
+        payload: { tasks: tks, entries: ents, ...lb, timer: timerRef.current, updatedAt: Date.now() },
       });
       // 10 秒超时 + 失败重试两次，抗 VPN 抖动（避免一次抽风就同步失败）
       for (let attempt = 0; attempt < 3; attempt++) {
@@ -200,6 +216,11 @@ export function useCloudSync({ hydrated, tasks, entries, lab, setTasks, setEntri
           data?.dayPlans && typeof data.dayPlans === "object"
             ? (data.dayPlans as Record<string, DayPlan>)
             : null;
+        // 计时状态：谁的 updatedAt 新听谁的（adopt 内部还会再比一次）。
+        // 采纳远端的"已停止"不会记一笔——那笔记录在按停止的那台设备上产生，会自己同步过来。
+        const cloudTimer = data?.timer as TimerState | undefined;
+        if (cloudTimer && typeof cloudTimer.updatedAt === "number") adoptTimer(cloudTimer);
+
         if (!cloudTasks && !cloudEntries && !cloudAsp && !cloudBeh) return "empty";
 
         // 本地有未上传的改动（含拉取期间刚新增的）→ 合并而不是覆盖，
@@ -247,7 +268,7 @@ export function useCloudSync({ hydrated, tasks, entries, lab, setTasks, setEntri
         return "error";
       }
     },
-    [setTasks, setEntries, setLab, pushData],
+    [setTasks, setEntries, setLab, adoptTimer, pushData],
   );
 
   // 进入页面时初始拉取
@@ -283,7 +304,7 @@ export function useCloudSync({ hydrated, tasks, entries, lab, setTasks, setEntri
       if (pushTimer.current) clearTimeout(pushTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, entries, lab]);
+  }, [tasks, entries, lab, timer]);
 
   // 切回页面自动同步：离开时把本地改动推上去，回来时拉最新
   // （比如刚用 Siri / 快捷指令记了一笔，切回 app 就能看到，不用退出重进）

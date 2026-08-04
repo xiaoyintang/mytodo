@@ -200,6 +200,16 @@ TodoApp.tsx（状态管理中心）
     没有那几个 key，把"云端没有"当成"云端是空的"会直接删掉用户数据
   - dayPlans 按日期 key 合并（`mergePlans`），其余按 id 合并（`mergeById`），冲突以本地为准
   - `hydrated` 必须等所有表都读完再置真，否则会拿初始空数组覆盖云端
+  - **计时器也同步**：只传 `{running:{title,startedAt}, updatedAt}`，不传"跑到第几秒"——
+    各设备用 `now - startedAt` 自己算。带 `updatedAt` 是因为光看 `running` 是不是 null
+    分不清"我刚停了还没传"和"别的设备刚开始还没拉"，谁的时间戳新听谁的
+  - 采纳远端的"已停止"**不记一笔**——那笔记录在按停止的那台设备上产生，会自己同步过来
+
+### useTimer 的一条硬规矩
+
+**副作用绝不能写在 `setState` 的更新函数里。**严格模式会把更新函数跑两次，
+`stop()` 里那句"记一笔"就会记两次（实测 dev 下记录数 12→14）。
+状态用 `stateRef` 跟一份，副作用放在更新函数外面。
 - 任务状态字段用 `"done"`（不是 `"completed"`）
 - Task 类型的标签是单数 `tag?: TaskTag`（不是 `tags` 数组）
 - 禁止 `<button>` 嵌套 `<button>`（会导致 React hydration 错误）

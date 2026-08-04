@@ -27,6 +27,7 @@ import { toISODate, parseISODate, addDays, startOfWeek } from "@/components/todo
 import { useLocalStorageState } from "@/components/todo/storage";
 import { useCloudSync } from "@/components/todo/sync";
 import { nextGoalColor } from "@/components/todo/goal";
+import { useTimer } from "@/components/todo/useTimer";
 import { Cloud, CloudOff, RefreshCw } from "lucide-react";
 
 const STORAGE_KEY = "mytodo.tasks.v1";
@@ -146,6 +147,9 @@ export default function TodoApp() {
   const safeDayPlans = plansHydrated ? dayPlans : EMPTY_DAY_PLANS;
 
   // 多设备同步码
+  // 计时器提到这一层，才能进云同步（手机上开始，电脑上看得到还在跑）
+  const timer = useTimer((entry) => addEntries([entry]));
+
   const labHydrated = aspHydrated && behHydrated && habitsHydrated && logsHydrated && plansHydrated;
   const lab = useMemo(
     () => ({ aspirations, behaviors: behaviorCards, habits, habitLogs, dayPlans }),
@@ -158,6 +162,7 @@ export default function TodoApp() {
     tasks,
     entries,
     lab,
+    timer: timer.state,
     setTasks,
     setEntries,
     setLab: (patch) => {
@@ -167,6 +172,7 @@ export default function TodoApp() {
       if (patch.habitLogs) setHabitLogs(patch.habitLogs);
       if (patch.dayPlans) setDayPlans(patch.dayPlans);
     },
+    adoptTimer: timer.adopt,
   });
 
   // Toggle task status: todo → in_progress → done → todo
@@ -678,6 +684,7 @@ export default function TodoApp() {
           onApplyCategories={applyEntryCategories}
           onUndoEntries={undoEntries}
           canUndoEntries={entriesHistory.length > 0}
+          timer={timer}
           today={todayIso}
           aspirations={safeAspirations}
           dayPlans={safeDayPlans}

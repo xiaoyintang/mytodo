@@ -18,7 +18,7 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import TimerPanel from "@/components/TimerPanel";
 import MainlineBar from "@/components/MainlineBar";
 import CategoryDonut, { type DonutSlice } from "@/components/CategoryDonut";
-import { useTimer } from "@/components/todo/useTimer";
+
 
 type Props = {
   viewMode: ViewMode;
@@ -34,6 +34,13 @@ type Props = {
   onApplyCategories: (byTitle: Record<string, EntryCategory>) => void;
   onUndoEntries: () => void;
   canUndoEntries: boolean;
+  /** 计时器提到 TodoApp 那层了（要进云同步），这里只用不建 */
+  timer: {
+    running: { title: string; startedAt: number } | null;
+    elapsedMs: number;
+    start: (title: string) => void;
+    stop: () => void;
+  };
   today: ISODate;
   aspirations: Aspiration[];
   dayPlans: Record<string, DayPlan>;
@@ -118,6 +125,7 @@ export default function TimeLogView({
   onApplyCategories,
   onUndoEntries,
   canUndoEntries,
+  timer,
   today,
   aspirations,
   dayPlans,
@@ -144,8 +152,6 @@ export default function TimeLogView({
   const classifyAskedRef = useRef<Set<string>>(new Set()); // 已问过 AI 的事项名，避免反复请求
 
   const todayISO = toISODate(new Date());
-  // 计时器状态（三类按钮 + 自然语言"现在开始 X"共用）
-  const timer = useTimer((entry) => onAddEntries([entry]));
 
   const selected = parseISODate(selectedDate);
   const weekStart = startOfWeek(selected, true);
