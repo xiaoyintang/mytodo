@@ -5,7 +5,7 @@ import type { Aspiration, BehaviorCard, BehaviorType, ISODate, Task } from "@/co
 import { callBehaviorAPI, toPendingItems, type PendingItem } from "@/components/todo/behaviorApi";
 import { TYPE_LABEL, TYPE_STYLE, goldenScore, isGolden, isRepeatable, needsBreakdown } from "@/components/todo/behavior";
 import { addDays, toISODate } from "@/components/todo/date";
-import { ArrowUpDown, Check, RotateCcw, Scissors, Star, Trash2, X } from "lucide-react";
+import { ArrowUpDown, Check, RotateCcw, Scissors, Star, Trash2, Wand2, X } from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
 type AxisPatch = { impact?: number; feasibility?: number };
@@ -29,7 +29,11 @@ type Props = {
   onAdd: (text: string) => void;
   onEditText: (id: string, text: string) => void;
   onSetType: (id: string, type: BehaviorType) => void;
+  /** 魔法棒发散出来的候选，勾选后收进集群 */
+  onCollect: (items: Array<{ text: string; type?: BehaviorType }>) => void;
   habitBehaviorIds: Set<string>;
+  /** 正在被 AI 判定的条目——只有这些才显示"判定中"，判失败的不装 */
+  judgingIds: Set<string>;
 };
 
 const SORTS: Array<[SortMode, string]> = [
@@ -72,7 +76,9 @@ export default function FocusMapView({
   onAdd,
   onEditText,
   onSetType,
+  onCollect,
   habitBehaviorIds,
+  judgingIds,
 }: Props) {
   const [confirmReset, setConfirmReset] = useState(false);
   const [sort, setSort] = useState<SortMode>("default");
@@ -96,6 +102,10 @@ export default function FocusMapView({
   const [shrinkingId, setShrinkingId] = useState<string | null>(null);
   const [shrink, setShrink] = useState<{ forId: string; items: PendingItem[] } | null>(null);
   const [shrinkNote, setShrinkNote] = useState<string | null>(null);
+  // 魔法棒：从愿望本身发散，或对某条"愿望/成果"拆解
+  const [wandBusy, setWandBusy] = useState<string | "root" | null>(null);
+  const [wand, setWand] = useState<{ forId: string | null; note: string; items: PendingItem[] } | null>(null);
+  const [wandNote, setWandNote] = useState<string | null>(null);
 
   const golden = cards
     .filter(isGolden)
@@ -177,6 +187,109 @@ export default function FocusMapView({
     chosenOnetime.forEach((c) => onSchedule(c.id, c.text, date));
     setSelected(new Set());
     setScheduling(false);
+  }
+
+  // seed 为空 = 从愿望本身发散；有 seed = 拆这一条愿望/成果
+  async function handleWand(seed?: BehaviorCard) {
+    if (wandBusy) return;
+    setWandBusy(seed ? seed.id : "root");
+    setWand(null);
+    setWandNote(null);
+    const res = await callBehaviorAPI({
+      mode: "wand",
+      aspiration: seed ? seed.text : aspiration.title,
+      context: aspiration.title,
+      existing: cards.map((c) => c.text),
+    });
+    setWandBusy(null);
+    if (!res.ok) {
+      setWandNote(res.noKey ? "没配 AI，魔法棒用不了——直接往上面输入框里写" : "AI 没连上，稍后再试");
+      return;
+    }
+    const items = toPendingItems(res.data.behaviors);
+    if (items.length === 0) {
+      setWandNote("AI 这次没发散出东西，再点一次试试");
+      return;
+    }
+    setWand({
+      forId: seed?.id ?? null,
+      note: seed
+        ? `把「${seed.text}」拆成能做的行为。勾掉你不要的：`
+        : "假设毫不费力，这些是能实现它的行为。勾掉你不要的：",
+      items,
+    });
+  }
+
+  function confirmWand() {
+    if (!wand) return;
+    const picked = wand.items.filter((i) => i.checked).map(({ text, type }) => ({ text, type }));
+    if (picked.length > 0) onCollect(picked);
+    setWand(null);
+  }
+
+  function renderWandBox() {
+    if (!wand) return null;
+    return (
+      <div className="w-full flex flex-col gap-2 p-3 rounded-[10px] bg-[var(--color-bg-gray-lighter)] border border-[var(--color-primary)]">
+        <p className="text-[12px] font-medium text-[var(--color-text-secondary)] leading-relaxed">
+          {wand.note}
+        </p>
+        {wand.items.map((it, i) => {
+          const ts = TYPE_STYLE[it.type];
+          return (
+            <button
+              key={i}
+              type="button"
+              onClick={() =>
+                setWand((p) =>
+                  p ? { ...p, items: p.items.map((x, j) => (j === i ? { ...x, checked: !x.checked } : x)) } : p,
+                )
+              }
+              className={[
+                "w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition-colors",
+                it.checked
+                  ? "bg-white border-[var(--color-primary)]"
+                  : "bg-transparent border-[var(--color-border)] opacity-50",
+              ].join(" ")}
+            >
+              <span
+                className={[
+                  "w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border",
+                  it.checked
+                    ? "bg-[var(--color-primary)] border-[var(--color-primary)]"
+                    : "border-[var(--color-border)]",
+                ].join(" ")}
+              >
+                {it.checked && <span className="text-white text-[10px] leading-none">✓</span>}
+              </span>
+              <span className="flex-1 text-[13px] text-[var(--color-text-primary)]">{it.text}</span>
+              <span
+                className="px-1.5 py-[1px] rounded border text-[10px] font-medium flex-shrink-0"
+                style={{ backgroundColor: ts.bg, borderColor: ts.border, color: ts.text }}
+              >
+                {TYPE_LABEL[it.type]}
+              </span>
+            </button>
+          );
+        })}
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setWand(null)}
+            className="px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] rounded"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={confirmWand}
+            className="px-4 py-1.5 text-[12px] bg-[var(--color-primary)] text-white rounded font-medium"
+          >
+            收进来（{wand.items.filter((i) => i.checked).length}）
+          </button>
+        </div>
+      </div>
+    );
   }
 
   async function handleShrink(card: BehaviorCard) {
@@ -368,7 +481,24 @@ export default function FocusMapView({
         >
           加
         </button>
+        <button
+          type="button"
+          onClick={() => handleWand()}
+          disabled={wandBusy !== null}
+          className={[
+            "flex items-center gap-1 px-2.5 py-2 rounded-[10px] border text-[12px] font-medium transition-colors flex-shrink-0",
+            wandBusy === null
+              ? "border-[var(--color-primary)] text-[var(--color-primary)] hover:bg-[var(--color-primary-light)]"
+              : "border-[var(--color-border)] text-[var(--color-text-tertiary)] cursor-not-allowed",
+          ].join(" ")}
+          title="想不出来？让 AI 从这个愿望发散一批"
+        >
+          <Wand2 className="w-3.5 h-3.5" />
+          {wandBusy === "root" ? "发散中..." : "魔法棒"}
+        </button>
       </div>
+      {wandNote && <p className="text-[11px] text-[var(--color-text-secondary)]">{wandNote}</p>}
+      {wand?.forId == null && renderWandBox()}
 
       {/* 排序：想比较第 9 和第 4？排一下它俩就挨着了 */}
       <div className="w-full flex items-center gap-1.5 flex-wrap">
@@ -498,7 +628,11 @@ export default function FocusMapView({
                   style={{ backgroundColor: st.bg, borderColor: st.border, color: st.text }}
                   title={b.type === "unsorted" ? "AI 正在判它是什么，也可以自己点一个" : "判错了？点一下改"}
                 >
-                  {b.type === "unsorted" ? "判定中…" : TYPE_LABEL[b.type]}
+                  {b.type === "unsorted"
+                    ? judgingIds.has(b.id)
+                      ? "判定中…"
+                      : "未判定"
+                    : TYPE_LABEL[b.type]}
                 </button>
                 <button
                   type="button"
@@ -543,7 +677,9 @@ export default function FocusMapView({
 
               {b.type === "unsorted" ? (
                 <span className="text-[10px] text-[var(--color-text-tertiary)] py-1">
-                  AI 正在判它是不是行为，判完就能打分（也可以直接点上面的标签自己定）
+                  {judgingIds.has(b.id)
+                    ? "AI 正在判它是不是行为，判完就能打分（也可以直接点上面的标签自己定）"
+                    : "AI 没判出来（可能没连上）——点上面的标签自己定一个，就能打分了"}
                 </span>
               ) : (
                 <>
@@ -609,10 +745,22 @@ export default function FocusMapView({
               )}
 
               {needsBreakdown(b.type) && (
-                <div className="w-full flex items-center gap-1.5 py-1">
-                  <span className="flex-1 text-[10px] text-[#B45309] leading-snug">
-                    这条执行不了（{TYPE_LABEL[b.type]}），没法打分。回「行为集群」点「拆成行为」
-                  </span>
+                <div className="w-full flex flex-col gap-1.5 py-1">
+                  <div className="w-full flex items-center gap-1.5">
+                    <span className="flex-1 text-[10px] text-[#B45309] leading-snug">
+                      这条执行不了（{TYPE_LABEL[b.type]}），没法打分——拆成能做的行为
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleWand(b)}
+                      disabled={wandBusy !== null}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-[#B45309] text-[11px] font-medium text-[#B45309] hover:bg-[#FEF3C7] transition-colors disabled:opacity-50 flex-shrink-0"
+                    >
+                      <Wand2 className="w-3 h-3" />
+                      {wandBusy === b.id ? "拆解中，10 秒左右..." : "拆成行为"}
+                    </button>
+                  </div>
+                  {wand?.forId === b.id && renderWandBox()}
                 </div>
               )}
 
