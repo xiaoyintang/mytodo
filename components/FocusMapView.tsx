@@ -9,7 +9,7 @@ import { ArrowUpDown, Check, RotateCcw, Scissors, Star, Trash2, X } from "lucide
 import ConfirmDialog from "@/components/ConfirmDialog";
 
 type AxisPatch = { impact?: number; feasibility?: number };
-type SortMode = "default" | "impact" | "score";
+type SortMode = "default" | "impact" | "score" | "unrated";
 
 type Props = {
   aspiration: Aspiration;
@@ -28,9 +28,10 @@ type Props = {
 };
 
 const SORTS: Array<[SortMode, string]> = [
-  ["default", "原顺序"],
+  ["default", "收集顺序"], // 你倒进来的先后。本身没含义，但它稳定——拖滑块时行不会动
   ["impact", "影响力高→低"],
   ["score", "最该先做"], // = 影响力 × 可行性，两边都强的排前面
+  ["unrated", "还没排的"], // 20 条排了 14 条，剩下那 6 条自己找很烦
 ];
 
 // 散点图尺寸
@@ -94,7 +95,13 @@ export default function FocusMapView({
       setOrder(null);
       return;
     }
-    const key = mode === "impact" ? (c: BehaviorCard) => c.impact ?? -1 : goldenScore;
+    const key: (c: BehaviorCard) => number =
+      mode === "impact"
+        ? (c) => c.impact ?? -1
+        : mode === "unrated"
+          ? // 两轴都没排的最靠前，排了一半的次之，两边都排完的沉底
+            (c) => (c.impact == null ? 2 : 0) + (c.feasibility == null ? 1 : 0)
+          : goldenScore;
     setOrder([...cards].sort((a, b) => key(b) - key(a)).map((c) => c.id));
   }
 
@@ -309,11 +316,15 @@ export default function FocusMapView({
             {label}
           </button>
         ))}
-        {sort !== "default" && (
-          <span className="w-full text-[10px] text-[var(--color-text-tertiary)]">
-            拖完想重新排，再点一次那个按钮（排序不实时，否则行会在手底下乱跳）
-          </span>
-        )}
+        <span className="w-full text-[10px] text-[var(--color-text-tertiary)] leading-relaxed">
+          {sort === "default"
+            ? "收集顺序 = 你倒进来的先后。它不随打分变，适合从上到下一条条过"
+            : sort === "impact"
+              ? "想比较两条谁更重要？这样排一下它俩就挨着了。拖完想重排，再点一次这个按钮"
+              : sort === "score"
+                ? "综合影响力和可行性（两边都强的靠前），最该先下手的在最上面"
+                : "两轴都没排的在最前面，排完的沉底"}
+        </span>
       </div>
 
       {/* 影响力高但做不到 → 改小。不给入口的话，它藏在几十行里根本找不到 */}
