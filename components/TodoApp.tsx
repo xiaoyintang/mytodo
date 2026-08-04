@@ -356,24 +356,20 @@ export default function TodoApp() {
     );
   }
 
-  // 改条目文字。文字变了，AI 之前那条判定就作废了（理由是针对旧文字说的），
-  // 退回未判定等下次重判；但你手动定过的类型保留——那是你的意图，不是对文字的推断。
-  function updateBehaviorText(id: string, text: string) {
-    snapshotLab();
-    setBehaviorCards((prev) =>
-      prev.map((b) => {
-        if (b.id !== id || b.text === text) return b;
-        const aiJudged = b.typeSource !== "user";
-        return {
-          ...b,
-          text,
-          type: aiJudged ? "unsorted" : b.type,
-          typeSource: aiJudged ? undefined : b.typeSource,
-          reason: undefined,
-          hasDecision: undefined,
-        };
-      }),
-    );
+  /**
+   * 行为卡改名 → 从它派生出去的东西一起改名。
+   * 习惯是从这条行为毕业的、任务是从这条行为排期出来的，名字不同步就成了两份互相矛盾的记录
+   * （行为叫"12点熄灯"，习惯表还写着"10点熄灯"）。
+   * 已完成的任务不动——那是历史，改了等于篡改你做过什么。
+   */
+  function renameDerived(behaviorId: string, text: string) {
+    setHabits((prev) => prev.map((h) => (h.behaviorId === behaviorId ? { ...h, title: text } : h)));
+    const card = behaviorCards.find((b) => b.id === behaviorId);
+    if (card?.taskId) {
+      setTasks((prev) =>
+        prev.map((t) => (t.id === card.taskId && t.status !== "done" ? { ...t, title: text } : t)),
+      );
+    }
   }
 
   // 一次性任务 → 排进日视图。行为卡记下 taskId，别重复排
@@ -400,6 +396,7 @@ export default function TodoApp() {
    */
   function editBehaviorText(id: string, text: string) {
     snapshotLab();
+    renameDerived(id, text);
     setBehaviorCards((prev) =>
       prev.map((b) => {
         if (b.id !== id || b.text === text) return b;
@@ -413,6 +410,7 @@ export default function TodoApp() {
   // 清掉可行性——旧分数是给"难版本"打的，改小之后必须重拖一次
   function shrinkBehavior(id: string, text: string) {
     snapshotLab();
+    renameDerived(id, text);
     setBehaviorCards((prev) =>
       prev.map((b) =>
         b.id === id
