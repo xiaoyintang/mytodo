@@ -77,6 +77,9 @@ export default function FocusMapView({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [typingId, setTypingId] = useState<string | null>(null); // 正在改类型的那条
+  // 改过文字的：不自动重置类型和分数（小改占多数，重置等于把对的信息毁掉），
+  // 只在那一行提醒一句，要不要重判/重打分你自己看
+  const [edited, setEdited] = useState<Set<string>>(new Set());
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [pinnedId, setPinnedId] = useState<string | null>(null);
 
@@ -125,8 +128,23 @@ export default function FocusMapView({
 
   function saveEdit(id: string) {
     const t = editText.trim();
-    if (t) onEditText(id, t);
+    const card = cards.find((c) => c.id === id);
+    if (t && card && t !== card.text) {
+      onEditText(id, t);
+      // 改动大不大只有你知道，所以不替你决定，只把提醒摆在眼前
+      if (card.impact != null || card.feasibility != null) {
+        setEdited((prev) => new Set(prev).add(id));
+      }
+    }
     setEditingId(null);
+  }
+
+  function dismissEdited(id: string) {
+    setEdited((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   }
 
   function toggleSelect(id: string) {
@@ -520,6 +538,31 @@ export default function FocusMapView({
 
               {renderSlider(b, "impact")}
               {renderSlider(b, "feasibility")}
+
+              {edited.has(b.id) && (
+                <div className="w-full flex items-center gap-1.5 text-[10px] text-[#B45309]">
+                  <span className="flex-1 leading-snug">
+                    文字改过了——如果改动大，上面两个分数和类型可能不作数了，顺手拖一下
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSetAxis(b.id, { impact: undefined, feasibility: undefined });
+                      dismissEdited(b.id);
+                    }}
+                    className="px-1.5 py-[2px] rounded border border-[#B45309] flex-shrink-0"
+                  >
+                    清掉重打
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => dismissEdited(b.id)}
+                    className="px-1 flex-shrink-0 text-[var(--color-text-tertiary)]"
+                  >
+                    知道了
+                  </button>
+                </div>
+              )}
 
               {/* 已有去处的，就地显示 + 可撤回 */}
               {task && (
