@@ -9,7 +9,7 @@ import { ArrowUpDown, Check, RotateCcw, Scissors, Star, Trash2, X } from "lucide
 import ConfirmDialog from "@/components/ConfirmDialog";
 
 type AxisPatch = { impact?: number; feasibility?: number };
-type SortMode = "default" | "impact" | "score" | "unrated";
+type SortMode = "default" | "impact" | "score";
 
 type Props = {
   aspiration: Aspiration;
@@ -32,11 +32,18 @@ type Props = {
 };
 
 const SORTS: Array<[SortMode, string]> = [
-  ["default", "不排序"], // 就是列表本来的顺序（你收集进来的先后）。好处只有一个：拖滑块时行不动
+  // 默认 = 没排的浮到最上面，其余保持收集顺序。全部排完之后它就等于收集顺序，
+  // 所以不需要再单独给一个"还没排的"
+  ["default", "默认"],
   ["impact", "影响力高→低"],
   ["score", "最该先做"], // = 影响力 × 可行性，两边都强的排前面
-  ["unrated", "还没排的"], // 20 条排了 14 条，剩下那 6 条自己找很烦
 ];
+
+/** 没排完的排前面（两轴都没排 > 排了一半 > 排完），同档保持收集顺序 */
+function unratedFirst(cards: BehaviorCard[]): string[] {
+  const rank = (c: BehaviorCard) => (c.impact == null ? 2 : 0) + (c.feasibility == null ? 1 : 0);
+  return [...cards].sort((a, b) => rank(b) - rank(a)).map((c) => c.id);
+}
 
 // 散点图尺寸
 const W = 336;
@@ -67,8 +74,9 @@ export default function FocusMapView({
 }: Props) {
   const [confirmReset, setConfirmReset] = useState(false);
   const [sort, setSort] = useState<SortMode>("default");
-  // 排序是一个动作不是实时绑定——否则拖滑块时行会在手底下乱跳
-  const [order, setOrder] = useState<string[] | null>(null);
+  // 排序是一个动作不是实时绑定——否则拖滑块时行会在手底下乱跳。
+  // 默认顺序也是进来时定一次：没排的浮上来，之后你怎么拖它都待在原地
+  const [order, setOrder] = useState<string[]>(() => unratedFirst(cards));
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [scheduling, setScheduling] = useState(false);
   const [onlyStuck, setOnlyStuck] = useState(false);
@@ -98,24 +106,18 @@ export default function FocusMapView({
   // 影响力够高但做不到的——福格的解法是改小。单独拎出来，否则藏在几十行里根本找不着
   const stuck = cards.filter((c) => (c.impact ?? 0) >= 50 && c.feasibility != null && c.feasibility < 50);
 
-  const ordered = order
-    ? [...cards].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
-    : cards;
+  // 新加的卡不在快照里（indexOf = -1），自然排到最前面——它本来就是没排的
+  const ordered = [...cards].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
   const list = onlyStuck ? ordered.filter((c) => stuck.includes(c)) : ordered;
 
   function applySort(mode: SortMode) {
     setSort(mode);
     if (mode === "default") {
-      setOrder(null);
+      setOrder(unratedFirst(cards));
       return;
     }
     const key: (c: BehaviorCard) => number =
-      mode === "impact"
-        ? (c) => c.impact ?? -1
-        : mode === "unrated"
-          ? // 两轴都没排的最靠前，排了一半的次之，两边都排完的沉底
-            (c) => (c.impact == null ? 2 : 0) + (c.feasibility == null ? 1 : 0)
-          : goldenScore;
+      mode === "impact" ? (c) => c.impact ?? -1 : goldenScore;
     setOrder([...cards].sort((a, b) => key(b) - key(a)).map((c) => c.id));
   }
 
@@ -388,12 +390,10 @@ export default function FocusMapView({
         ))}
         <span className="w-full text-[10px] text-[var(--color-text-tertiary)] leading-relaxed">
           {sort === "default"
-            ? "不排序 = 保持你收集进来的先后。好处是拖滑块时行不会动，适合从上到下一条条过"
+            ? "还没排的（虚线那些）浮在最上面，排完的按收集顺序排在后面。顺序进来时定一次，拖的时候行不会动"
             : sort === "impact"
               ? "想比较两条谁更重要？这样排一下它俩就挨着了。拖完想重排，再点一次这个按钮"
-              : sort === "score"
-                ? "综合影响力和可行性（两边都强的靠前），最该先下手的在最上面"
-                : "两轴都没排的在最前面，排完的沉底"}
+              : "综合影响力和可行性（两边都强的靠前），最该先下手的在最上面"}
         </span>
       </div>
 
@@ -436,7 +436,9 @@ export default function FocusMapView({
                     ? "bg-[var(--color-primary-light)] border-[var(--color-primary)]"
                     : rank
                       ? "bg-white border-[var(--color-primary)]"
-                      : "bg-white border-[var(--color-border)]",
+                      : b.impact == null || b.feasibility == null
+                        ? "bg-[var(--color-bg-gray-lighter)] border-dashed border-[#A1A1AA]"
+                        : "bg-white border-[var(--color-border)]",
               ].join(" ")}
             >
               <div className="w-full flex items-start gap-2">
@@ -749,7 +751,7 @@ export default function FocusMapView({
         onConfirm={() => {
           onResetAxes();
           setConfirmReset(false);
-          setOrder(null);
+          setOrder(cards.map((c) => c.id));
           setSort("default");
         }}
         onCancel={() => setConfirmReset(false)}
