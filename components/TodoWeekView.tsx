@@ -8,6 +8,7 @@ import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
 import TaskBottomSheet from "@/components/TaskBottomSheet";
 import QuickAddTask from "@/components/QuickAddTask";
 import MainlineBar from "@/components/MainlineBar";
+import MainlinePlanner from "@/components/MainlinePlanner";
 
 type Props = {
   viewMode: ViewMode;
@@ -26,6 +27,7 @@ type Props = {
   aspirations: Aspiration[];
   dayPlans: Record<string, DayPlan>;
   onOpenGoals: () => void;
+  onToggleMainline: (date: ISODate, aspirationId: string) => void;
   onPrevWeek: () => void;
   onNextWeek: () => void;
 };
@@ -205,6 +207,7 @@ export default function TodoWeekView({
   aspirations,
   dayPlans,
   onOpenGoals,
+  onToggleMainline,
   onPrevWeek,
   onNextWeek,
 }: Props) {
@@ -277,7 +280,7 @@ export default function TodoWeekView({
       />
 
         {/* View Switcher（和日视图/记录/习惯完全一致，切换时按钮不移位） */}
-        <div className="w-full px-6">
+        <div className="w-full px-6 pt-4">
           <div className="w-full flex gap-1 bg-[var(--color-bg-gray-light)] rounded-[10px] p-1">
             {([["day", "日视图"], ["week", "周视图"], ["log", "记录"], ["habit", "习惯"]] as Array<[ViewMode, string]>).map(([mode, label]) => (
               <button
@@ -322,6 +325,14 @@ export default function TodoWeekView({
         <div className="px-6 pt-4 pb-4">
           <QuickAddTask onCreate={onCreateTask} />
         </div>
+
+        <MainlinePlanner
+          days={days}
+          today={toISODate(new Date()) as ISODate}
+          aspirations={aspirations}
+          dayPlans={dayPlans}
+          onToggle={onToggleMainline}
+        />
 
         {/* Week Days List */}
         <div className="flex-1 flex flex-col border-t border-[var(--color-border)] overflow-y-auto">

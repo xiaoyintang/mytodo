@@ -36,6 +36,7 @@ type Props = {
   onUnscheduleBehavior: (cardId: string) => void;
   onSetBehaviorAxis: (id: string, patch: { impact?: number; feasibility?: number }) => void;
   onResetBehaviorAxes: (aspirationId: string) => void;
+  onSetWeeklyLimit: (aspirationId: string, limit: number | null) => void;
   onDeleteBehavior: (id: string) => void;
   onAddHabit: (input: Omit<Habit, "id" | "createdAt">) => void;
   onRemoveHabitByBehavior: (behaviorId: string) => void;
@@ -62,6 +63,7 @@ export default function GoalsView({
   onUnscheduleBehavior,
   onSetBehaviorAxis,
   onResetBehaviorAxes,
+  onSetWeeklyLimit,
   onDeleteBehavior,
   onAddHabit,
   onRemoveHabitByBehavior,
@@ -185,7 +187,33 @@ export default function GoalsView({
 
       <div className="w-full flex flex-col gap-4 px-6 pb-6">
         {open ? (
-          <FocusMapView
+          <>
+            {/* 每周投入上限：排主线时用它算额度，超了标黄不拦 */}
+            <div className="w-full flex items-center gap-1.5 flex-wrap px-3 py-2 rounded-[10px] bg-[var(--color-bg-gray-lighter)] border border-[var(--color-border)]">
+              <span className="text-[11px] text-[var(--color-text-secondary)] flex-shrink-0">
+                每周最多排
+              </span>
+              {[1, 2, 3, 4, 5, 6, 7].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => onSetWeeklyLimit(open.id, open.weeklyLimit === n ? null : n)}
+                  className={[
+                    "w-6 h-6 rounded-md border text-[11px] font-medium transition-colors",
+                    open.weeklyLimit === n
+                      ? "bg-[var(--color-primary)] border-[var(--color-primary)] text-white"
+                      : "bg-white border-[var(--color-border)] text-[var(--color-text-secondary)]",
+                  ].join(" ")}
+                >
+                  {n}
+                </button>
+              ))}
+              <span className="text-[11px] text-[var(--color-text-tertiary)]">
+                天{open.weeklyLimit == null ? "（现在不限）" : ""}
+              </span>
+            </div>
+
+            <FocusMapView
             aspiration={open}
             cards={openCards}
             tasks={tasks}
@@ -203,8 +231,9 @@ export default function GoalsView({
             onAddHabit={handleAddHabit}
             onRemoveHabit={onRemoveHabitByBehavior}
             habitBehaviorIds={habitBehaviorIds}
-            judgingIds={judging}
-          />
+              judgingIds={judging}
+            />
+          </>
         ) : (
           <>
             <div className="w-full flex items-center justify-between">

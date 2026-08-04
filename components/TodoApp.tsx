@@ -146,12 +146,27 @@ export default function TodoApp() {
   const safeDayPlans = plansHydrated ? dayPlans : EMPTY_DAY_PLANS;
 
   // 多设备同步码
+  const labHydrated = aspHydrated && behHydrated && habitsHydrated && logsHydrated && plansHydrated;
+  const lab = useMemo(
+    () => ({ aspirations, behaviors: behaviorCards, habits, habitLogs, dayPlans }),
+    [aspirations, behaviorCards, habits, habitLogs, dayPlans],
+  );
+
   const sync = useCloudSync({
-    hydrated: hydrated && entriesHydrated,
+    // 五张新表也要等 hydrate 完再同步，否则会拿初始空数组去覆盖云端
+    hydrated: hydrated && entriesHydrated && labHydrated,
     tasks,
     entries,
+    lab,
     setTasks,
     setEntries,
+    setLab: (patch) => {
+      if (patch.aspirations) setAspirations(patch.aspirations);
+      if (patch.behaviors) setBehaviorCards(patch.behaviors);
+      if (patch.habits) setHabits(patch.habits);
+      if (patch.habitLogs) setHabitLogs(patch.habitLogs);
+      if (patch.dayPlans) setDayPlans(patch.dayPlans);
+    },
   });
 
   // Toggle task status: todo → in_progress → done → todo
@@ -520,6 +535,12 @@ export default function TodoApp() {
     setBehaviorCards((prev) => prev.filter((b) => b.id !== id));
   }
 
+  function setWeeklyLimit(aspirationId: string, limit: number | null) {
+    setAspirations((prev) =>
+      prev.map((a) => (a.id === aspirationId ? { ...a, weeklyLimit: limit } : a)),
+    );
+  }
+
   /** 把某个目标加进/移出某天的主线 */
   function toggleMainline(date: ISODate, aspirationId: string) {
     setDayPlans((prev) => {
@@ -566,6 +587,7 @@ export default function TodoApp() {
           onUnscheduleBehavior={unscheduleBehavior}
           onSetBehaviorAxis={setBehaviorAxis}
           onResetBehaviorAxes={resetBehaviorAxes}
+          onSetWeeklyLimit={setWeeklyLimit}
           onDeleteBehavior={deleteBehavior}
           onAddHabit={addHabit}
           onRemoveHabitByBehavior={removeHabitByBehavior}
@@ -595,6 +617,7 @@ export default function TodoApp() {
         />
       ) : viewMode === "week" ? (
         <TodoWeekView
+          onToggleMainline={toggleMainline}
           viewMode={viewMode}
           onChangeViewMode={setViewMode}
           selectedDate={selectedDate}

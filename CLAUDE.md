@@ -195,8 +195,11 @@ TodoApp.tsx（状态管理中心）
 
 - localStorage key 必须保持 `mytodo.tasks.v1`（任务）和 `mytodo.entries.v1`（时间记录）
 - 习惯实验室的 key：`mytodo.aspirations.v1` / `mytodo.behaviors.v1` / `mytodo.habits.v1` / `mytodo.habitlogs.v1` / `mytodo.dayplans.v1`
-- 云同步（`sync.ts`）目前只同步 tasks + entries；习惯实验室的两个 key 还没接进去，
-  接的时候要单独改、单独验——那是用户数据的命根子
+- 云同步（`sync.ts`）覆盖 tasks + entries + aspirations + behaviors + habits + habitLogs + dayPlans
+  - **拉取时云端缺某个集合 → 跳过，绝不能拿 `[]` 覆盖本地**。老版本客户端推上去的 payload
+    没有那几个 key，把"云端没有"当成"云端是空的"会直接删掉用户数据
+  - dayPlans 按日期 key 合并（`mergePlans`），其余按 id 合并（`mergeById`），冲突以本地为准
+  - `hydrated` 必须等所有表都读完再置真，否则会拿初始空数组覆盖云端
 - 任务状态字段用 `"done"`（不是 `"completed"`）
 - Task 类型的标签是单数 `tag?: TaskTag`（不是 `tags` 数组）
 - 禁止 `<button>` 嵌套 `<button>`（会导致 React hydration 错误）

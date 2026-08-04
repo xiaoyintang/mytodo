@@ -186,7 +186,7 @@ export default function TodoDayView({
       />
 
       {/* View Switcher Section */}
-      <div className="w-full flex flex-col gap-4 px-6">
+      <div className="w-full flex flex-col gap-4 px-6 pt-4">
         {/* Tab Container */}
         <div className="w-full flex gap-1 bg-[var(--color-bg-gray-light)] rounded-[10px] p-1">
           {([["day", "日视图"], ["week", "周视图"], ["log", "记录"], ["habit", "习惯"]] as Array<[ViewMode, string]>).map(([mode, label]) => (

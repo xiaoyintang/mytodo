@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Task, TimeEntry } from "./types";
+import type { Aspiration, BehaviorCard, DayPlan, Habit, HabitLog, Task, TimeEntry } from "./types";
 
 export type SyncStatus = "off" | "syncing" | "synced" | "error" | "not_configured";
 
@@ -17,19 +17,38 @@ function mergeById<T extends { id: string }>(cloud: T[], local: T[]): T[] {
   return Array.from(map.values());
 }
 
+/** 除了 tasks/entries，习惯实验室那几张表也要同步——否则手机上看不到目标和习惯 */
+export type LabData = {
+  aspirations: Aspiration[];
+  behaviors: BehaviorCard[];
+  habits: Habit[];
+  habitLogs: HabitLog[];
+  dayPlans: Record<string, DayPlan>;
+};
+
 type Args = {
   hydrated: boolean;
   tasks: Task[];
   entries: TimeEntry[];
+  lab: LabData;
   setTasks: (t: Task[]) => void;
   setEntries: (e: TimeEntry[]) => void;
+  setLab: (patch: Partial<LabData>) => void;
 };
+
+/** DayPlan 按日期 key 合并（同一天以本地为准，本地带着还没传上去的改动） */
+function mergePlans(
+  cloud: Record<string, DayPlan> | null,
+  local: Record<string, DayPlan>,
+): Record<string, DayPlan> {
+  return { ...(cloud ?? {}), ...local };
+}
 
 // 同步码云同步：
 // - 设了码：进入页面拉云端（以云端为准替换本地），本地改动 800ms 防抖推送
 // - 云端为空：把本地数据上传（首台设备）
 // 不做实时推送，切换设备刷新即可拿到最新。
-export function useCloudSync({ hydrated, tasks, entries, setTasks, setEntries }: Args) {
+export function useCloudSync({ hydrated, tasks, entries, lab, setTasks, setEntries, setLab }: Args) {
   const [code, setCodeState] = useState("");
   const [status, setStatus] = useState<SyncStatus>("off");
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
@@ -40,6 +59,8 @@ export function useCloudSync({ hydrated, tasks, entries, setTasks, setEntries }:
   tasksRef.current = tasks;
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
+  const labRef = useRef(lab);
+  labRef.current = lab;
   const pulledRef = useRef(false);
   const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 本地是否有还没成功传上云的改动（跨刷新持久化，避免重开后被旧云端覆盖）
@@ -78,13 +99,13 @@ export function useCloudSync({ hydrated, tasks, entries, setTasks, setEntries }:
 
   // 把指定数据推上云。成功且推的正是当前本地状态时，清掉未同步标记。
   const pushData = useCallback(
-    async (tks: Task[], ents: TimeEntry[]) => {
+    async (tks: Task[], ents: TimeEntry[], lb: LabData) => {
       const c = codeRef.current;
       if (!c) return;
       setStatus("syncing");
       const body = JSON.stringify({
         code: c,
-        payload: { tasks: tks, entries: ents, updatedAt: Date.now() },
+        payload: { tasks: tks, entries: ents, ...lb, updatedAt: Date.now() },
       });
       // 10 秒超时 + 失败重试两次，抗 VPN 抖动（避免一次抽风就同步失败）
       for (let attempt = 0; attempt < 3; attempt++) {
@@ -103,7 +124,13 @@ export function useCloudSync({ hydrated, tasks, entries, setTasks, setEntries }:
             setStatus("synced");
             setLastSyncedAt(Date.now());
             // 期间本地没再变 → 已同步干净；否则保持 dirty，等下次推
-            if (tasksRef.current === tks && entriesRef.current === ents) markDirty(false);
+            if (
+              tasksRef.current === tks &&
+              entriesRef.current === ents &&
+              labRef.current === lb
+            ) {
+              markDirty(false);
+            }
             return;
           }
         } catch {
@@ -116,7 +143,10 @@ export function useCloudSync({ hydrated, tasks, entries, setTasks, setEntries }:
     [markDirty],
   );
 
-  const push = useCallback(() => pushData(tasksRef.current, entriesRef.current), [pushData]);
+  const push = useCallback(
+    () => pushData(tasksRef.current, entriesRef.current, labRef.current),
+    [pushData],
+  );
 
   // 拉取并应用云端数据（以云端为准）
   const pull = useCallback(
@@ -126,6 +156,7 @@ export function useCloudSync({ hydrated, tasks, entries, setTasks, setEntries }:
       // 记录拉取前的本地数据引用，用于检测"拉取期间用户改了本地"
       const t0 = tasksRef.current;
       const e0 = entriesRef.current;
+      const l0 = labRef.current;
       try {
         // 10 秒超时 + 失败重试两次，抗 VPN 抖动
         let res: Response | null = null;
@@ -159,26 +190,55 @@ export function useCloudSync({ hydrated, tasks, entries, setTasks, setEntries }:
         const data = json?.data;
         const cloudTasks = Array.isArray(data?.tasks) ? (data.tasks as Task[]) : null;
         const cloudEntries = Array.isArray(data?.entries) ? (data.entries as TimeEntry[]) : null;
-        if (!cloudTasks && !cloudEntries) return "empty";
+        // 云端没有这几个 key（老版本传上去的 payload）→ 一律按 null 处理，
+        // 下面只在非 null 时才写本地。绝不能把"云端没有"当成"云端是空的"，那会删掉本地数据。
+        const cloudAsp = Array.isArray(data?.aspirations) ? (data.aspirations as Aspiration[]) : null;
+        const cloudBeh = Array.isArray(data?.behaviors) ? (data.behaviors as BehaviorCard[]) : null;
+        const cloudHabits = Array.isArray(data?.habits) ? (data.habits as Habit[]) : null;
+        const cloudLogs = Array.isArray(data?.habitLogs) ? (data.habitLogs as HabitLog[]) : null;
+        const cloudPlans =
+          data?.dayPlans && typeof data.dayPlans === "object"
+            ? (data.dayPlans as Record<string, DayPlan>)
+            : null;
+        if (!cloudTasks && !cloudEntries && !cloudAsp && !cloudBeh) return "empty";
 
         // 本地有未上传的改动（含拉取期间刚新增的）→ 合并而不是覆盖，
         // 保证本地记录一条都不丢，合并后再把完整数据推上云。
         const localChanged =
-          dirtyRef.current || tasksRef.current !== t0 || entriesRef.current !== e0;
+          dirtyRef.current ||
+          tasksRef.current !== t0 ||
+          entriesRef.current !== e0 ||
+          labRef.current !== l0;
         if (localChanged) {
           const mergedTasks = mergeById(cloudTasks ?? [], tasksRef.current);
           const mergedEntries = mergeById(cloudEntries ?? [], entriesRef.current);
+          const mergedLab: LabData = {
+            aspirations: mergeById(cloudAsp ?? [], labRef.current.aspirations),
+            behaviors: mergeById(cloudBeh ?? [], labRef.current.behaviors),
+            habits: mergeById(cloudHabits ?? [], labRef.current.habits),
+            habitLogs: mergeById(cloudLogs ?? [], labRef.current.habitLogs),
+            dayPlans: mergePlans(cloudPlans, labRef.current.dayPlans),
+          };
           setTasks(mergedTasks);
           setEntries(mergedEntries);
+          setLab(mergedLab);
           setStatus("synced");
           setLastSyncedAt(Date.now());
-          void pushData(mergedTasks, mergedEntries);
+          void pushData(mergedTasks, mergedEntries, mergedLab);
           return "has_data";
         }
 
-        // 本地干净 → 以云端为准（这样别的设备的删除也能同步过来）
+        // 本地干净 → 以云端为准（这样别的设备的删除也能同步过来）。
+        // 但云端**没有**某个集合时跳过它，不能拿 [] 去覆盖本地。
         setTasks(cloudTasks ?? []);
         setEntries(cloudEntries ?? []);
+        setLab({
+          ...(cloudAsp ? { aspirations: cloudAsp } : {}),
+          ...(cloudBeh ? { behaviors: cloudBeh } : {}),
+          ...(cloudHabits ? { habits: cloudHabits } : {}),
+          ...(cloudLogs ? { habitLogs: cloudLogs } : {}),
+          ...(cloudPlans ? { dayPlans: cloudPlans } : {}),
+        });
         setStatus("synced");
         setLastSyncedAt(Date.now());
         return "has_data";
@@ -187,7 +247,7 @@ export function useCloudSync({ hydrated, tasks, entries, setTasks, setEntries }:
         return "error";
       }
     },
-    [setTasks, setEntries, pushData],
+    [setTasks, setEntries, setLab, pushData],
   );
 
   // 进入页面时初始拉取
@@ -223,7 +283,7 @@ export function useCloudSync({ hydrated, tasks, entries, setTasks, setEntries }:
       if (pushTimer.current) clearTimeout(pushTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, entries]);
+  }, [tasks, entries, lab]);
 
   // 切回页面自动同步：离开时把本地改动推上去，回来时拉最新
   // （比如刚用 Siri / 快捷指令记了一笔，切回 app 就能看到，不用退出重进）

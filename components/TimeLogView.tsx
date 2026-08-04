@@ -574,7 +574,7 @@ export default function TimeLogView({
       />
 
       {/* Tabs + Date Picker */}
-      <div className="w-full flex flex-col gap-4 px-6">
+      <div className="w-full flex flex-col gap-4 px-6 pt-4">
         <div className="w-full flex gap-1 bg-[var(--color-bg-gray-light)] rounded-[10px] p-1">
           {TABS.map((tab) => (
             <button
