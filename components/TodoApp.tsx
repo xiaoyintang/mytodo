@@ -393,11 +393,20 @@ export default function TodoApp() {
     setBehaviorCards((prev) => prev.map((b) => (b.id === cardId ? { ...b, taskId: undefined } : b)));
   }
 
-  // 就地改文字（焦点地图里用）：只换措辞，保留类型和两轴——
-  // 在地图上你已经确认过它是个行为了，不该像集群页那样退回未判定
+  /**
+   * 就地改文字。**类型交给 AI 重判**（退回 unsorted，自动判定会立刻接手），
+   * 但**两轴分数保留**——改错字不该让你打过的分白费；真改大了，那一行会提示"分数可能不作数"。
+   * 你手动改判过的类型不动：那是你的裁定，AI 不许覆盖。
+   */
   function editBehaviorText(id: string, text: string) {
     snapshotLab();
-    setBehaviorCards((prev) => prev.map((b) => (b.id === id ? { ...b, text } : b)));
+    setBehaviorCards((prev) =>
+      prev.map((b) => {
+        if (b.id !== id || b.text === text) return b;
+        if (b.typeSource === "user") return { ...b, text };
+        return { ...b, text, type: "unsorted", typeSource: undefined, reason: undefined, hasDecision: undefined };
+      }),
+    );
   }
 
   // 「改小」专用：换掉文字但保留类型（它还是同一种可重复行为，不该退回未判定），

@@ -645,8 +645,9 @@ export default function FocusMapView({
               </div>
 
               {typingId === b.id && (
-                <div className="w-full flex items-center gap-1.5 py-1">
-                  <span className="text-[10px] text-[var(--color-text-tertiary)]">归为</span>
+                <div className="w-full flex flex-col gap-1 py-1">
+                  <div className="w-full flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] text-[var(--color-text-tertiary)] flex-shrink-0">归为</span>
                   {(["habit", "stop", "onetime"] as BehaviorType[]).map((t) => {
                     const ts = TYPE_STYLE[t];
                     const on = b.type === t;
@@ -658,7 +659,7 @@ export default function FocusMapView({
                           onSetType(b.id, t);
                           setTypingId(null);
                         }}
-                        className="px-2 py-[3px] rounded-md border text-[10px] font-medium"
+                        className="px-2 py-[3px] rounded-md border text-[10px] font-medium flex-shrink-0 whitespace-nowrap"
                         style={{
                           backgroundColor: on ? ts.text : ts.bg,
                           borderColor: on ? ts.text : ts.border,
@@ -669,13 +670,14 @@ export default function FocusMapView({
                       </button>
                     );
                   })}
-                  <span className="text-[9px] text-[var(--color-text-tertiary)]">
+                  </div>
+                  <span className="text-[9px] text-[var(--color-text-tertiary)] leading-snug">
                     判成愿望/成果的，用那行的「拆成行为」
                   </span>
                 </div>
               )}
 
-              {b.type === "unsorted" ? (
+              {b.type === "unsorted" && b.impact == null && b.feasibility == null ? (
                 <span className="text-[10px] text-[var(--color-text-tertiary)] py-1">
                   {judgingIds.has(b.id)
                     ? "AI 正在判它是不是行为，判完就能打分（也可以直接点上面的标签自己定）"
