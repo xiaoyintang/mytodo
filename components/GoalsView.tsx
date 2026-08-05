@@ -84,18 +84,22 @@ export default function GoalsView({
 
   // 新条目自己去判定，不用点按钮。非阻塞：行立刻出现（"判定中…"），
   // 700ms 内连着加的攒成一次请求。
+  //
+  // 去重的 key 必须是 **id + 文字**，不能只用 id：改完文字后条目会退回未判定等重判，
+  // 但 id 没变，只按 id 记就会被当成"问过了"直接跳过——那就永远停在未判定。
   const autoJudgedRef = useRef<Set<string>>(new Set());
   const [judging, setJudging] = useState<Set<string>>(new Set());
-  const pendingKey = open ? pendingJudgement(openCards).map((b) => b.id).join("|") : "";
+  const judgeKey = (b: BehaviorCard) => `${b.id}::${b.text}`;
+  const pendingKey = open ? pendingJudgement(openCards).map(judgeKey).join("|") : "";
 
   useEffect(() => {
     if (!open) return;
     const todo = pendingJudgement(behaviors.filter((b) => b.aspirationId === open.id)).filter(
-      (b) => !autoJudgedRef.current.has(b.id),
+      (b) => !autoJudgedRef.current.has(judgeKey(b)),
     );
     if (todo.length === 0) return;
     const timer = setTimeout(() => {
-      todo.forEach((b) => autoJudgedRef.current.add(b.id));
+      todo.forEach((b) => autoJudgedRef.current.add(judgeKey(b)));
       setJudging(new Set(todo.map((b) => b.id)));
       void (async () => {
         const res = await callBehaviorAPI({
@@ -106,7 +110,7 @@ export default function GoalsView({
         setJudging(new Set());
         if (!res.ok) {
           // 判不了就留在"未判定"，行上会提示自己点标签定一个
-          todo.forEach((b) => autoJudgedRef.current.delete(b.id));
+          todo.forEach((b) => autoJudgedRef.current.delete(judgeKey(b)));
           return;
         }
         const results = Array.isArray(res.data.results) ? (res.data.results as Judgement[]) : [];
