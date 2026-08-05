@@ -5,7 +5,7 @@ import type { Aspiration, BehaviorCard, BehaviorType, ISODate, Task } from "@/co
 import { callBehaviorAPI, toPendingItems, type PendingItem } from "@/components/todo/behaviorApi";
 import { TYPE_LABEL, TYPE_STYLE, goldenScore, isGolden, isRepeatable, needsBreakdown } from "@/components/todo/behavior";
 import { CN_WEEKDAY, addDays, toISODate } from "@/components/todo/date";
-import { ArrowUpDown, Check, RotateCcw, Scissors, Star, Trash2, Wand2, X } from "lucide-react";
+import { AlertTriangle, ArrowUpDown, Check, RotateCcw, Scissors, Star, Trash2, Wand2, X } from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
 type AxisPatch = { impact?: number; feasibility?: number };
@@ -763,6 +763,17 @@ export default function FocusMapView({
                     </button>
                   </div>
                   {wand?.forId === b.id && renderWandBox()}
+                </div>
+              )}
+
+              {/* 执行时会卡住：要当场判断、或者没有完成条件（"查一下"到什么程度算完？） */}
+              {b.hasDecision && (
+                <div className="w-full flex items-start gap-1 text-[10px] text-[#B45309] leading-snug py-0.5">
+                  <AlertTriangle className="w-3 h-3 mt-[1px] flex-shrink-0" />
+                  <span className="flex-1">
+                    这条不好执行{b.reason ? `（${b.reason}）` : ""}——点文字改写成
+                    <strong>有明确终点或产出物</strong>的说法
+                  </span>
                 </div>
               )}
 
