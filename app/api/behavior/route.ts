@@ -14,6 +14,9 @@ import {
 
 const MAX_ITEMS = 40;
 
+// 开思考的判定要跑十几秒，别让平台在中途掐断
+export const maxDuration = 60;
+
 export async function POST(req: Request) {
   if (!hasLLM()) {
     return NextResponse.json({ error: "no_api_key" }, { status: 501 });
@@ -63,7 +66,8 @@ export async function POST(req: Request) {
   if (items.length === 0) return NextResponse.json({ error: "empty_items" }, { status: 400 });
 
   const goal = String(body.goal ?? "").trim().slice(0, 120);
-  const results = await sortBehaviorsWithLLM(items, goal || undefined);
+  // 自动判定图快（关思考）；手动「重判」图准（开思考，慢一点无所谓）
+  const results = await sortBehaviorsWithLLM(items, goal || undefined, body.think === true);
   if (results === null) return NextResponse.json({ error: "llm_error" }, { status: 502 });
   return NextResponse.json({ results });
 }

@@ -38,6 +38,8 @@ type Props = {
   /** 判定标准改进后老条目不会自己更新，给个全部重判的口子 */
   onRejudgeAll: () => void;
   rejudging: boolean;
+  rejudgeProgress: number;
+  rejudgeTotal: number;
 };
 
 const SORTS: Array<[SortMode, string]> = [
@@ -85,6 +87,8 @@ export default function FocusMapView({
   judgingIds,
   onRejudgeAll,
   rejudging,
+  rejudgeProgress,
+  rejudgeTotal,
 }: Props) {
   const [confirmReset, setConfirmReset] = useState(false);
   const [sort, setSort] = useState<SortMode>("default");
@@ -439,10 +443,10 @@ export default function FocusMapView({
           onClick={onRejudgeAll}
           disabled={rejudging}
           className="flex items-center gap-1 text-[12px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] disabled:opacity-50 flex-shrink-0"
-          title="判定标准改进过之后，老条目不会自己更新。点这里全部重判一遍（你手动改判过的不动）"
+          title="全部重判一遍，开思考模式判得更准（慢一些）。你手动改判过的不动"
         >
           <RefreshCw className={["w-3 h-3", rejudging ? "animate-spin" : ""].join(" ")} />
-          {rejudging ? "重判中..." : "重判"}
+          {rejudging ? `重判中 ${rejudgeProgress}/${rejudgeTotal}` : "重判"}
         </button>
         <button
           type="button"

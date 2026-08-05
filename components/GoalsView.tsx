@@ -87,6 +87,7 @@ export default function GoalsView({
   const [newKind, setNewKind] = useState<AspirationKind>("aspiration");
   const [deleteAspId, setDeleteAspId] = useState<string | null>(null);
   const [rejudging, setRejudging] = useState(false);
+  const [rejudgeDone, setRejudgeDone] = useState(0);
 
   const open = openId ? aspirations.find((a) => a.id === openId) ?? null : null;
   const openCards = open ? behaviors.filter((b) => b.aspirationId === open.id) : [];
@@ -143,11 +144,18 @@ export default function GoalsView({
     const all = behaviors.filter((b) => b.aspirationId === open.id);
     if (all.length === 0) return;
     setRejudging(true);
-    // 分批，一次最多 40 条（API 上限）
-    for (let i = 0; i < all.length; i += 30) {
-      const batch = all.slice(i, i + 30);
+    setRejudgeDone(0);
+    // 手动重判开思考——6/6 对 vs 关思考 5/6，代价是慢。
+    // 但**思考时间随条目数涨得很快**：6 条一批要 23~45 秒（方差还大到能撞超时），
+    // 3 条一批只要几秒。所以切小批 + 并发，9 条实测 8~20 秒跑完。
+    // 并发上限 4，别把接口打出限流。自动判定那条路仍然关思考图快。
+    const batches: BehaviorCard[][] = [];
+    for (let i = 0; i < all.length; i += 3) batches.push(all.slice(i, i + 3));
+
+    const runBatch = async (batch: BehaviorCard[]) => {
       const res = await callBehaviorAPI({
         mode: "sort",
+        think: true,
         goal: open.title,
         items: batch.map((b) => ({ id: b.id, text: b.text })),
       });
@@ -158,8 +166,14 @@ export default function GoalsView({
           batch.forEach((b) => autoJudgedRef.current.add(judgeKey(b)));
         }
       }
+      setRejudgeDone((n) => n + batch.length);
+    };
+
+    for (let i = 0; i < batches.length; i += 4) {
+      await Promise.all(batches.slice(i, i + 4).map(runBatch));
     }
     setRejudging(false);
+    setRejudgeDone(0);
   }
 
   function handleCreate() {
@@ -279,6 +293,8 @@ export default function GoalsView({
               judgingIds={judging}
               onRejudgeAll={handleRejudge}
               rejudging={rejudging}
+              rejudgeProgress={rejudgeDone}
+              rejudgeTotal={behaviors.filter((b) => b.aspirationId === open.id).length}
             />
           </>
         ) : (

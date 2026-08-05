@@ -27,7 +27,19 @@ export function hasLLM(): boolean {
 }
 
 // 通用：给定 system + user，返回模型输出的 JSON（对象），失败/超时返回 null。
-export async function callLLMJson(system: string, user: string): Promise<unknown | null> {
+/**
+ * 按任务性质分两档：
+ * - **抽取类**（解析时间、分类、判定）：机械活，关思考 + temperature 0，图快图稳
+ * - **改写类**（改具体、改小、魔法棒）：要判断也要语感，开思考 + 给一点温度，
+ *   否则它只会"原文 + 补丁"地拼，写不出人话
+ */
+export type LLMOpts = { think?: boolean; temperature?: number };
+
+export async function callLLMJson(
+  system: string,
+  user: string,
+  opts: LLMOpts = {},
+): Promise<unknown | null> {
   const apiKey = process.env.LLM_API_KEY;
   if (!apiKey) return null;
 
@@ -37,7 +49,8 @@ export async function callLLMJson(system: string, user: string): Promise<unknown
   try {
     // 8 秒超时保护，避免卡死拖满函数时限
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
+    // 开了思考会慢不少，超时跟着放宽
+    const timer = setTimeout(() => controller.abort(), opts.think ? 35000 : 8000);
     const res = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
@@ -48,10 +61,14 @@ export async function callLLMJson(system: string, user: string): Promise<unknown
           { role: "user", content: user },
         ],
         response_format: { type: "json_object" },
-        // DeepSeek V4 默认开思考模式，简单抽取任务关掉能快 5 倍以上
-        ...(baseUrl.includes("api.deepseek.com") ? { thinking: { type: "disabled" } } : {}),
-        temperature: 0,
-        max_tokens: 1024,
+        // DeepSeek V4 默认开思考模式；抽取类任务关掉能快 5 倍以上，改写类要留着
+        ...(baseUrl.includes("api.deepseek.com") && !opts.think
+          ? { thinking: { type: "disabled" } }
+          : {}),
+        temperature: opts.temperature ?? 0,
+        // 开思考时**推理过程也算 completion_tokens**——6 条判定就烧掉 1900+，
+      // 给 2048 的话正文只剩百来个 token，JSON 会被截断成 finish_reason:"length"。
+      max_tokens: opts.think ? 8000 : 1024,
         stream: false,
       }),
       signal: controller.signal,
@@ -234,10 +251,21 @@ const CONCRETE_PROMPT = `你是福格行为设计（BJ Fogg, Tiny Habits）的�
 输出格式（必须是合法 JSON，不要输出其他内容）：
 {"behaviors":[{"text":"改写后的行为","type":"onetime"}]}
 
+## 写法：一句顺口的话，不是"原文 + 补丁"
+
+❌ 「在网上查产品经理都在看什么书，看1篇推荐书单文章」——把原句整个抄一遍再接一段，啰嗦
+❌ 「看一篇面试技巧文章，读完即可」——"读完即可"不是人话
+✅ 「查一篇产品经理书单文章」
+✅ 「读完一篇面试技巧文章」
+
+原句里多余的字该删就删，只要**动作**和**对象**留着就行。
+每条尽量不超过 15 个字，像自己给自己写的备忘录。
+
 规则：
 1. 给 3 个，动作全都和原文一致，只是边界不同（数量 / 时长 / 产出形式）
 2. 每一条都要能回答"做完了没有"，答案是明确的是或否
-3. type 沿用原行为的类型（不确定就用 onetime）`;
+3. 写成一句顺口的短句，别把原文照抄一遍再打补丁
+4. type 沿用原行为的类型（不确定就用 onetime）`;
 
 const VALID_TYPE = new Set<string>(["aspiration", "outcome", "onetime", "habit", "stop"]);
 const VALID_BLOCKER = new Set<string>(["timing", "decision", "endpoint"]);
@@ -272,9 +300,10 @@ function pickBehaviors(raw: unknown): LLMBehavior[] {
 export async function sortBehaviorsWithLLM(
   items: Array<{ id: string; text: string }>,
   goal?: string,
+  think = false,
 ): Promise<LLMJudgement[] | null> {
   const payload = JSON.stringify({ goal: goal ?? "", items });
-  const parsed = await callLLMJson(SORT_PROMPT, payload);
+  const parsed = await callLLMJson(SORT_PROMPT, payload, think ? { think: true } : {});
   if (parsed === null) return null;
 
   const raw = (parsed as { results?: unknown })?.results;
@@ -300,7 +329,7 @@ export async function sortBehaviorsWithLLM(
 /** 改具体：把"执行时会卡住"的行为改写成有明确终点或产出物的版本 */
 export async function concreteWithLLM(text: string, goal?: string): Promise<LLMBehavior[] | null> {
   const user = goal ? `我的目标：${goal}\n卡住的这条行为：${text}` : `卡住的这条行为：${text}`;
-  const parsed = await callLLMJson(CONCRETE_PROMPT, user);
+  const parsed = await callLLMJson(CONCRETE_PROMPT, user, { think: true, temperature: 0.4 });
   if (parsed === null) return null;
   return pickBehaviors((parsed as { behaviors?: unknown })?.behaviors);
 }
@@ -308,7 +337,7 @@ export async function concreteWithLLM(text: string, goal?: string): Promise<LLMB
 /** 改小：把"影响力大但做不到"的行为拆成不需要意志力的版本 */
 export async function shrinkWithLLM(text: string, goal?: string): Promise<LLMBehavior[] | null> {
   const user = goal ? `我的目标：${goal}\n做不到的这条行为：${text}` : `做不到的这条行为：${text}`;
-  const parsed = await callLLMJson(SHRINK_PROMPT, user);
+  const parsed = await callLLMJson(SHRINK_PROMPT, user, { think: true, temperature: 0.4 });
   if (parsed === null) return null;
   return pickBehaviors((parsed as { behaviors?: unknown })?.behaviors);
 }
@@ -322,7 +351,10 @@ export async function magicWandWithLLM(
   const lines = [`愿望/成果：${aspiration}`];
   if (context && context !== aspiration) lines.push(`它属于我的大目标：${context}`);
   if (existing.length) lines.push(`已经收集过的（别重复）：${existing.join("、")}`);
-  const parsed = await callLLMJson(WAND_PROMPT, lines.join("\n"));
+  const parsed = await callLLMJson(WAND_PROMPT, lines.join("\n"), {
+    think: true,
+    temperature: 0.5,
+  });
   if (parsed === null) return null;
   return pickBehaviors((parsed as { behaviors?: unknown })?.behaviors);
 }

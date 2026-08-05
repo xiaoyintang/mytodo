@@ -8,7 +8,8 @@ export async function callBehaviorAPI(
 ): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; noKey: boolean }> {
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 30000); // 批量判定慢，给足时间
+    // 开思考的重判最慢（6 条约 18 秒），留足余量
+    const timer = setTimeout(() => controller.abort(), 45000);
     const res = await fetch("/api/behavior", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
