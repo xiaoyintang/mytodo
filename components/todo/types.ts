@@ -78,7 +78,16 @@ export interface BehaviorCard {
   typeSource?: "ai" | "user";
   /** AI 判定理由（一句话） */
   reason?: string;
-  /** 这条行为内部藏着"需要当场判断"的成分（如"挑出有问题的那句"），建议改写成零决策版本 */
+  /**
+   * 这条为什么不好"无脑做"。按三个时刻排优先级，**只报最早的那一个**——
+   * 修好早的往往顺手把晚的也修了，同时喊两条只会吵。
+   * - `timing`   ① 起点：没说什么时候做（只对可重复行为有意义，一次性任务靠排期给时机）
+   * - `decision` ② 过程：中间要当场判断/挑选/评估
+   * - `endpoint` ③ 终点：做到什么程度算完，说不出来
+   * 「缺动作」不在这儿——那由 type=aspiration/outcome 表达，行上直接给「拆成行为」
+   */
+  blocker?: "timing" | "decision" | "endpoint";
+  /** @deprecated 老数据兼容：等价于 blocker="endpoint"。重判一次就会换成 blocker */
   hasDecision?: boolean;
   /** 焦点地图两轴（二期填）：影响力 / 我能不能做到 */
   impact?: number;

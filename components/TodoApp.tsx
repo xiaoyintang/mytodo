@@ -373,7 +373,12 @@ export default function TodoApp() {
 
   // 批量判定结果写回；用户手动改判过的不动
   function applyJudgements(
-    results: Array<{ id: string; type: BehaviorType; reason?: string; hasDecision?: boolean }>,
+    results: Array<{
+      id: string;
+      type: BehaviorType;
+      reason?: string;
+      blocker?: "timing" | "decision" | "endpoint";
+    }>,
   ) {
     snapshotLab();
     const byId = new Map(results.map((r) => [r.id, r]));
@@ -381,7 +386,15 @@ export default function TodoApp() {
       prev.map((b) => {
         const r = byId.get(b.id);
         if (!r || b.typeSource === "user") return b;
-        return { ...b, type: r.type, typeSource: "ai", reason: r.reason, hasDecision: r.hasDecision };
+        // hasDecision 是老字段，重判后清掉，统一用 blocker
+        return {
+          ...b,
+          type: r.type,
+          typeSource: "ai" as const,
+          reason: r.reason,
+          blocker: r.blocker,
+          hasDecision: undefined,
+        };
       }),
     );
   }
@@ -436,7 +449,7 @@ export default function TodoApp() {
       prev.map((b) => {
         if (b.id !== id || b.text === text) return b;
         if (b.typeSource === "user") return { ...b, text };
-        return { ...b, text, type: "unsorted", typeSource: undefined, reason: undefined, hasDecision: undefined };
+        return { ...b, text, type: "unsorted", typeSource: undefined, reason: undefined, blocker: undefined, hasDecision: undefined };
       }),
     );
   }
@@ -449,7 +462,7 @@ export default function TodoApp() {
     setBehaviorCards((prev) =>
       prev.map((b) =>
         b.id === id
-          ? { ...b, text, feasibility: undefined, reason: undefined, hasDecision: undefined }
+          ? { ...b, text, feasibility: undefined, reason: undefined, blocker: undefined, hasDecision: undefined }
           : b,
       ),
     );

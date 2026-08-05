@@ -19,7 +19,12 @@ import FocusMapView from "@/components/FocusMapView";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { ArrowLeft, ChevronRight, Plus, Trash2, Undo2, X } from "lucide-react";
 
-type Judgement = { id: string; type: BehaviorType; reason?: string; hasDecision?: boolean };
+type Judgement = {
+  id: string;
+  type: BehaviorType;
+  reason?: string;
+  blocker?: "timing" | "decision" | "endpoint";
+};
 
 type Props = {
   aspirations: Aspiration[];
@@ -130,7 +135,7 @@ export default function GoalsView({
 
   /**
    * 重新判定这个目标下的全部条目。判定标准（prompt）会随着使用不断改进，
-   * 但 hasDecision / type 只在判定那一刻写一次，老条目不会自己更新——
+   * 但 blocker / type 只在判定那一刻写一次，老条目不会自己更新——
    * 所以要给个手动重来的口子。**你手动改判过的不动**（applyJudgements 里挡着）。
    */
   async function handleRejudge() {

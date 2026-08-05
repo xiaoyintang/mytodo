@@ -125,23 +125,37 @@ ${BEHAVIOR_TYPES}
 
 【注意】"做完X就做Y"这种自带触发时机的说法是很好的可重复行为，别误判成愿望。
 
-【额外标记 hasDecision：这条行为执行时会卡住】
-两种情况都标 true，并在 reason 里点出是哪个词的问题：
+【额外标记 blocker：这条为什么不好"无脑做"】
 
-① **要当场判断**：内部含有"判断/挑选/评估"的成分
-   例："挑出有问题的一句话去改写" → true（"有问题的"要当场判断）
+判断一件事能不能不动脑直接做，看三个时刻。**只报最早坏掉的那一个**，其余的不用管：
 
-② **没有完成条件**：做到什么程度算做完，说不出来。典型是
-   "查一下 / 了解一下 / 研究一下 / 看看 / 熟悉一下 / 多 X 一点"
-   例："在网上查一下面试技巧" → true（"查一下"没有终点，可以查 10 分钟也可以查 3 小时）
-   例："多了解一些行业知识" → true（"多"到什么程度算够？）
+① **起点 timing**——不知道什么时候做
+   只对**可重复行为（habit/stop）**判这一条。它要靠"做完 X 就做 Y"的锚点触发，
+   句子里没有任何时机就会永远想不起来做。
+   例："背单词" → timing（什么时候背？）
+   例："每天喝八杯水" → timing（"每天"不是时机，不知道由什么触发）
+   **一次性任务（onetime）不判 timing**——它靠排日期给时机，句子里没有很正常。
+   句子里已经有触发时机的**不要判**："看完一集读2分钟书"、"睡前把手机放客厅"、
+   "刷完牙后做两个俯卧撑"、"晚上10点关灯"
 
-**反例，这些不要标**（有明确终点或产出物，一眼看得出做没做完）：
-   "读2分钟书"、"做两个俯卧撑"、"把自我介绍写成逐字稿念三遍"、
-   "写出3个最可能被问到的问题"、"睡前把手机放到客厅充电"
+② **过程 decision**——中间要停下来当场判断/挑选/评估
+   例："挑出有问题的一句话改写" → decision（"有问题的"要现场评估）
+   例："判断这份文稿是否 work" → decision
+
+③ **终点 endpoint**——做到什么程度算完，说不出来
+   典型词：查一下 / 看下 / 了解一下 / 研究一下 / 熟悉一下 / 多 X 一点
+   例："在网上查一下面试技巧" → endpoint（能查 10 分钟也能查 3 小时）
+
+**三个都没问题就返回 null。**这些是好的，一个都不要标：
+   "看完一集读2分钟书"、"刷完牙后做两个俯卧撑"、"睡前把手机放到客厅充电"、
+   "把自我介绍写成逐字稿念三遍"、"写出3个最可能被问到的问题"、"买个遮光窗帘"
+
+**判成 aspiration / outcome 的，blocker 一律给 null**——它压根还不是行为，
+缺的是"动作"本身，那由类型表达，不用再报别的。
 
 【输出】必须是合法 JSON，不要输出其他内容：
-{"results":[{"id":"原样返回输入的id","type":"habit","reason":"不超过20字","hasDecision":false}]}
+{"results":[{"id":"原样返回输入的id","type":"habit","reason":"不超过20字","blocker":null}]}
+blocker 只能是 "timing" / "decision" / "endpoint" / null 四者之一。
 输入几条就输出几条，一条都不能少，id 必须原样返回。`;
 
 const WAND_PROMPT = `你是福格行为设计（BJ Fogg, Tiny Habits）的教练。用户会给出一个愿望或成果。
@@ -201,14 +215,17 @@ const CONCRETE_PROMPT = `你是福格行为设计（BJ Fogg, Tiny Habits）的�
 3. type 沿用原行为的类型（不确定就用 onetime）`;
 
 const VALID_TYPE = new Set<string>(["aspiration", "outcome", "onetime", "habit", "stop"]);
+const VALID_BLOCKER = new Set<string>(["timing", "decision", "endpoint"]);
 const WAND_TYPE = new Set<string>(["onetime", "habit", "stop"]);
 
 export type LLMBehavior = { text: string; type: BehaviorType };
+export type BehaviorBlocker = "timing" | "decision" | "endpoint";
+
 export type LLMJudgement = {
   id: string;
   type: BehaviorType;
   reason: string;
-  hasDecision: boolean;
+  blocker?: BehaviorBlocker;
 };
 
 // 从模型输出里挑出合法的行为条目（魔法棒用，只收可执行的三类）
@@ -249,7 +266,7 @@ export async function sortBehaviorsWithLLM(
         id,
         type: type as BehaviorType,
         reason: String(o?.reason ?? "").trim().slice(0, 40),
-        hasDecision: o?.hasDecision === true,
+        blocker: VALID_BLOCKER.has(String(o?.blocker)) ? (String(o?.blocker) as BehaviorBlocker) : undefined,
       };
     })
     .filter((x): x is LLMJudgement => x !== null);

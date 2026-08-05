@@ -5,6 +5,7 @@ import type { Aspiration, BehaviorCard, BehaviorType, ISODate, Task } from "@/co
 import { callBehaviorAPI, toPendingItems, type PendingItem } from "@/components/todo/behaviorApi";
 import { TYPE_LABEL, TYPE_STYLE, goldenScore, isGolden, isRepeatable, needsBreakdown } from "@/components/todo/behavior";
 import { CN_WEEKDAY, addDays, toISODate } from "@/components/todo/date";
+import { BLOCKER_INFO, blockerOf } from "@/components/todo/blocker";
 import { AlertTriangle, ArrowUpDown, Check, RefreshCw, RotateCcw, Scissors, Star, Trash2, Wand2, X } from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
@@ -831,69 +832,65 @@ export default function FocusMapView({
                 </div>
               )}
 
-              {needsBreakdown(b.type) && (
-                <div className="w-full flex flex-col gap-1.5 py-1">
-                  <div className="w-full flex items-center gap-1.5">
-                    <span className="flex-1 text-[10px] text-[#B45309] leading-snug">
-                      这条执行不了（{TYPE_LABEL[b.type]}），没法打分——拆成能做的行为
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleWand(b)}
-                      disabled={wandBusy !== null}
-                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-[#B45309] text-[11px] font-medium text-[#B45309] hover:bg-[#FEF3C7] transition-colors disabled:opacity-50 flex-shrink-0"
-                    >
-                      <Wand2 className="w-3 h-3" />
-                      {wandBusy === b.id ? "拆解中，10 秒左右..." : "拆成行为"}
-                    </button>
-                  </div>
-                  {wand?.forId === b.id && renderWandBox()}
-                </div>
-              )}
+              {/* 一行只报一个问题：按 ①起点 ②过程 ③终点 取最早坏掉的那个 */}
+              {(() => {
+                const kind = blockerOf(b);
+                if (!kind) return null;
+                const info = BLOCKER_INFO[kind];
+                const busy = shrinkingId === b.id || wandBusy === b.id;
+                return (
+                  <div className="w-full flex flex-col gap-1 py-0.5">
+                    <div className="w-full flex items-start gap-1 text-[10px] text-[#B45309] leading-snug">
+                      <AlertTriangle className="w-3 h-3 mt-[1px] flex-shrink-0" />
+                      <span className="flex-1">
+                        <strong>{info.moment} · {info.label}</strong>
+                        {b.reason ? `（${b.reason}）` : ""} —— {info.hint}
+                      </span>
+                    </div>
 
-              {/* 执行时会卡住：要当场判断、或者没有完成条件（"查一下"到什么程度算完？） */}
-              {b.hasDecision && (
-                <div className="w-full flex flex-col gap-1 py-0.5">
-                  <div className="w-full flex items-start gap-1 text-[10px] text-[#B45309] leading-snug">
-                    <AlertTriangle className="w-3 h-3 mt-[1px] flex-shrink-0" />
-                    <span className="flex-1">
-                      这条不好执行{b.reason ? `（${b.reason}）` : ""}——
-                      <strong>做完了不知道算不算做完</strong>
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleShrink(b, "concrete")}
-                    disabled={shrinkingId !== null}
-                    className="self-start flex items-center gap-1 px-2 py-1 rounded-md border border-[#B45309] text-[11px] font-medium text-[#B45309] hover:bg-[#FEF3C7] transition-colors disabled:opacity-50"
-                  >
-                    <Wand2 className="w-3 h-3" />
-                    {shrinkingId === b.id && shrink?.mode !== "shrink"
-                      ? "改写中，10 秒左右..."
-                      : "改成有终点的说法"}
-                  </button>
-                  {shrink?.forId === b.id && shrink.mode === "concrete" && renderShrinkBox()}
-                </div>
-              )}
+                    {info.action === "breakdown" && (
+                      <button
+                        type="button"
+                        onClick={() => handleWand(b)}
+                        disabled={wandBusy !== null}
+                        className="self-start flex items-center gap-1 px-2 py-1 rounded-md border border-[#B45309] text-[11px] font-medium text-[#B45309] hover:bg-[#FEF3C7] transition-colors disabled:opacity-50"
+                      >
+                        <Wand2 className="w-3 h-3" />
+                        {busy ? "拆解中，10 秒左右..." : "拆成行为"}
+                      </button>
+                    )}
+                    {info.action === "concrete" && (
+                      <button
+                        type="button"
+                        onClick={() => handleShrink(b, "concrete")}
+                        disabled={shrinkingId !== null}
+                        className="self-start flex items-center gap-1 px-2 py-1 rounded-md border border-[#B45309] text-[11px] font-medium text-[#B45309] hover:bg-[#FEF3C7] transition-colors disabled:opacity-50"
+                      >
+                        <Wand2 className="w-3 h-3" />
+                        {busy ? "改写中，10 秒左右..." : "改成能无脑做的说法"}
+                      </button>
+                    )}
+                    {info.action === "shrink" && (
+                      <button
+                        type="button"
+                        onClick={() => handleShrink(b, "shrink")}
+                        disabled={shrinkingId !== null}
+                        className="self-start flex items-center gap-1 px-2 py-1 rounded-md border border-[#B45309] text-[11px] font-medium text-[#B45309] hover:bg-[#FEF3C7] transition-colors disabled:opacity-50"
+                      >
+                        <Scissors className="w-3 h-3" />
+                        {busy ? "改小中，10 秒左右..." : "改小"}
+                      </button>
+                    )}
 
-              {/* 影响力高但做不到 → 改小（福格的解法，不是删） */}
-              {(b.impact ?? 0) >= 50 && b.feasibility != null && b.feasibility < 50 && (
-                <div className="w-full flex flex-col gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handleShrink(b)}
-                    disabled={shrinkingId !== null}
-                    className="self-start flex items-center gap-1 px-2 py-1 rounded-md border border-[#B45309] text-[11px] font-medium text-[#B45309] hover:bg-[#FEF3C7] transition-colors disabled:opacity-50"
-                  >
-                    <Scissors className="w-3 h-3" />
-                    {shrinkingId === b.id ? "改小中，10 秒左右..." : "影响力高但做不到 → 改小"}
-                  </button>
-                  {shrinkNote && shrinkingId === null && !shrink && (
-                    <p className="text-[11px] text-[var(--color-text-secondary)]">{shrinkNote}</p>
-                  )}
-                  {shrink?.forId === b.id && shrink.mode === "shrink" && renderShrinkBox()}
-                </div>
-              )}
+                    {shrinkNote && shrinkingId === null && !shrink && (
+                      <p className="text-[11px] text-[var(--color-text-secondary)]">{shrinkNote}</p>
+                    )}
+                    {shrink?.forId === b.id && renderShrinkBox()}
+                    {wand?.forId === b.id && renderWandBox()}
+                  </div>
+                );
+              })()}
+
             </div>
           );
         })}
