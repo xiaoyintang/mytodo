@@ -288,7 +288,7 @@ export default function TaskBottomSheet({
         </button>
 
         {/* Scrollable Content */}
-        <div className="px-6 overflow-y-auto flex-1">
+        <div className="px-6 overflow-y-auto overflow-x-hidden flex-1">
           {/* Title - 可点击编辑 */}
           {isEditing ? (
             <input
@@ -483,7 +483,9 @@ export default function TaskBottomSheet({
                 <Target className="w-4 h-4 text-[var(--color-primary)]" />
                 属于哪个目标
               </span>
-              <div className="flex items-center gap-1.5 flex-wrap">
+              {/* 目标名可能很长（"把小红书店铺做起来"），必须能换行、能截断，
+                  否则整个弹窗被顶到横向溢出，别处的文字就被切掉 */}
+              <div className="w-full flex items-center gap-1.5 flex-wrap">
                 {aspirations.map((a, i) => {
                   const on = task.aspirationId === a.id;
                   const c = goalColor(a, i);
@@ -492,7 +494,7 @@ export default function TaskBottomSheet({
                       key={a.id}
                       type="button"
                       onClick={() => onUpdate(task.id, { aspirationId: on ? undefined : a.id })}
-                      className="px-2.5 py-1 rounded-md border text-[12px] font-medium transition-colors"
+                      className="px-2.5 py-1 rounded-md border text-[12px] font-medium transition-colors max-w-full truncate"
                       style={{
                         backgroundColor: on ? c : "#fff",
                         borderColor: c,
@@ -503,12 +505,12 @@ export default function TaskBottomSheet({
                     </button>
                   );
                 })}
-                {!task.aspirationId && (
-                  <span className="text-[11px] text-[var(--color-text-tertiary)]">
-                    不选也行——不归属任何目标的任务永远不会被折起来
-                  </span>
-                )}
               </div>
+              {!task.aspirationId && (
+                <p className="w-full text-[11px] text-[var(--color-text-tertiary)] leading-snug mt-1">
+                  不选也行——不归属任何目标的任务永远不会被折起来
+                </p>
+              )}
             </div>
           )}
 

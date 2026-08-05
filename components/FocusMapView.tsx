@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { Aspiration, BehaviorCard, BehaviorType, ISODate, Task } from "@/components/todo/types";
 import { callBehaviorAPI, toPendingItems, type PendingItem } from "@/components/todo/behaviorApi";
 import { TYPE_LABEL, TYPE_STYLE, goldenScore, isGolden, isRepeatable, needsBreakdown } from "@/components/todo/behavior";
-import { addDays, toISODate } from "@/components/todo/date";
+import { CN_WEEKDAY, addDays, toISODate } from "@/components/todo/date";
 import { ArrowUpDown, Check, RotateCcw, Scissors, Star, Trash2, Wand2, X } from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
@@ -866,28 +866,36 @@ export default function FocusMapView({
           </div>
 
           {scheduling ? (
-            <div className="w-full flex items-center gap-2">
-              <span className="text-[12px] text-[var(--color-text-secondary)]">排到</span>
-              {(
-                [
-                  ["今天做", toISODate(new Date())],
-                  ["明天做", toISODate(addDays(new Date(), 1))],
-                ] as Array<[string, ISODate]>
-              ).map(([label, date]) => (
+            /* 七天按钮，不用原生 date input——它在 iOS 上放固定定位条里选完常常不生效 */
+            <div className="w-full flex flex-col gap-1.5">
+              <span className="text-[11px] text-[var(--color-text-secondary)]">排到哪天做？</span>
+              <div className="w-full grid grid-cols-4 gap-1.5">
+                {Array.from({ length: 7 }).map((_, i) => {
+                  const d = addDays(new Date(), i);
+                  const iso = toISODate(d) as ISODate;
+                  const label = i === 0 ? "今天" : i === 1 ? "明天" : CN_WEEKDAY[d.getDay()];
+                  return (
+                    <button
+                      key={iso}
+                      type="button"
+                      onClick={() => batchSchedule(iso)}
+                      className="flex flex-col items-center py-1.5 rounded-lg bg-[#EEF2FF] border border-[#C7D2FE] text-[#4F46E5] hover:bg-[#E0E7FF] transition-colors"
+                    >
+                      <span className="text-[11px] font-semibold leading-tight">{label}</span>
+                      <span className="text-[10px] opacity-70 leading-tight">
+                        {d.getMonth() + 1}/{d.getDate()}
+                      </span>
+                    </button>
+                  );
+                })}
                 <button
-                  key={label}
                   type="button"
-                  onClick={() => batchSchedule(date)}
-                  className="px-3 py-1.5 rounded-lg bg-[#4F46E5] text-white text-[12px] font-medium"
+                  onClick={() => setScheduling(false)}
+                  className="flex items-center justify-center py-1.5 rounded-lg text-[11px] text-[var(--color-text-tertiary)]"
                 >
-                  {label}
+                  取消
                 </button>
-              ))}
-              <input
-                type="date"
-                onChange={(e) => e.target.value && batchSchedule(e.target.value as ISODate)}
-                className="flex-1 px-2 py-1.5 rounded-lg border border-[var(--color-border)] text-[12px] bg-white"
-              />
+              </div>
             </div>
           ) : (
             <div className="w-full flex gap-2">
