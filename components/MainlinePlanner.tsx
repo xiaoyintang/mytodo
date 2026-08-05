@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Aspiration, DayPlan, ISODate } from "@/components/todo/types";
 import { goalColor, weeklyMainlineDays } from "@/components/todo/goal";
 import { CN_WEEKDAY, toISODate } from "@/components/todo/date";
@@ -22,6 +22,24 @@ type Props = {
 export default function MainlinePlanner({ days, today, aspirations, dayPlans, onToggle }: Props) {
   const [editing, setEditing] = useState<ISODate | null>(null);
   const weekDates = days.map((d) => toISODate(d) as ISODate);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // 点空白处收起来。原来只能再点一次那个框才关得掉，很别扭
+  useEffect(() => {
+    if (!editing) return;
+    function onDown(e: PointerEvent) {
+      if (!rootRef.current?.contains(e.target as Node)) setEditing(null);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setEditing(null);
+    }
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [editing]);
 
   if (aspirations.length === 0) {
     return (
@@ -32,7 +50,10 @@ export default function MainlinePlanner({ days, today, aspirations, dayPlans, on
   }
 
   return (
-    <div className="w-full flex flex-col gap-2 px-4 py-3 border-b border-[var(--color-border)]">
+    <div
+      ref={rootRef}
+      className="w-full flex flex-col gap-2 px-4 py-3 border-b border-[var(--color-border)]"
+    >
       <div className="w-full flex items-center gap-1.5">
         <Target className="w-3.5 h-3.5 text-[var(--color-primary)]" />
         <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">本周主线</span>
@@ -117,6 +138,13 @@ export default function MainlinePlanner({ days, today, aspirations, dayPlans, on
                     </button>
                   );
                 })}
+                <button
+                  type="button"
+                  onClick={() => setEditing(null)}
+                  className="px-2 py-1 rounded-md text-[11px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]"
+                >
+                  完成
+                </button>
               </div>
             )}
           </div>
