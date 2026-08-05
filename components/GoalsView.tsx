@@ -17,7 +17,7 @@ import { goalColor } from "@/components/todo/goal";
 import { formatMinutes } from "@/components/todo/time";
 import FocusMapView from "@/components/FocusMapView";
 import ConfirmDialog from "@/components/ConfirmDialog";
-import { ArrowLeft, ChevronRight, Plus, RefreshCw, Trash2, Undo2, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, Plus, Trash2, Undo2, X } from "lucide-react";
 
 type Judgement = { id: string; type: BehaviorType; reason?: string; hasDecision?: boolean };
 
@@ -251,17 +251,6 @@ export default function GoalsView({
               <span className="text-[11px] text-[var(--color-text-tertiary)]">
                 天{open.weeklyLimit == null ? "（现在不限）" : ""}
               </span>
-              <div className="flex-1" />
-              <button
-                type="button"
-                onClick={handleRejudge}
-                disabled={rejudging}
-                className="flex items-center gap-1 px-2 py-1 rounded-md border border-[var(--color-border)] bg-white text-[11px] font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-gray-light)] transition-colors disabled:opacity-50 flex-shrink-0"
-                title="判定标准改进过之后，老条目不会自己更新，点这里全部重判一遍（你手动改过的不动）"
-              >
-                <RefreshCw className={["w-3 h-3", rejudging ? "animate-spin" : ""].join(" ")} />
-                {rejudging ? "重判中..." : "全部重判"}
-              </button>
             </div>
 
             <FocusMapView
@@ -283,6 +272,8 @@ export default function GoalsView({
             onRemoveHabit={onRemoveHabitByBehavior}
             habitBehaviorIds={habitBehaviorIds}
               judgingIds={judging}
+              onRejudgeAll={handleRejudge}
+              rejudging={rejudging}
             />
           </>
         ) : (

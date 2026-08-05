@@ -5,7 +5,7 @@ import type { Aspiration, BehaviorCard, BehaviorType, ISODate, Task } from "@/co
 import { callBehaviorAPI, toPendingItems, type PendingItem } from "@/components/todo/behaviorApi";
 import { TYPE_LABEL, TYPE_STYLE, goldenScore, isGolden, isRepeatable, needsBreakdown } from "@/components/todo/behavior";
 import { CN_WEEKDAY, addDays, toISODate } from "@/components/todo/date";
-import { AlertTriangle, ArrowUpDown, Check, RotateCcw, Scissors, Star, Trash2, Wand2, X } from "lucide-react";
+import { AlertTriangle, ArrowUpDown, Check, RefreshCw, RotateCcw, Scissors, Star, Trash2, Wand2, X } from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
 type AxisPatch = { impact?: number; feasibility?: number };
@@ -34,6 +34,9 @@ type Props = {
   habitBehaviorIds: Set<string>;
   /** 正在被 AI 判定的条目——只有这些才显示"判定中"，判失败的不装 */
   judgingIds: Set<string>;
+  /** 判定标准改进后老条目不会自己更新，给个全部重判的口子 */
+  onRejudgeAll: () => void;
+  rejudging: boolean;
 };
 
 const SORTS: Array<[SortMode, string]> = [
@@ -79,6 +82,8 @@ export default function FocusMapView({
   onCollect,
   habitBehaviorIds,
   judgingIds,
+  onRejudgeAll,
+  rejudging,
 }: Props) {
   const [confirmReset, setConfirmReset] = useState(false);
   const [sort, setSort] = useState<SortMode>("default");
@@ -428,6 +433,16 @@ export default function FocusMapView({
         <span className="flex-1 text-[12px] text-[var(--color-text-secondary)]">
           两根滑块都拖一下，右上角那几条就是黄金行为
         </span>
+        <button
+          type="button"
+          onClick={onRejudgeAll}
+          disabled={rejudging}
+          className="flex items-center gap-1 text-[12px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] disabled:opacity-50 flex-shrink-0"
+          title="判定标准改进过之后，老条目不会自己更新。点这里全部重判一遍（你手动改判过的不动）"
+        >
+          <RefreshCw className={["w-3 h-3", rejudging ? "animate-spin" : ""].join(" ")} />
+          {rejudging ? "重判中..." : "重判"}
+        </button>
         <button
           type="button"
           onClick={() => setConfirmReset(true)}
