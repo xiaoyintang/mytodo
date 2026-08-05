@@ -618,8 +618,10 @@ export default function TodoApp() {
           tasks={safeTasks}
           habits={safeHabits}
           entries={safeEntries}
+          // 固定用"今天所在那周"，不跟 selectedDate 走——目标页和日期无关，
+          // 翻到上周再点进来却显示"本周"，没人猜得到
           weekDates={Array.from({ length: 7 }).map(
-            (_, i) => toISODate(addDays(startOfWeek(parseISODate(selectedDate), true), i)) as ISODate,
+            (_, i) => toISODate(addDays(startOfWeek(parseISODate(todayIso), true), i)) as ISODate,
           )}
           onBack={() => setGoalsOpen(false)}
           onCreateAspiration={createAspiration}
