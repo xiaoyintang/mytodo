@@ -555,6 +555,7 @@ export default function TodoDayView({
         onDelete={onDeleteTask}
         onUpdate={onUpdateTask}
         onAddEntry={onAddEntry}
+        aspirations={aspirations}
       />
 
       {/* 换掉今天必做：全局每天只允许 1 个，不并存 */}

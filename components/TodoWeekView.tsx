@@ -382,6 +382,7 @@ export default function TodoWeekView({
         onDelete={onDeleteTask}
         onUpdate={onUpdateTask}
         onAddEntry={onAddEntry}
+        aspirations={aspirations}
       />
     </>
   );

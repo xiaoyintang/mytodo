@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import type { Task, TaskStatus, ISODate, TimeEntry } from "@/components/todo/types";
+import type { Aspiration, Task, TaskStatus, ISODate, TimeEntry } from "@/components/todo/types";
 import { parseISODate, toISODate, startOfWeek, addDays, CN_WEEKDAY } from "@/components/todo/date";
+import { goalColor } from "@/components/todo/goal";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
-import { X, Check, Calendar, Clock, Flag, Trash2, ChevronLeft, ChevronRight, Timer, Plus, Gauge } from "lucide-react";
+import { X, Check, Calendar, Clock, Flag, Trash2, ChevronLeft, ChevronRight, Target, Timer, Plus, Gauge } from "lucide-react";
 import TimePicker from "@/components/TimePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
@@ -87,6 +88,7 @@ type Props = {
   onDelete: (taskId: string) => void;
   onUpdate: (taskId: string, updates: Partial<Omit<Task, "id">>) => void;
   onAddEntry: (entry: Omit<TimeEntry, "id">) => void;
+  aspirations: Aspiration[];
 };
 
 const QUICK_MINUTES = [15, 30, 45, 60, 90, 120];
@@ -133,6 +135,7 @@ export default function TaskBottomSheet({
   onDelete,
   onUpdate,
   onAddEntry,
+  aspirations,
 }: Props) {
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState("");
@@ -472,6 +475,42 @@ export default function TaskBottomSheet({
               </div>
             )}
           </div>
+
+          {/* 所属目标：决定它算不算"今天主线"里的任务 */}
+          {aspirations.length > 0 && (
+            <div className="mb-4">
+              <span className="flex items-center gap-1.5 text-[13px] font-medium text-[var(--color-text-primary)] mb-1.5">
+                <Target className="w-4 h-4 text-[var(--color-primary)]" />
+                属于哪个目标
+              </span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {aspirations.map((a, i) => {
+                  const on = task.aspirationId === a.id;
+                  const c = goalColor(a, i);
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => onUpdate(task.id, { aspirationId: on ? undefined : a.id })}
+                      className="px-2.5 py-1 rounded-md border text-[12px] font-medium transition-colors"
+                      style={{
+                        backgroundColor: on ? c : "#fff",
+                        borderColor: c,
+                        color: on ? "#fff" : c,
+                      }}
+                    >
+                      {a.title}
+                    </button>
+                  );
+                })}
+                {!task.aspirationId && (
+                  <span className="text-[11px] text-[var(--color-text-tertiary)]">
+                    不选也行——不归属任何目标的任务永远不会被折起来
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* 完成进度（非时长目标任务，可拖动） */}
           {!task.targetMinutes && (

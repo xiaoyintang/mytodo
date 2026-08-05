@@ -192,9 +192,15 @@ export default function TodoApp() {
   }
 
   // Create new task
+  /**
+   * 建任务。没指定目标时，默认落到"那天主线的第一条"——
+   * 零必填：不想归属就在任务详情里清掉，但绝大多数情况这个默认是对的。
+   */
   function createTask(taskData: Omit<Task, "id">) {
+    const fallback = dayPlans[taskData.date]?.primaryAspirationIds?.[0];
     const newTask: Task = {
       ...taskData,
+      aspirationId: taskData.aspirationId ?? fallback,
       id: `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     };
     setTasks((prev) => [...prev, newTask]);
@@ -381,7 +387,12 @@ export default function TodoApp() {
   // 一次性任务 → 排进日视图。行为卡记下 taskId，别重复排
   function scheduleBehavior(cardId: string, title: string, date: ISODate) {
     const taskId = `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    setTasks((prev) => [...prev, { id: taskId, title, date, status: "todo" as TaskStatus }]);
+    // 继承那条行为所属的目标——这样它才会被"今天主线"认出来
+    const aspirationId = behaviorCards.find((b) => b.id === cardId)?.aspirationId;
+    setTasks((prev) => [
+      ...prev,
+      { id: taskId, title, date, status: "todo" as TaskStatus, aspirationId },
+    ]);
     snapshotLab();
     setBehaviorCards((prev) => prev.map((b) => (b.id === cardId ? { ...b, taskId } : b)));
   }
