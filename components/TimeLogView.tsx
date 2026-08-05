@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import type { Aspiration, DayPlan, EntryCategory, ISODate, Task, TimeEntry, ViewMode } from "@/components/todo/types";
 import { CN_WEEKDAY, addDays, formatCNDateTitle, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
 import { formatMinutes, matchTaskByTitle, timeToMinutes, minutesToTime } from "@/components/todo/time";
+import { goalColor } from "@/components/todo/goal";
 import { parseTimeEntries, type ParsedEntry } from "@/components/todo/nlparse";
 import {
   CATEGORY_LIST,
@@ -18,6 +19,7 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import TimerPanel from "@/components/TimerPanel";
 import MainlineBar from "@/components/MainlineBar";
 import CategoryDonut, { type DonutSlice } from "@/components/CategoryDonut";
+import GoalInvestChart from "@/components/GoalInvestChart";
 
 
 type Props = {
@@ -155,6 +157,7 @@ export default function TimeLogView({
   const [copySourceId, setCopySourceId] = useState<string | null>(null); // 复制表单挂在哪条下面
   const [weekOpen, setWeekOpen] = useState(false); // 周汇总默认收起
   const [catEditing, setCatEditing] = useState<string | null>(null); // 正在改分类的汇总行（按事项名）
+  const [goalEditing, setGoalEditing] = useState<string | null>(null); // 正在改归属目标的那条记录
   const classifyAskedRef = useRef<Set<string>>(new Set()); // 已问过 AI 的事项名，避免反复请求
 
   const todayISO = toISODate(new Date());
@@ -837,12 +840,37 @@ export default function TimeLogView({
                         <span className="text-[14px] font-medium text-[var(--color-text-primary)] truncate">
                           {e.title}
                         </span>
-                        {task && (
-                          <span className="flex items-center gap-0.5 text-[10px] text-[var(--color-success)]">
-                            <Link2 className="w-3 h-3" />
-                            计入「{task.title}」
-                          </span>
-                        )}
+                        <span className="flex items-center gap-2 flex-wrap">
+                          {task && (
+                            <span className="flex items-center gap-0.5 text-[10px] text-[var(--color-success)]">
+                              <Link2 className="w-3 h-3" />
+                              计入「{task.title}」
+                            </span>
+                          )}
+                          {/* 归属目标：创建时从 task/habit 复制来的，这里可以点着改 */}
+                          {aspirations.length > 0 && (() => {
+                            const gi = aspirations.findIndex((a) => a.id === e.aspirationId);
+                            const c = gi >= 0 ? goalColor(aspirations[gi], gi) : "#A1A1AA";
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => setGoalEditing(goalEditing === e.id ? null : e.id)}
+                                className="flex items-center gap-1 rounded px-1.5 py-[1px] text-[10px] font-medium"
+                                style={{
+                                  backgroundColor: gi >= 0 ? `${c}14` : "var(--color-bg-gray-light)",
+                                  color: gi >= 0 ? c : "var(--color-text-tertiary)",
+                                }}
+                                title="算哪个目标的投入？点一下改"
+                              >
+                                <span
+                                  className="w-1.5 h-1.5 rounded-full"
+                                  style={{ backgroundColor: c }}
+                                />
+                                {gi >= 0 ? aspirations[gi].title : "没归属"}
+                              </button>
+                            );
+                          })()}
+                        </span>
                       </div>
                       <span className="text-[13px] font-semibold text-[var(--color-primary)] flex-shrink-0">
                         {formatMinutes(e.minutes)}
@@ -870,6 +898,35 @@ export default function TimeLogView({
                         <Trash2 className="w-[16px] h-[16px] text-[#A1A1AA]" />
                       </button>
                     </div>
+                    {/* 改归属目标：就地展开，改完立刻收起 */}
+                    {goalEditing === e.id && (
+                      <div className="w-full flex items-center gap-1.5 flex-wrap px-3.5 pb-1">
+                        <span className="text-[10px] text-[var(--color-text-tertiary)]">算给</span>
+                        {aspirations.map((a, i) => {
+                          const on = e.aspirationId === a.id;
+                          const c = goalColor(a, i);
+                          return (
+                            <button
+                              key={a.id}
+                              type="button"
+                              onClick={() => {
+                                onUpdateEntry(e.id, { aspirationId: on ? undefined : a.id });
+                                setGoalEditing(null);
+                              }}
+                              className="px-2 py-[3px] rounded-md border text-[10px] font-medium max-w-full truncate"
+                              style={{
+                                backgroundColor: on ? c : "#fff",
+                                borderColor: c,
+                                color: on ? "#fff" : c,
+                              }}
+                            >
+                              {a.title}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
                     {/* 复制表单：直接出现在被复制那条下面 */}
                     {composingHere && renderEntryEditor(saveNewEntry)}
                   </Fragment>
@@ -913,6 +970,15 @@ export default function TimeLogView({
               {weekEntries.length > 0 ? `共 ${formatMinutes(weekTotal)}` : "暂无记录"}
             </span>
           </button>
+          {weekOpen && (
+            <GoalInvestChart
+              weekDates={days.map((d) => toISODate(d) as ISODate)}
+              entries={entries}
+              aspirations={aspirations}
+              dayPlans={dayPlans}
+            />
+          )}
+
           {weekOpen && summary.length > 0 && (
             <>
               <CategoryDonut slices={weekSlices} total={weekTotal} />

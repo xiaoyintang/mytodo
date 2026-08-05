@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Aspiration, Habit, HabitLog, ISODate, TimeEntry } from "@/components/todo/types";
 import { formatMinutes } from "@/components/todo/time";
+import { toISODate } from "@/components/todo/date";
 import { Check, ChevronDown, ChevronRight, Clock, Plus, Target, Trash2, Undo2 } from "lucide-react";
 import { useLocalStorageState } from "@/components/todo/storage";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -22,6 +23,30 @@ type Props = {
 };
 
 const EMPTY_COLLAPSED: string[] = [];
+
+/**
+ * 累计次数 + 最近 30 天做了几天。
+ * **不做连续天数**：streak 越长断掉的代价越大，而断掉是概率事件，时间够长必然发生，
+ * 期望结局是"越成功崩得越惨"。累计次数只增不减，断了没有损失事件。
+ */
+function habitStats(h: Habit, logs: HabitLog[], entries: TimeEntry[], today: ISODate) {
+  const from = new Date(today);
+  from.setDate(from.getDate() - 29);
+  const fromISO = toISODate(from);
+
+  if (h.measure === "duration") {
+    const hit = entries.filter((e) => e.title.trim() === h.title.trim());
+    return {
+      total: hit.length,
+      days30: new Set(hit.filter((e) => e.date >= fromISO && e.date <= today).map((e) => e.date)).size,
+    };
+  }
+  const mine = logs.filter((l) => l.habitId === h.id);
+  return {
+    total: mine.length,
+    days30: new Set(mine.filter((l) => l.date >= fromISO && l.date <= today).map((l) => l.date)).size,
+  };
+}
 
 /** 时长型习惯今天的成绩：直接从时间台账里按同名记录算，不要求打第二次卡 */
 function fromLedger(habit: Habit, entries: TimeEntry[], today: ISODate) {
@@ -157,6 +182,7 @@ export default function HabitTracker({
                       : "bg-white border-[var(--color-border)]",
                 ].join(" ")}
               >
+                {/* 累计 + 最近30天：只增不减的数字，不做连续天数、不做完成率 */}
                 {/* 有锚点才占一行；没有的话下面挂个小链接，省一整行 */}
                 {editing ? (
                   <div className="w-full flex items-center gap-1.5">
@@ -275,6 +301,17 @@ export default function HabitTracker({
                     </>
                   )}
 
+                  {(() => {
+                    const st = habitStats(h, logs, entries, today);
+                    if (st.total === 0) return null;
+                    return (
+                      <span className="text-[10px] text-[var(--color-text-tertiary)] tabular-nums flex-shrink-0 mt-[4px] leading-tight text-right">
+                        累计 {st.total}
+                        <br />
+                        30天 {st.days30} 天
+                      </span>
+                    );
+                  })()}
                   <button
                     type="button"
                     onClick={() => setConfirmRemove(h)}

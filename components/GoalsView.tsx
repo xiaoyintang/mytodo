@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type {
   Aspiration,
+  TimeEntry,
   AspirationKind,
   BehaviorCard,
   BehaviorType,
@@ -13,6 +14,7 @@ import type {
 import { guessMeasure, isActionable, isGolden, pendingJudgement } from "@/components/todo/behavior";
 import { callBehaviorAPI } from "@/components/todo/behaviorApi";
 import { goalColor } from "@/components/todo/goal";
+import { formatMinutes } from "@/components/todo/time";
 import FocusMapView from "@/components/FocusMapView";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { ArrowLeft, ChevronRight, Plus, Trash2, Undo2, X } from "lucide-react";
@@ -24,6 +26,8 @@ type Props = {
   behaviors: BehaviorCard[];
   tasks: Task[];
   habits: Habit[];
+  entries: TimeEntry[];
+  weekDates: ISODate[];
   onBack: () => void;
   onCreateAspiration: (title: string, kind: AspirationKind) => void;
   onDeleteAspiration: (id: string) => void;
@@ -51,6 +55,8 @@ export default function GoalsView({
   behaviors,
   tasks,
   habits,
+  entries,
+  weekDates,
   onBack,
   onCreateAspiration,
   onDeleteAspiration,
@@ -349,12 +355,15 @@ export default function GoalsView({
                 {aspirations.map((a, i) => {
                   const cards = behaviors.filter((b) => b.aspirationId === a.id);
                   const un = cards.filter((c) => c.type === "unsorted").length;
-                  const golden = cards.filter((c) => isActionable(c.type) && isGolden(c)).length;
-                  const parts = [
-                    `${cards.length} 个行为`,
-                    golden > 0 ? `${golden} 黄金` : "",
-                    un > 0 ? `${un} 未判定` : "",
-                  ].filter(Boolean);
+                  // 两条腿：任务腿=推进，习惯腿=维持。缺任何一条都走不动，
+                  // 所以并排放着让空的那条无处遁形（0 标灰，不弹提示、不打分）
+                  const taskLeg = tasks.filter(
+                    (t) => t.aspirationId === a.id && t.status !== "done",
+                  ).length;
+                  const habitLeg = habits.filter((h) => h.aspirationId === a.id && !h.archived).length;
+                  const invested = entries
+                    .filter((e) => e.aspirationId === a.id && weekDates.includes(e.date))
+                    .reduce((s, e) => s + e.minutes, 0);
                   return (
                     <div
                       key={a.id}
@@ -373,9 +382,33 @@ export default function GoalsView({
                           <span className="text-[14px] font-medium text-[var(--color-text-primary)] truncate">
                             {a.title}
                           </span>
-                          <span className="text-[11px] text-[var(--color-text-tertiary)]">
-                            {KIND_LABEL[a.kind]}
-                            {parts.length > 0 ? ` · ${parts.join(" · ")}` : " · 还是空的"}
+                          <span className="flex items-center gap-1.5 text-[11px]">
+                            <span
+                              className={
+                                taskLeg === 0
+                                  ? "text-[#D4A76A]"
+                                  : "text-[var(--color-text-secondary)]"
+                              }
+                            >
+                              任务 {taskLeg}
+                            </span>
+                            <span className="text-[var(--color-text-tertiary)]">·</span>
+                            <span
+                              className={
+                                habitLeg === 0
+                                  ? "text-[#D4A76A]"
+                                  : "text-[var(--color-text-secondary)]"
+                              }
+                            >
+                              习惯 {habitLeg}
+                            </span>
+                            <span className="text-[var(--color-text-tertiary)]">·</span>
+                            <span className="text-[var(--color-text-tertiary)]">
+                              本周 {invested > 0 ? formatMinutes(invested) : "0分钟"}
+                            </span>
+                            {un > 0 && (
+                              <span className="text-[#EA580C]">· {un} 待判定</span>
+                            )}
                           </span>
                         </div>
                         <ChevronRight className="w-4 h-4 text-[var(--color-text-tertiary)] flex-shrink-0" />

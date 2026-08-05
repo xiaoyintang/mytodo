@@ -224,10 +224,28 @@ export default function TodoApp() {
   }
 
   // 新增时间记录（批量，用于自然语言解析出多笔的场景）
+  /**
+   * 一笔记录属于哪个目标：**从关联的 task / habit 复制过来（快照）**，没有关联就留空。
+   * 就这一条，没有别的推导（规格 §10.1）：
+   * - 不做"默认填今日主线"的兜底——那会把杂事算进主线，污染"本周实际投入"
+   * - 不在开始计时前弹窗问归属——计时是进入工作状态的扳机，前面加任何一道门都会毁掉它
+   * 归属可以事后在台账里点一下改。
+   *
+   * 用复制不用 join 查：任务删了历史记录不会变孤儿；任务后来改了归属，
+   * **已发生的记录不该跟着变**——台账记的是当时的事实。
+   */
+  function resolveEntryAspiration(e: Omit<TimeEntry, "id">): string | undefined {
+    if (e.aspirationId) return e.aspirationId;
+    if (e.taskId) return tasks.find((t) => t.id === e.taskId)?.aspirationId;
+    const title = e.title.trim();
+    return habits.find((h) => !h.archived && h.title.trim() === title)?.aspirationId;
+  }
+
   function addEntries(entryList: Omit<TimeEntry, "id">[]) {
     snapshotEntries();
     const newEntries: TimeEntry[] = entryList.map((e, i) => ({
       ...e,
+      aspirationId: resolveEntryAspiration(e),
       id: `e-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
     }));
     setEntries((prev) => [...prev, ...newEntries]);
@@ -599,6 +617,10 @@ export default function TodoApp() {
           behaviors={safeBehaviors}
           tasks={safeTasks}
           habits={safeHabits}
+          entries={safeEntries}
+          weekDates={Array.from({ length: 7 }).map(
+            (_, i) => toISODate(addDays(startOfWeek(parseISODate(selectedDate), true), i)) as ISODate,
+          )}
           onBack={() => setGoalsOpen(false)}
           onCreateAspiration={createAspiration}
           onDeleteAspiration={deleteAspiration}
