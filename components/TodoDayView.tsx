@@ -5,7 +5,7 @@ import type { Aspiration, DayPlan, ISODate, Task, TimeEntry, ViewMode } from "@/
 import { CN_WEEKDAY, addDays, formatCNDateTitle, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
 import { goalColor } from "@/components/todo/goal";
-import { Plus, Check, Trash2, ChevronLeft, ChevronRight, ChevronDown, Pencil, Star, Timer } from "lucide-react";
+import { Plus, Check, Trash2, ChevronLeft, ChevronRight, ChevronDown, Pencil, Timer } from "lucide-react";
 import TaskBottomSheet from "@/components/TaskBottomSheet";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import QuickAddTask from "@/components/QuickAddTask";
@@ -31,7 +31,6 @@ type Props = {
   running: { title: string; startedAt: number } | null;
   elapsedMs: number;
   onStopTimer: () => void;
-  onSetMustDo: (date: ISODate, taskId: string | null) => void;
   onPrevWeek: () => void;
   onNextWeek: () => void;
 };
@@ -103,7 +102,6 @@ export default function TodoDayView({
   running,
   elapsedMs,
   onStopTimer,
-  onSetMustDo,
   onPrevWeek,
   onNextWeek,
 }: Props) {
@@ -111,7 +109,6 @@ export default function TodoDayView({
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [offOpen, setOffOpen] = useState(false);        // 非主线任务默认折起来
-  const [replaceMustDo, setReplaceMustDo] = useState<Task | null>(null); // 已有必做时要不要替换
 
   // Get the latest task data from tasks array
   const selectedTask = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) ?? null : null;
@@ -128,19 +125,6 @@ export default function TodoDayView({
     setIsBottomSheetOpen(true);
   }
 
-  /** 设/取消今天必做。已经有一个了就问要不要替换——全局每天只允许 1 个 */
-  function handleToggleMustDo(t: Task) {
-    if (mustDo?.id === t.id) {
-      onSetMustDo(selectedDate, null);
-      return;
-    }
-    if (mustDo) {
-      setReplaceMustDo(t);
-      return;
-    }
-    onSetMustDo(selectedDate, t.id);
-  }
-
   function handleCloseBottomSheet() {
     setIsBottomSheetOpen(false);
     setSelectedTaskId(null);
@@ -154,10 +138,9 @@ export default function TodoDayView({
     .slice()
     .sort((a, b) => (a.startTime ?? "99:99").localeCompare(b.startTime ?? "99:99"));
 
-  // 今天主线 + 今天那 1 件必做
+  // 今天主线
   const plan = dayPlans[selectedDate];
   const mainIds = plan?.primaryAspirationIds ?? [];
-  const mustDo = plan?.mustDoTaskId ? dayTasks.find((t) => t.id === plan.mustDoTaskId) : undefined;
 
   /**
    * 不属于今天主线的任务。**没归属目标的不算**——零必填，不填目标不该被折起来。
@@ -166,8 +149,8 @@ export default function TodoDayView({
   const isOffMainline = (t: Task) =>
     mainIds.length > 0 && !!t.aspirationId && !mainIds.includes(t.aspirationId);
 
-  const focusTasks = dayTasks.filter((t) => t.id !== mustDo?.id && !isOffMainline(t));
-  const offTasks = dayTasks.filter((t) => t.id !== mustDo?.id && isOffMainline(t));
+  const focusTasks = dayTasks.filter((t) => !isOffMainline(t));
+  const offTasks = dayTasks.filter(isOffMainline);
 
   const groups = {
     不限时段: focusTasks.filter((t) => sectionForTask(t) === "不限时段"),
@@ -297,24 +280,6 @@ export default function TodoDayView({
 
         {/* 编辑 + 删除按钮 - 始终显示 */}
         <div className="flex items-center gap-2 flex-shrink-0">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleToggleMustDo(t);
-            }}
-            className="w-[18px] h-[18px] flex items-center justify-center"
-            aria-label={mustDo?.id === t.id ? "取消今天必做" : "设为今天必做"}
-            title={mustDo?.id === t.id ? "取消今天必做" : "设为今天必做"}
-          >
-            <Star
-              className={[
-                "w-[16px] h-[16px]",
-                mustDo?.id === t.id ? "text-[#CA8A04]" : "text-[#D4D4D8]",
-              ].join(" ")}
-              fill={mustDo?.id === t.id ? "currentColor" : "none"}
-            />
-          </button>
           <button
             type="button"
             onClick={(e) => handleStartEdit(e, t)}
@@ -466,24 +431,6 @@ export default function TodoDayView({
         {/* AI 一句话建任务（直接在页面上，无需点新增） */}
         <QuickAddTask onCreate={onCreateTask} />
 
-        {/* 今天那 1 件必做：独立卡片，视觉上高一级。全局每天只有 1 个 */}
-        {mustDo && (
-          <div className="w-full flex flex-col gap-2">
-            <div className="w-full flex items-center gap-1.5">
-              <Star className="w-4 h-4 text-[#CA8A04]" fill="currentColor" />
-              <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">
-                今天那 1 件
-              </span>
-              <span className="text-[var(--color-text-tertiary)] text-[12px]">
-                {mustDo.status === "done" ? "做完了 · 今天没白过" : "别的都可以往后放"}
-              </span>
-            </div>
-            <div className="w-full rounded-[12px] border-2 border-[#CA8A04] bg-[#FFFBEB] p-1">
-              {renderTaskCard(mustDo)}
-            </div>
-          </div>
-        )}
-
         {(Object.keys(groups) as Array<keyof typeof groups>).map((section) => {
           const sectionTasks = groups[section];
           if (sectionTasks.length === 0) return null;
@@ -556,23 +503,6 @@ export default function TodoDayView({
         onUpdate={onUpdateTask}
         onAddEntry={onAddEntry}
         aspirations={aspirations}
-      />
-
-      {/* 换掉今天必做：全局每天只允许 1 个，不并存 */}
-      <ConfirmDialog
-        isOpen={replaceMustDo !== null}
-        title="今天已经有必做事项了"
-        description={
-          mustDo && replaceMustDo
-            ? `现在是「${mustDo.title}」，要换成「${replaceMustDo.title}」吗？每天只留 1 件。`
-            : undefined
-        }
-        confirmLabel="换成这个"
-        onConfirm={() => {
-          if (replaceMustDo) onSetMustDo(selectedDate, replaceMustDo.id);
-          setReplaceMustDo(null);
-        }}
-        onCancel={() => setReplaceMustDo(null)}
       />
 
       {/* 删除任务二次确认 */}
