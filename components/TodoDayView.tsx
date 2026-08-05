@@ -4,7 +4,8 @@ import { useState } from "react";
 import type { Aspiration, DayPlan, ISODate, Task, TimeEntry, ViewMode } from "@/components/todo/types";
 import { CN_WEEKDAY, addDays, formatCNDateTitle, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
-import { Plus, Check, Flag, Trash2, ChevronLeft, ChevronRight, Pencil, Timer } from "lucide-react";
+import { goalColor } from "@/components/todo/goal";
+import { Plus, Check, Trash2, ChevronLeft, ChevronRight, ChevronDown, Pencil, Star, Timer } from "lucide-react";
 import TaskBottomSheet from "@/components/TaskBottomSheet";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import QuickAddTask from "@/components/QuickAddTask";
@@ -30,6 +31,7 @@ type Props = {
   running: { title: string; startedAt: number } | null;
   elapsedMs: number;
   onStopTimer: () => void;
+  onSetMustDo: (date: ISODate, taskId: string | null) => void;
   onPrevWeek: () => void;
   onNextWeek: () => void;
 };
@@ -101,12 +103,15 @@ export default function TodoDayView({
   running,
   elapsedMs,
   onStopTimer,
+  onSetMustDo,
   onPrevWeek,
   onNextWeek,
 }: Props) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [offOpen, setOffOpen] = useState(false);        // 非主线任务默认折起来
+  const [replaceMustDo, setReplaceMustDo] = useState<Task | null>(null); // 已有必做时要不要替换
 
   // Get the latest task data from tasks array
   const selectedTask = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) ?? null : null;
@@ -123,6 +128,19 @@ export default function TodoDayView({
     setIsBottomSheetOpen(true);
   }
 
+  /** 设/取消今天必做。已经有一个了就问要不要替换——全局每天只允许 1 个 */
+  function handleToggleMustDo(t: Task) {
+    if (mustDo?.id === t.id) {
+      onSetMustDo(selectedDate, null);
+      return;
+    }
+    if (mustDo) {
+      setReplaceMustDo(t);
+      return;
+    }
+    onSetMustDo(selectedDate, t.id);
+  }
+
   function handleCloseBottomSheet() {
     setIsBottomSheetOpen(false);
     setSelectedTaskId(null);
@@ -136,12 +154,185 @@ export default function TodoDayView({
     .slice()
     .sort((a, b) => (a.startTime ?? "99:99").localeCompare(b.startTime ?? "99:99"));
 
+  // 今天主线 + 今天那 1 件必做
+  const plan = dayPlans[selectedDate];
+  const mainIds = plan?.primaryAspirationIds ?? [];
+  const mustDo = plan?.mustDoTaskId ? dayTasks.find((t) => t.id === plan.mustDoTaskId) : undefined;
+
+  /**
+   * 不属于今天主线的任务。**没归属目标的不算**——零必填，不填目标不该被折起来。
+   * 没排主线时也不折叠（那天没有"主次"这回事）。
+   */
+  const isOffMainline = (t: Task) =>
+    mainIds.length > 0 && !!t.aspirationId && !mainIds.includes(t.aspirationId);
+
+  const focusTasks = dayTasks.filter((t) => t.id !== mustDo?.id && !isOffMainline(t));
+  const offTasks = dayTasks.filter((t) => t.id !== mustDo?.id && isOffMainline(t));
+
   const groups = {
-    不限时段: dayTasks.filter((t) => sectionForTask(t) === "不限时段"),
-    上午: dayTasks.filter((t) => sectionForTask(t) === "上午"),
-    下午: dayTasks.filter((t) => sectionForTask(t) === "下午"),
-    晚间: dayTasks.filter((t) => sectionForTask(t) === "晚间"),
+    不限时段: focusTasks.filter((t) => sectionForTask(t) === "不限时段"),
+    上午: focusTasks.filter((t) => sectionForTask(t) === "上午"),
+    下午: focusTasks.filter((t) => sectionForTask(t) === "下午"),
+    晚间: focusTasks.filter((t) => sectionForTask(t) === "晚间"),
   } as const;
+
+  // 任务卡：必做卡、正常分组、折叠区三处共用
+  function renderTaskCard(t: Task) {
+                  const isDone = t.status === "done";
+    const isInProgress = t.status === "in_progress";
+    const isHigh = t.priority === "high";
+    const time = timeLabel(t);
+    const target = t.targetMinutes ?? 0;
+    const logged = target > 0 ? taskLoggedMinutes(t, entries) : 0;
+    const reached = target > 0 && logged >= target;
+    const manualPct = target > 0 ? 0 : (t.progress ?? 0);
+
+    return (
+      <div
+        key={t.id}
+        className={[
+          "relative w-full flex items-center gap-3 px-3.5 py-3 rounded-[10px] cursor-pointer transition-colors bg-white",
+          isInProgress
+            ? "border-[1.5px] border-[var(--color-primary)]"
+            : "border border-[var(--color-border)]",
+        ].join(" ")}
+        onClick={() => onCycleTaskStatus(t.id)}
+      >
+        {/* Status Indicator */}
+        <StatusIndicator status={t.status} onClick={() => onCycleTaskStatus(t.id)} />
+
+        {/* Task Content: 标题在上，时间+标签在下 */}
+        <div className="flex-1 flex flex-col gap-0.5 min-w-0">
+          {/* Title（带所属目标的色点） */}
+          <span className="flex items-center gap-1.5 min-w-0">
+            {(() => {
+              const gi = aspirations.findIndex((a) => a.id === t.aspirationId);
+              return gi >= 0 ? (
+                <span
+                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: goalColor(aspirations[gi], gi) }}
+                  title={aspirations[gi].title}
+                />
+              ) : null;
+            })()}
+          <span
+            className={[
+              "text-[14px] font-medium truncate",
+              isDone ? "text-[var(--color-text-secondary)] line-through" : "text-[var(--color-text-primary)]",
+            ].join(" ")}
+          >
+            {t.title}
+          </span>
+          </span>
+
+          {/* 时长目标进度（柳比歇夫模式任务） */}
+          {target > 0 && (
+            <div className="flex items-center gap-2 mt-0.5">
+              <div className="flex-1 h-[6px] rounded-full bg-[var(--color-bg-gray-light)] overflow-hidden max-w-[140px]">
+  <div
+    className={[
+      "h-full rounded-full transition-all",
+      reached ? "bg-[var(--color-success)]" : "bg-[var(--color-primary)]",
+    ].join(" ")}
+    style={{ width: `${Math.min(100, Math.round((logged / target) * 100))}%` }}
+  />
+              </div>
+              <span className={[
+  "text-[11px] font-medium flex items-center gap-0.5",
+  reached ? "text-[var(--color-success)]" : "text-[var(--color-text-tertiary)]",
+              ].join(" ")}>
+  <Timer className="w-3 h-3" />
+  {formatMinutes(logged)} / {formatMinutes(target)}
+              </span>
+            </div>
+          )}
+
+          {/* 手动完成进度（非时长目标、进行中的任务） */}
+          {manualPct > 0 && !isDone && (
+            <div className="flex items-center gap-2 mt-0.5">
+              <div className="flex-1 h-[6px] rounded-full bg-[var(--color-bg-gray-light)] overflow-hidden max-w-[140px]">
+  <div
+    className="h-full rounded-full bg-[var(--color-primary)]"
+    style={{ width: `${manualPct}%` }}
+  />
+              </div>
+              <span className="text-[11px] font-medium text-[var(--color-text-tertiary)]">
+  {manualPct}%
+              </span>
+            </div>
+          )}
+
+          {/* 时间 + 标签 在第二行 */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {time && (
+              <span className={[
+  "text-[12px] font-medium",
+  isInProgress ? "text-[var(--color-primary)]" : "text-[var(--color-text-tertiary)]",
+              ].join(" ")}>
+  {time}
+              </span>
+            )}
+            {/* 标签/状态 */}
+            {isDone ? (
+              <div className="bg-[var(--color-success-light)] rounded px-1.5 py-0.5">
+  <span className="text-[var(--color-success)] text-[10px] font-medium">已完成</span>
+              </div>
+            ) : isInProgress ? (
+              <div className="bg-[var(--color-primary)] rounded px-1.5 py-0.5">
+  <span className="text-white text-[10px] font-semibold">进行中</span>
+              </div>
+            ) : null}
+            {t.tag && !isDone && !isInProgress && (
+              <div className="bg-[#DBEAFE] rounded px-1.5 py-0.5">
+  <span className="text-[var(--color-primary)] text-[10px] font-medium">{t.tag}</span>
+              </div>
+            )}
+            {isHigh && !isDone && !isInProgress && (
+              <div className="bg-[var(--color-danger-light)] rounded px-1.5 py-0.5">
+  <span className="text-[var(--color-danger)] text-[10px] font-medium">紧急</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 编辑 + 删除按钮 - 始终显示 */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleToggleMustDo(t);
+            }}
+            className="w-[18px] h-[18px] flex items-center justify-center"
+            aria-label={mustDo?.id === t.id ? "取消今天必做" : "设为今天必做"}
+            title={mustDo?.id === t.id ? "取消今天必做" : "设为今天必做"}
+          >
+            <Star
+              className={[
+                "w-[16px] h-[16px]",
+                mustDo?.id === t.id ? "text-[#CA8A04]" : "text-[#D4D4D8]",
+              ].join(" ")}
+              fill={mustDo?.id === t.id ? "currentColor" : "none"}
+            />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => handleStartEdit(e, t)}
+            className="w-[18px] h-[18px] flex items-center justify-center"
+          >
+            <Pencil className="w-[18px] h-[18px] text-[#A1A1AA]" />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => handleDelete(e, t.id)}
+            className="w-[18px] h-[18px] flex items-center justify-center"
+          >
+            <Trash2 className="w-[18px] h-[18px] text-[#A1A1AA]" />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-[420px] bg-[var(--color-bg-white)] flex flex-col rounded-[16px] overflow-hidden border border-[var(--color-border)]">
@@ -275,6 +466,24 @@ export default function TodoDayView({
         {/* AI 一句话建任务（直接在页面上，无需点新增） */}
         <QuickAddTask onCreate={onCreateTask} />
 
+        {/* 今天那 1 件必做：独立卡片，视觉上高一级。全局每天只有 1 个 */}
+        {mustDo && (
+          <div className="w-full flex flex-col gap-2">
+            <div className="w-full flex items-center gap-1.5">
+              <Star className="w-4 h-4 text-[#CA8A04]" fill="currentColor" />
+              <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">
+                今天那 1 件
+              </span>
+              <span className="text-[var(--color-text-tertiary)] text-[12px]">
+                {mustDo.status === "done" ? "做完了 · 今天没白过" : "别的都可以往后放"}
+              </span>
+            </div>
+            <div className="w-full rounded-[12px] border-2 border-[#CA8A04] bg-[#FFFBEB] p-1">
+              {renderTaskCard(mustDo)}
+            </div>
+          </div>
+        )}
+
         {(Object.keys(groups) as Array<keyof typeof groups>).map((section) => {
           const sectionTasks = groups[section];
           if (sectionTasks.length === 0) return null;
@@ -287,136 +496,47 @@ export default function TodoDayView({
                 </span>
               </div>
               <div className="w-full flex flex-col gap-2">
-                {sectionTasks.map((t) => {
-                  const isDone = t.status === "done";
-                  const isInProgress = t.status === "in_progress";
-                  const isHigh = t.priority === "high";
-                  const time = timeLabel(t);
-                  const target = t.targetMinutes ?? 0;
-                  const logged = target > 0 ? taskLoggedMinutes(t, entries) : 0;
-                  const reached = target > 0 && logged >= target;
-                  const manualPct = target > 0 ? 0 : (t.progress ?? 0);
-
-                  return (
-                    <div
-                      key={t.id}
-                      className={[
-                        "relative w-full flex items-center gap-3 px-3.5 py-3 rounded-[10px] cursor-pointer transition-colors bg-white",
-                        isInProgress
-                          ? "border-[1.5px] border-[var(--color-primary)]"
-                          : "border border-[var(--color-border)]",
-                      ].join(" ")}
-                      onClick={() => onCycleTaskStatus(t.id)}
-                    >
-                      {/* Status Indicator */}
-                      <StatusIndicator status={t.status} onClick={() => onCycleTaskStatus(t.id)} />
-
-                      {/* Task Content: 标题在上，时间+标签在下 */}
-                      <div className="flex-1 flex flex-col gap-0.5 min-w-0">
-                        {/* Title */}
-                        <span
-                          className={[
-                            "text-[14px] font-medium truncate",
-                            isDone ? "text-[var(--color-text-secondary)] line-through" : "text-[var(--color-text-primary)]",
-                          ].join(" ")}
-                        >
-                          {t.title}
-                        </span>
-
-                        {/* 时长目标进度（柳比歇夫模式任务） */}
-                        {target > 0 && (
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <div className="flex-1 h-[6px] rounded-full bg-[var(--color-bg-gray-light)] overflow-hidden max-w-[140px]">
-                              <div
-                                className={[
-                                  "h-full rounded-full transition-all",
-                                  reached ? "bg-[var(--color-success)]" : "bg-[var(--color-primary)]",
-                                ].join(" ")}
-                                style={{ width: `${Math.min(100, Math.round((logged / target) * 100))}%` }}
-                              />
-                            </div>
-                            <span className={[
-                              "text-[11px] font-medium flex items-center gap-0.5",
-                              reached ? "text-[var(--color-success)]" : "text-[var(--color-text-tertiary)]",
-                            ].join(" ")}>
-                              <Timer className="w-3 h-3" />
-                              {formatMinutes(logged)} / {formatMinutes(target)}
-                            </span>
-                          </div>
-                        )}
-
-                        {/* 手动完成进度（非时长目标、进行中的任务） */}
-                        {manualPct > 0 && !isDone && (
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <div className="flex-1 h-[6px] rounded-full bg-[var(--color-bg-gray-light)] overflow-hidden max-w-[140px]">
-                              <div
-                                className="h-full rounded-full bg-[var(--color-primary)]"
-                                style={{ width: `${manualPct}%` }}
-                              />
-                            </div>
-                            <span className="text-[11px] font-medium text-[var(--color-text-tertiary)]">
-                              {manualPct}%
-                            </span>
-                          </div>
-                        )}
-
-                        {/* 时间 + 标签 在第二行 */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {time && (
-                            <span className={[
-                              "text-[12px] font-medium",
-                              isInProgress ? "text-[var(--color-primary)]" : "text-[var(--color-text-tertiary)]",
-                            ].join(" ")}>
-                              {time}
-                            </span>
-                          )}
-                          {/* 标签/状态 */}
-                          {isDone ? (
-                            <div className="bg-[var(--color-success-light)] rounded px-1.5 py-0.5">
-                              <span className="text-[var(--color-success)] text-[10px] font-medium">已完成</span>
-                            </div>
-                          ) : isInProgress ? (
-                            <div className="bg-[var(--color-primary)] rounded px-1.5 py-0.5">
-                              <span className="text-white text-[10px] font-semibold">进行中</span>
-                            </div>
-                          ) : null}
-                          {t.tag && !isDone && !isInProgress && (
-                            <div className="bg-[#DBEAFE] rounded px-1.5 py-0.5">
-                              <span className="text-[var(--color-primary)] text-[10px] font-medium">{t.tag}</span>
-                            </div>
-                          )}
-                          {isHigh && !isDone && !isInProgress && (
-                            <div className="bg-[var(--color-danger-light)] rounded px-1.5 py-0.5">
-                              <span className="text-[var(--color-danger)] text-[10px] font-medium">紧急</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* 编辑 + 删除按钮 - 始终显示 */}
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <button
-                          type="button"
-                          onClick={(e) => handleStartEdit(e, t)}
-                          className="w-[18px] h-[18px] flex items-center justify-center"
-                        >
-                          <Pencil className="w-[18px] h-[18px] text-[#A1A1AA]" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => handleDelete(e, t.id)}
-                          className="w-[18px] h-[18px] flex items-center justify-center"
-                        >
-                          <Trash2 className="w-[18px] h-[18px] text-[#A1A1AA]" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+                {sectionTasks.map(renderTaskCard)}
               </div>
             </div>
           );
         })}
+
+        {/* 非主线目标的任务：默认折起来，可展开，不阻止 */}
+        {offTasks.length > 0 && (
+          <div className="w-full flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => setOffOpen((v) => !v)}
+              className="w-full flex items-center gap-1.5 text-left"
+            >
+              <ChevronDown
+                className={[
+                  "w-4 h-4 text-[var(--color-text-tertiary)] transition-transform",
+                  offOpen ? "" : "-rotate-90",
+                ].join(" ")}
+              />
+              <span className="text-[14px] font-medium text-[var(--color-text-secondary)]">
+                不是今天主线的 {offTasks.length} 项
+              </span>
+              <div className="flex-1" />
+              <span className="flex items-center gap-1 flex-shrink-0">
+                {[...new Set(offTasks.map((t) => t.aspirationId))].map((id) => {
+                  const gi = aspirations.findIndex((a) => a.id === id);
+                  return gi >= 0 ? (
+                    <span
+                      key={id}
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: goalColor(aspirations[gi], gi) }}
+                      title={aspirations[gi].title}
+                    />
+                  ) : null;
+                })}
+              </span>
+            </button>
+            {offOpen && <div className="w-full flex flex-col gap-2">{offTasks.map(renderTaskCard)}</div>}
+          </div>
+        )}
 
         {dayTasks.length === 0 ? (
           <div className="text-center text-[13px] text-[var(--color-text-tertiary)] py-10">
@@ -435,6 +555,23 @@ export default function TodoDayView({
         onDelete={onDeleteTask}
         onUpdate={onUpdateTask}
         onAddEntry={onAddEntry}
+      />
+
+      {/* 换掉今天必做：全局每天只允许 1 个，不并存 */}
+      <ConfirmDialog
+        isOpen={replaceMustDo !== null}
+        title="今天已经有必做事项了"
+        description={
+          mustDo && replaceMustDo
+            ? `现在是「${mustDo.title}」，要换成「${replaceMustDo.title}」吗？每天只留 1 件。`
+            : undefined
+        }
+        confirmLabel="换成这个"
+        onConfirm={() => {
+          if (replaceMustDo) onSetMustDo(selectedDate, replaceMustDo.id);
+          setReplaceMustDo(null);
+        }}
+        onCancel={() => setReplaceMustDo(null)}
       />
 
       {/* 删除任务二次确认 */}

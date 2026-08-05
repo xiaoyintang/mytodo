@@ -554,6 +554,14 @@ export default function TodoApp() {
     );
   }
 
+  /** 今天那 1 件必做。全局每天最多 1 个，传 null 取消 */
+  function setMustDo(date: ISODate, taskId: string | null) {
+    setDayPlans((prev) => {
+      const cur = prev[date] ?? { date, primaryAspirationIds: [] };
+      return { ...prev, [date]: { ...cur, mustDoTaskId: taskId ?? undefined } };
+    });
+  }
+
   /** 把某个目标加进/移出某天的主线 */
   function toggleMainline(date: ISODate, aspirationId: string) {
     setDayPlans((prev) => {
@@ -628,6 +636,7 @@ export default function TodoApp() {
           running={timer.running}
           elapsedMs={timer.elapsedMs}
           onStopTimer={timer.stop}
+          onSetMustDo={setMustDo}
           onPrevWeek={goToPrevWeek}
           onNextWeek={goToNextWeek}
         />
