@@ -17,7 +17,7 @@ import { goalColor } from "@/components/todo/goal";
 import { formatMinutes } from "@/components/todo/time";
 import FocusMapView from "@/components/FocusMapView";
 import ConfirmDialog from "@/components/ConfirmDialog";
-import { ArrowLeft, ChevronRight, Plus, Trash2, Undo2, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, Plus, RefreshCw, Trash2, Undo2, X } from "lucide-react";
 
 type Judgement = { id: string; type: BehaviorType; reason?: string; hasDecision?: boolean };
 
@@ -81,6 +81,7 @@ export default function GoalsView({
   const [newTitle, setNewTitle] = useState("");
   const [newKind, setNewKind] = useState<AspirationKind>("aspiration");
   const [deleteAspId, setDeleteAspId] = useState<string | null>(null);
+  const [rejudging, setRejudging] = useState(false);
 
   const open = openId ? aspirations.find((a) => a.id === openId) ?? null : null;
   const openCards = open ? behaviors.filter((b) => b.aspirationId === open.id) : [];
@@ -126,6 +127,35 @@ export default function GoalsView({
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingKey, openId]);
+
+  /**
+   * 重新判定这个目标下的全部条目。判定标准（prompt）会随着使用不断改进，
+   * 但 hasDecision / type 只在判定那一刻写一次，老条目不会自己更新——
+   * 所以要给个手动重来的口子。**你手动改判过的不动**（applyJudgements 里挡着）。
+   */
+  async function handleRejudge() {
+    if (!open || rejudging) return;
+    const all = behaviors.filter((b) => b.aspirationId === open.id);
+    if (all.length === 0) return;
+    setRejudging(true);
+    // 分批，一次最多 40 条（API 上限）
+    for (let i = 0; i < all.length; i += 30) {
+      const batch = all.slice(i, i + 30);
+      const res = await callBehaviorAPI({
+        mode: "sort",
+        goal: open.title,
+        items: batch.map((b) => ({ id: b.id, text: b.text })),
+      });
+      if (res.ok) {
+        const results = Array.isArray(res.data.results) ? (res.data.results as Judgement[]) : [];
+        if (results.length > 0) {
+          onApplyJudgements(results);
+          batch.forEach((b) => autoJudgedRef.current.add(judgeKey(b)));
+        }
+      }
+    }
+    setRejudging(false);
+  }
 
   function handleCreate() {
     const t = newTitle.trim();
@@ -221,6 +251,17 @@ export default function GoalsView({
               <span className="text-[11px] text-[var(--color-text-tertiary)]">
                 天{open.weeklyLimit == null ? "（现在不限）" : ""}
               </span>
+              <div className="flex-1" />
+              <button
+                type="button"
+                onClick={handleRejudge}
+                disabled={rejudging}
+                className="flex items-center gap-1 px-2 py-1 rounded-md border border-[var(--color-border)] bg-white text-[11px] font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-gray-light)] transition-colors disabled:opacity-50 flex-shrink-0"
+                title="判定标准改进过之后，老条目不会自己更新，点这里全部重判一遍（你手动改过的不动）"
+              >
+                <RefreshCw className={["w-3 h-3", rejudging ? "animate-spin" : ""].join(" ")} />
+                {rejudging ? "重判中..." : "全部重判"}
+              </button>
             </div>
 
             <FocusMapView

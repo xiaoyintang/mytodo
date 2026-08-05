@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { hasLLM, magicWandWithLLM, shrinkWithLLM, sortBehaviorsWithLLM } from "@/components/todo/llmparse";
+import {
+  concreteWithLLM,
+  hasLLM,
+  magicWandWithLLM,
+  shrinkWithLLM,
+  sortBehaviorsWithLLM,
+} from "@/components/todo/llmparse";
 
 // 习惯实验室 · 行为集群的 AI 接口，两种用法：
 //   { mode: "sort", items: [{id,text}], goal? } → 批量判定：愿望/成果/一次性/可重复/要戒掉
@@ -33,11 +39,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ behaviors });
   }
 
-  if (mode === "shrink") {
+  if (mode === "shrink" || mode === "concrete") {
     const text = String(body.text ?? "").trim().slice(0, 200);
     if (!text) return NextResponse.json({ error: "empty_text" }, { status: 400 });
     const goal = String(body.goal ?? "").trim().slice(0, 120);
-    const behaviors = await shrinkWithLLM(text, goal || undefined);
+    const behaviors =
+      mode === "concrete"
+        ? await concreteWithLLM(text, goal || undefined)
+        : await shrinkWithLLM(text, goal || undefined);
     if (behaviors === null) return NextResponse.json({ error: "llm_error" }, { status: 502 });
     return NextResponse.json({ behaviors });
   }

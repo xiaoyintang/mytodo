@@ -176,6 +176,30 @@ const SHRINK_PROMPT = `你是福格行为设计（BJ Fogg, Tiny Habits）的教�
 2. 每个都必须小到"不需要意志力"——这是唯一标准，不要给"稍微少一点"的版本
 3. type 用 habit；如果原行为是"不做某事"，用 stop`;
 
+const CONCRETE_PROMPT = `你是福格行为设计（BJ Fogg, Tiny Habits）的教练。
+
+用户有一条行为，问题是**执行时会卡住**，两种情况之一：
+① 里面有"需要当场判断/挑选/评估"的成分（"判断是否 work"、"挑出有问题的那句"）
+② 没有完成条件（"查一下"、"了解一下"、"研究一下"）
+
+你的任务：把它改写成**做完了自己一眼就知道的**版本。两个标准，至少占一个：
+- **明确终点**：做到哪一步就可以停（"读完这3段"、"念三遍"、"写满5行"）
+- **产出物**：做完之后多出来一个具体东西（一段字、一个清单、一条发出去的消息）
+
+关键手法：
+- 把"判断/评估"换成**数出来**：「判断文稿是否 work」→「挑出3个说不通的地方写下来」
+- 把"查一下/了解一下"换成**写下来**：「查面试技巧」→「写出3个最可能被问到的问题」
+- 一句话里塞了好几步的，**只留第一步**：「读→判断→沟通→调整」→ 只留「读完并写下3个问题」
+- 数字用小的（2、3、5），别用 10、20——这不是要他做完，是要他能开始
+
+输出格式（必须是合法 JSON，不要输出其他内容）：
+{"behaviors":[{"text":"改写后的行为","type":"onetime"}]}
+
+规则：
+1. 给 3 个，都保留原来的方向，但各自的终点/产出物不同
+2. 每一条都要能回答"做完了没有"这个问题，答案是明确的是或否
+3. type 沿用原行为的类型（不确定就用 onetime）`;
+
 const VALID_TYPE = new Set<string>(["aspiration", "outcome", "onetime", "habit", "stop"]);
 const WAND_TYPE = new Set<string>(["onetime", "habit", "stop"]);
 
@@ -229,6 +253,14 @@ export async function sortBehaviorsWithLLM(
       };
     })
     .filter((x): x is LLMJudgement => x !== null);
+}
+
+/** 改具体：把"执行时会卡住"的行为改写成有明确终点或产出物的版本 */
+export async function concreteWithLLM(text: string, goal?: string): Promise<LLMBehavior[] | null> {
+  const user = goal ? `我的目标：${goal}\n卡住的这条行为：${text}` : `卡住的这条行为：${text}`;
+  const parsed = await callLLMJson(CONCRETE_PROMPT, user);
+  if (parsed === null) return null;
+  return pickBehaviors((parsed as { behaviors?: unknown })?.behaviors);
 }
 
 /** 改小：把"影响力大但做不到"的行为拆成不需要意志力的版本 */

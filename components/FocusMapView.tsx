@@ -99,8 +99,13 @@ export default function FocusMapView({
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [pinnedId, setPinnedId] = useState<string | null>(null);
 
+  // 两种改写共用一套 UI：改小（做不到 → 变小）/ 改具体（会卡住 → 给终点或产出物）
   const [shrinkingId, setShrinkingId] = useState<string | null>(null);
-  const [shrink, setShrink] = useState<{ forId: string; items: PendingItem[] } | null>(null);
+  const [shrink, setShrink] = useState<{
+    forId: string;
+    mode: "shrink" | "concrete";
+    items: PendingItem[];
+  } | null>(null);
   const [shrinkNote, setShrinkNote] = useState<string | null>(null);
   // 魔法棒：从愿望本身发散，或对某条"愿望/成果"拆解
   const [wandBusy, setWandBusy] = useState<string | "root" | null>(null);
@@ -292,12 +297,12 @@ export default function FocusMapView({
     );
   }
 
-  async function handleShrink(card: BehaviorCard) {
+  async function handleShrink(card: BehaviorCard, mode: "shrink" | "concrete" = "shrink") {
     if (shrinkingId) return;
     setShrinkingId(card.id);
     setShrink(null);
     setShrinkNote(null);
-    const res = await callBehaviorAPI({ mode: "shrink", text: card.text, goal: aspiration.title });
+    const res = await callBehaviorAPI({ mode, text: card.text, goal: aspiration.title });
     setShrinkingId(null);
     if (!res.ok) {
       setShrinkNote(res.noKey ? "没配 AI，改小得回集群页点文字自己改" : "AI 没连上，稍后再试");
@@ -308,7 +313,7 @@ export default function FocusMapView({
       setShrinkNote("AI 没给出更小的版本，自己动手改改看");
       return;
     }
-    setShrink({ forId: card.id, items: items.map((it, i) => ({ ...it, checked: i === 0 })) });
+    setShrink({ forId: card.id, mode, items: items.map((it, i) => ({ ...it, checked: i === 0 })) });
   }
 
   function applyShrink() {
@@ -320,6 +325,71 @@ export default function FocusMapView({
     }
     setShrink(null);
     setShrinkNote(null);
+  }
+
+  /** 改写候选框：改小 / 改具体共用 */
+  function renderShrinkBox() {
+    if (!shrink) return null;
+    return (
+        <div className="w-full flex flex-col gap-2 p-3 rounded-[10px] bg-white border border-[#B45309]">
+          <p className="text-[11px] leading-relaxed text-[var(--color-text-secondary)]">
+            {shrink.mode === "concrete" ? (
+              <>
+                选一个替换它。标准：<strong>做完了自己一眼就知道</strong>——有终点，或者有产出物
+              </>
+            ) : (
+              <>
+                选一个替换它。福格的标准只有一条：<strong>小到不需要意志力</strong>
+              </>
+            )}
+          </p>
+          {shrink.items.map((it, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() =>
+                setShrink((p) =>
+                  p
+                    ? { ...p, items: p.items.map((x, j) => (j === i ? { ...x, checked: !x.checked } : x)) }
+                    : p,
+                )
+              }
+              className={[
+                "w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition-colors",
+                it.checked
+                  ? "bg-[#FFFBEB] border-[#B45309]"
+                  : "bg-white border-[var(--color-border)] opacity-60",
+              ].join(" ")}
+            >
+              <span
+                className={[
+                  "w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border",
+                  it.checked ? "bg-[#B45309] border-[#B45309]" : "border-[var(--color-border)]",
+                ].join(" ")}
+              >
+                {it.checked && <span className="text-white text-[10px] leading-none">✓</span>}
+              </span>
+              <span className="flex-1 text-[13px] text-[var(--color-text-primary)]">{it.text}</span>
+            </button>
+          ))}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setShrink(null)}
+              className="px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] rounded"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={applyShrink}
+              className="px-4 py-1.5 text-[12px] bg-[#B45309] text-white rounded font-medium"
+            >
+              换成这个
+            </button>
+          </div>
+        </div>
+    );
   }
 
   function renderSlider(b: BehaviorCard, axis: "impact" | "feasibility") {
@@ -768,12 +838,26 @@ export default function FocusMapView({
 
               {/* 执行时会卡住：要当场判断、或者没有完成条件（"查一下"到什么程度算完？） */}
               {b.hasDecision && (
-                <div className="w-full flex items-start gap-1 text-[10px] text-[#B45309] leading-snug py-0.5">
-                  <AlertTriangle className="w-3 h-3 mt-[1px] flex-shrink-0" />
-                  <span className="flex-1">
-                    这条不好执行{b.reason ? `（${b.reason}）` : ""}——点文字改写成
-                    <strong>有明确终点或产出物</strong>的说法
-                  </span>
+                <div className="w-full flex flex-col gap-1 py-0.5">
+                  <div className="w-full flex items-start gap-1 text-[10px] text-[#B45309] leading-snug">
+                    <AlertTriangle className="w-3 h-3 mt-[1px] flex-shrink-0" />
+                    <span className="flex-1">
+                      这条不好执行{b.reason ? `（${b.reason}）` : ""}——
+                      <strong>做完了不知道算不算做完</strong>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleShrink(b, "concrete")}
+                    disabled={shrinkingId !== null}
+                    className="self-start flex items-center gap-1 px-2 py-1 rounded-md border border-[#B45309] text-[11px] font-medium text-[#B45309] hover:bg-[#FEF3C7] transition-colors disabled:opacity-50"
+                  >
+                    <Wand2 className="w-3 h-3" />
+                    {shrinkingId === b.id && shrink?.mode !== "shrink"
+                      ? "改写中，10 秒左右..."
+                      : "改成有终点的说法"}
+                  </button>
+                  {shrink?.forId === b.id && shrink.mode === "concrete" && renderShrinkBox()}
                 </div>
               )}
 
@@ -792,58 +876,7 @@ export default function FocusMapView({
                   {shrinkNote && shrinkingId === null && !shrink && (
                     <p className="text-[11px] text-[var(--color-text-secondary)]">{shrinkNote}</p>
                   )}
-                  {shrink?.forId === b.id && (
-                    <div className="w-full flex flex-col gap-2 p-3 rounded-[10px] bg-white border border-[#B45309]">
-                      <p className="text-[11px] leading-relaxed text-[var(--color-text-secondary)]">
-                        选一个替换它。福格的标准只有一条：<strong>小到不需要意志力</strong>
-                      </p>
-                      {shrink.items.map((it, i) => (
-                        <button
-                          key={i}
-                          type="button"
-                          onClick={() =>
-                            setShrink((p) =>
-                              p
-                                ? { ...p, items: p.items.map((x, j) => (j === i ? { ...x, checked: !x.checked } : x)) }
-                                : p,
-                            )
-                          }
-                          className={[
-                            "w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition-colors",
-                            it.checked
-                              ? "bg-[#FFFBEB] border-[#B45309]"
-                              : "bg-white border-[var(--color-border)] opacity-60",
-                          ].join(" ")}
-                        >
-                          <span
-                            className={[
-                              "w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border",
-                              it.checked ? "bg-[#B45309] border-[#B45309]" : "border-[var(--color-border)]",
-                            ].join(" ")}
-                          >
-                            {it.checked && <span className="text-white text-[10px] leading-none">✓</span>}
-                          </span>
-                          <span className="flex-1 text-[13px] text-[var(--color-text-primary)]">{it.text}</span>
-                        </button>
-                      ))}
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setShrink(null)}
-                          className="px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] rounded"
-                        >
-                          取消
-                        </button>
-                        <button
-                          type="button"
-                          onClick={applyShrink}
-                          className="px-4 py-1.5 text-[12px] bg-[#B45309] text-white rounded font-medium"
-                        >
-                          换成这个
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  {shrink?.forId === b.id && shrink.mode === "shrink" && renderShrinkBox()}
                 </div>
               )}
             </div>
