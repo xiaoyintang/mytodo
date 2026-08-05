@@ -186,18 +186,7 @@ export default function TodoDayView({
 
         {/* Task Content: 标题在上，时间+标签在下 */}
         <div className="flex-1 flex flex-col gap-0.5 min-w-0">
-          {/* Title（带所属目标的色点） */}
-          <span className="flex items-center gap-1.5 min-w-0">
-            {(() => {
-              const gi = aspirations.findIndex((a) => a.id === t.aspirationId);
-              return gi >= 0 ? (
-                <span
-                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: goalColor(aspirations[gi], gi) }}
-                  title={aspirations[gi].title}
-                />
-              ) : null;
-            })()}
+          {/* Title */}
           <span
             className={[
               "text-[14px] font-medium truncate",
@@ -205,7 +194,6 @@ export default function TodoDayView({
             ].join(" ")}
           >
             {t.title}
-          </span>
           </span>
 
           {/* 时长目标进度（柳比歇夫模式任务） */}
@@ -255,6 +243,27 @@ export default function TodoDayView({
   {time}
               </span>
             )}
+            {/* 所属目标：光一个色点认不出是哪个，带上名字 */}
+            {(() => {
+              const gi = aspirations.findIndex((a) => a.id === t.aspirationId);
+              if (gi < 0) return null;
+              const c = goalColor(aspirations[gi], gi);
+              return (
+                <span
+                  className="flex items-center gap-1 rounded px-1.5 py-0.5 max-w-[120px]"
+                  style={{ backgroundColor: `${c}14` }}
+                >
+                  <span
+                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: c }}
+                  />
+                  <span className="text-[10px] font-medium truncate" style={{ color: c }}>
+                    {aspirations[gi].title}
+                  </span>
+                </span>
+              );
+            })()}
+
             {/* 标签/状态 */}
             {isDone ? (
               <div className="bg-[var(--color-success-light)] rounded px-1.5 py-0.5">

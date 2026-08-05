@@ -193,14 +193,14 @@ export default function TodoApp() {
 
   // Create new task
   /**
-   * 建任务。没指定目标时，默认落到"那天主线的第一条"——
-   * 零必填：不想归属就在任务详情里清掉，但绝大多数情况这个默认是对的。
+   * 建任务。**不自动归属目标**——曾经默认落到"那天主线的第一条"，
+   * 结果「扔垃圾」这种杂事也被算进主线，既看着莫名其妙，又会污染
+   * 以后"本周实际投入"的统计。真属于某个目标的任务有两条正路：
+   * 从焦点地图排期（自动继承）、或在任务详情里自己指一下。
    */
   function createTask(taskData: Omit<Task, "id">) {
-    const fallback = dayPlans[taskData.date]?.primaryAspirationIds?.[0];
     const newTask: Task = {
       ...taskData,
-      aspirationId: taskData.aspirationId ?? fallback,
       id: `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     };
     setTasks((prev) => [...prev, newTask]);
