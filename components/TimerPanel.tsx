@@ -43,7 +43,7 @@ export default function TimerPanel({ running, elapsedMs, onStart, onStop }: Prop
       <div className="flex items-center gap-2">
         <TimerIcon className="w-4 h-4 text-[var(--color-primary)]" />
         <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">计时</span>
-        <span className="text-[var(--color-text-tertiary)] text-[12px]">点类别或说「现在开始 X」，停止即记一笔</span>
+        <span className="text-[var(--color-text-tertiary)] text-[12px]">点类别或说「现在 X」，停止即记一笔</span>
       </div>
 
       {running && style ? (

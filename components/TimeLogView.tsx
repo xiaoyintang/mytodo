@@ -258,14 +258,20 @@ export default function TimeLogView({
       return true;
     }
 
-    // 开始："（现在/马上）开始 X"。X 里带了时长/时刻的当作普通补记，交给正常解析。
-    const m = t.match(/^(?:现在|这就|马上|准备|等下|等一下)?\s*开始\s*(.+)$/);
+    // 开始：两种说法都认
+    //   ① "（现在/马上）开始 X" —— 带"开始"两个字
+    //   ② "现在 X" / "这就 X" —— 口语里常常省掉"开始"，说"现在养号"就是要开始计时
+    // ② 必须有"现在/这就/马上"打头，不然"复盘面试"这种纯补记会被误当成开始计时。
+    // 两种都排除 X 里带时长/时刻的（那是补记，交给正常解析）。
+    const m =
+      t.match(/^(?:现在|这就|马上|准备|等下|等一下)?\s*开始\s*(.+)$/) ??
+      t.match(/^(?:现在|这就|马上)\s*(.+)$/);
     if (m) {
       const title = m[1].trim().replace(/[了吧啦。.!！,，、\s]+$/g, "").trim();
       const hasTimeToken = /[:：]|\d\s*点|\d\s*时|分钟|小时|钟头|半小时|个半|\d+\s*分/.test(title);
       if (title && !hasTimeToken) {
         if (selectedDate !== todayISO) {
-          setParseError("计时从现在开始，请先切回今天再说「现在开始 X」");
+          setParseError("计时从现在开始，请先切回今天再说「现在 X」");
         } else if (timer.running) {
           setParseError(`已经在计时「${timer.running.title}」，先停止再开始新的`);
         } else {
@@ -310,7 +316,7 @@ export default function TimeLogView({
     setParsing(false);
     setParseSource(source);
     if (parsed.length === 0) {
-      setParseError('没识别出时间记录。试试"背单词40分钟""刚才复盘面试30分钟"，或"现在开始养号"启动计时');
+      setParseError('没识别出时间记录。试试"背单词40分钟""刚才复盘面试30分钟"，或"现在养号"启动计时');
       return;
     }
     setPending(parsed);
@@ -691,7 +697,7 @@ export default function TimeLogView({
                 if (input.trim() && !parsing) handleParse(true);
               }
             }}
-            placeholder="口述或输入：现在开始养号（计时）、刚才复盘面试30分钟、9点到10点做数学"
+            placeholder="口述或输入：现在养号（开始计时）、刚才复盘面试30分钟、9点到10点做数学"
             enterKeyHint="send"
             rows={2}
             className="w-full px-3 py-2.5 rounded-[10px] border border-[var(--color-border)] text-[14px] leading-relaxed placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] resize-none"
