@@ -5,7 +5,7 @@ import type { Aspiration, DayPlan, ISODate, Task, TimeEntry, ViewMode } from "@/
 import { CN_WEEKDAY, addDays, formatCNDateTitle, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
 import { goalColor } from "@/components/todo/goal";
-import { Plus, Check, Trash2, ChevronLeft, ChevronRight, ChevronDown, Pencil, Timer } from "lucide-react";
+import { Plus, Check, Trash2, ChevronLeft, ChevronRight, ChevronDown, ListChecks, Pencil, Timer } from "lucide-react";
 import TaskBottomSheet from "@/components/TaskBottomSheet";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import QuickAddTask from "@/components/QuickAddTask";
@@ -19,6 +19,9 @@ type Props = {
   tasks: Task[];
   entries: TimeEntry[];
   onCycleTaskStatus: (taskId: string) => void;
+  onAddSubtasks: (taskId: string, titles: string[]) => void;
+  onDeleteSubtask: (taskId: string, subId: string) => void;
+  onToggleSubtask: (taskId: string, subId: string) => void;
   onOpenAddModal: () => void;
   onCreateTask: (task: Omit<Task, "id">) => void;
   onDeleteTask: (taskId: string) => void;
@@ -90,6 +93,9 @@ export default function TodoDayView({
   tasks,
   entries,
   onCycleTaskStatus,
+  onAddSubtasks,
+  onDeleteSubtask,
+  onToggleSubtask,
   onOpenAddModal,
   onCreateTask,
   onDeleteTask,
@@ -109,6 +115,8 @@ export default function TodoDayView({
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [offOpen, setOffOpen] = useState(false);        // 非主线任务默认折起来
+  // 展开的任务（看子任务）。默认全收起——卡片列表要保持一眼扫得完
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   // Get the latest task data from tasks array
   const selectedTask = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) ?? null : null;
@@ -169,16 +177,22 @@ export default function TodoDayView({
     const logged = target > 0 ? taskLoggedMinutes(t, entries) : 0;
     const reached = target > 0 && logged >= target;
     const manualPct = target > 0 ? 0 : (t.progress ?? 0);
+    const subs = t.subtasks ?? [];
+    const subDone = subs.filter((x) => x.done).length;
+    const isExpanded = expanded.has(t.id);
 
     return (
       <div
         key={t.id}
         className={[
-          "relative w-full flex items-center gap-3 px-3.5 py-3 rounded-[10px] cursor-pointer transition-colors bg-white",
+          "relative w-full flex flex-col rounded-[10px] transition-colors bg-white",
           isInProgress
             ? "border-[1.5px] border-[var(--color-primary)]"
             : "border border-[var(--color-border)]",
         ].join(" ")}
+      >
+      <div
+        className="w-full flex items-center gap-3 px-3.5 py-3 cursor-pointer"
         onClick={() => onCycleTaskStatus(t.id)}
       >
         {/* Status Indicator */}
@@ -264,6 +278,35 @@ export default function TodoDayView({
               );
             })()}
 
+            {/* 子任务进度：这是展开的点击区。**必须自己一个 hit target**——
+                卡片主体点了是切状态，不能被展开抢走 */}
+            {subs.length > 0 && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setExpanded((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(t.id)) next.delete(t.id);
+                    else next.add(t.id);
+                    return next;
+                  });
+                }}
+                className="flex items-center gap-0.5 rounded px-1.5 py-0.5 bg-[var(--color-bg-gray-light)] hover:bg-[var(--color-border)] transition-colors"
+              >
+                <ListChecks className="w-3 h-3 text-[var(--color-text-tertiary)]" />
+                <span className="text-[10px] font-medium text-[var(--color-text-secondary)] tabular-nums">
+                  {subDone}/{subs.length}
+                </span>
+                <ChevronDown
+                  className={[
+                    "w-3 h-3 text-[var(--color-text-tertiary)] transition-transform",
+                    isExpanded ? "rotate-180" : "",
+                  ].join(" ")}
+                />
+              </button>
+            )}
+
             {/* 标签/状态 */}
             {isDone ? (
               <div className="bg-[var(--color-success-light)] rounded px-1.5 py-0.5">
@@ -304,6 +347,41 @@ export default function TodoDayView({
             <Trash2 className="w-[18px] h-[18px] text-[#A1A1AA]" />
           </button>
         </div>
+        </div>
+
+        {isExpanded && subs.length > 0 && (
+          <div className="w-full flex flex-col gap-0.5 px-3.5 pb-2.5 pt-0.5 border-t border-[var(--color-border)]">
+            {subs.map((st) => (
+              <button
+                key={st.id}
+                type="button"
+                onClick={() => onToggleSubtask(t.id, st.id)}
+                className="w-full flex items-start gap-2 py-1 text-left group"
+              >
+                <span
+                  className={[
+                    "w-[15px] h-[15px] rounded-[4px] border flex items-center justify-center flex-shrink-0 mt-[1px] transition-colors",
+                    st.done
+                      ? "bg-[var(--color-success)] border-[var(--color-success)]"
+                      : "border-[var(--color-border)] group-hover:border-[var(--color-primary)]",
+                  ].join(" ")}
+                >
+                  {st.done && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3.5} />}
+                </span>
+                <span
+                  className={[
+                    "flex-1 text-[12px] leading-snug break-words",
+                    st.done
+                      ? "text-[var(--color-text-tertiary)] line-through"
+                      : "text-[var(--color-text-secondary)]",
+                  ].join(" ")}
+                >
+                  {st.title}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -503,6 +581,9 @@ export default function TodoDayView({
 
       {/* Bottom Sheet for editing */}
       <TaskBottomSheet
+        onAddSubtasks={onAddSubtasks}
+        onToggleSubtask={onToggleSubtask}
+        onDeleteSubtask={onDeleteSubtask}
         task={selectedTask}
         entries={entries}
         isOpen={isBottomSheetOpen}

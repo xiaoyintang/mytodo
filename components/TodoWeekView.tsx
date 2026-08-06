@@ -18,6 +18,9 @@ type Props = {
   tasks: Task[];
   entries: TimeEntry[];
   onCycleTaskStatus: (taskId: string) => void;
+  onAddSubtasks: (taskId: string, titles: string[]) => void;
+  onToggleSubtask: (taskId: string, subId: string) => void;
+  onDeleteSubtask: (taskId: string, subId: string) => void;
   onOpenAddModal: () => void;
   onCreateTask: (task: Omit<Task, "id">) => void;
   onDeleteTask: (taskId: string) => void;
@@ -201,6 +204,9 @@ export default function TodoWeekView({
   tasks,
   entries,
   onCycleTaskStatus,
+  onAddSubtasks,
+  onToggleSubtask,
+  onDeleteSubtask,
   onOpenAddModal,
   onCreateTask,
   onDeleteTask,
@@ -374,6 +380,9 @@ export default function TodoWeekView({
 
       {/* Bottom Sheet */}
       <TaskBottomSheet
+        onAddSubtasks={onAddSubtasks}
+        onToggleSubtask={onToggleSubtask}
+        onDeleteSubtask={onDeleteSubtask}
         task={selectedTask}
         entries={entries}
         isOpen={isBottomSheetOpen}

@@ -5,7 +5,8 @@ import type { Aspiration, Task, TaskStatus, ISODate, TimeEntry } from "@/compone
 import { parseISODate, toISODate, startOfWeek, addDays, CN_WEEKDAY } from "@/components/todo/date";
 import { goalColor } from "@/components/todo/goal";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
-import { X, Check, Calendar, Clock, Flag, Trash2, ChevronLeft, ChevronRight, Target, Timer, Plus, Gauge } from "lucide-react";
+import { X, Check, Calendar, Clock, Flag, Trash2, ChevronLeft, ChevronRight, Target, Timer, Plus, Gauge, ListChecks, Wand2 } from "lucide-react";
+import { callBehaviorAPI } from "@/components/todo/behaviorApi";
 import TimePicker from "@/components/TimePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
@@ -89,6 +90,9 @@ type Props = {
   onUpdate: (taskId: string, updates: Partial<Omit<Task, "id">>) => void;
   onAddEntry: (entry: Omit<TimeEntry, "id">) => void;
   aspirations: Aspiration[];
+  onAddSubtasks: (taskId: string, titles: string[]) => void;
+  onToggleSubtask: (taskId: string, subId: string) => void;
+  onDeleteSubtask: (taskId: string, subId: string) => void;
 };
 
 const QUICK_MINUTES = [15, 30, 45, 60, 90, 120];
@@ -136,6 +140,9 @@ export default function TaskBottomSheet({
   onUpdate,
   onAddEntry,
   aspirations,
+  onAddSubtasks,
+  onToggleSubtask,
+  onDeleteSubtask,
 }: Props) {
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState("");
@@ -149,6 +156,8 @@ export default function TaskBottomSheet({
   const [isEditingTarget, setIsEditingTarget] = useState(false);
   const [targetInput, setTargetInput] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [subDraft, setSubDraft] = useState("");
+  const [breaking, setBreaking] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Reset state when task changes
@@ -514,8 +523,117 @@ export default function TaskBottomSheet({
             </div>
           )}
 
-          {/* 完成进度（非时长目标任务，可拖动） */}
-          {!task.targetMinutes && (
+          {/* 拆解成子步骤。
+              「梳理项目」四个字没法动手，得先有「打开文档把项目名写在第一行」。
+              做成列表而不是一个 nextAction 字段：能打勾，于是白得一个进度。 */}
+          {(() => {
+            const subs = task.subtasks ?? [];
+            const doneN = subs.filter((x) => x.done).length;
+            return (
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="flex items-center gap-1.5 text-[13px] font-medium text-[var(--color-text-primary)]">
+                    <ListChecks className="w-4 h-4 text-[var(--color-primary)]" />
+                    拆解
+                    {subs.length > 0 && (
+                      <span className="text-[12px] font-normal text-[var(--color-text-tertiary)] tabular-nums">
+                        {doneN}/{subs.length}
+                      </span>
+                    )}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={breaking}
+                    onClick={async () => {
+                      setBreaking(true);
+                      const goal = aspirations.find((a) => a.id === task.aspirationId)?.title;
+                      const res = await callBehaviorAPI({
+                        mode: "breakdown",
+                        text: task.title,
+                        goal,
+                      });
+                      setBreaking(false);
+                      if (!res.ok) return;
+                      const raw = Array.isArray(res.data.subtasks) ? res.data.subtasks : [];
+                      const titles = raw.map((x) => String(x ?? "").trim()).filter(Boolean);
+                      // 只拆出它自己一条 = 这任务已经够小，不用加
+                      if (titles.length > 1) onAddSubtasks(task.id, titles);
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-[var(--color-primary-light)] text-[var(--color-primary)] text-[11px] font-medium hover:bg-[#DBEAFE] transition-colors disabled:opacity-60"
+                  >
+                    <Wand2 className="w-3 h-3" />
+                    {breaking ? "拆解中…" : "AI 拆一下"}
+                  </button>
+                </div>
+
+                {subs.length === 0 && (
+                  <p className="text-[11px] leading-relaxed text-[var(--color-text-tertiary)] mb-1.5">
+                    盯着任务名发呆的时候，先写一句「现在具体动哪根手指」。
+                    不用一次拆完，加一条做一条也行。
+                  </p>
+                )}
+
+                <div className="flex flex-col gap-0.5">
+                  {subs.map((st) => (
+                    <div key={st.id} className="w-full flex items-start gap-2 py-1">
+                      <button
+                        type="button"
+                        onClick={() => onToggleSubtask(task.id, st.id)}
+                        className={[
+                          "w-[16px] h-[16px] rounded-[4px] border flex items-center justify-center flex-shrink-0 mt-[1px] transition-colors",
+                          st.done
+                            ? "bg-[var(--color-success)] border-[var(--color-success)]"
+                            : "border-[var(--color-border)] hover:border-[var(--color-primary)]",
+                        ].join(" ")}
+                        aria-label={st.done ? "取消完成" : "标记完成"}
+                      >
+                        {st.done && <Check className="w-3 h-3 text-white" strokeWidth={3.5} />}
+                      </button>
+                      <span
+                        className={[
+                          "flex-1 text-[13px] leading-snug break-words",
+                          st.done
+                            ? "text-[var(--color-text-tertiary)] line-through"
+                            : "text-[var(--color-text-primary)]",
+                        ].join(" ")}
+                      >
+                        {st.title}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteSubtask(task.id, st.id)}
+                        className="w-[16px] h-[16px] flex items-center justify-center flex-shrink-0 mt-[1px]"
+                        aria-label="删除子步骤"
+                      >
+                        <Trash2 className="w-[14px] h-[14px] text-[#A1A1AA]" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <input
+                  type="text"
+                  value={subDraft}
+                  onChange={(e) => setSubDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                      const v = subDraft.trim();
+                      if (!v) return;
+                      onAddSubtasks(task.id, [v]);
+                      setSubDraft("");
+                    }
+                  }}
+                  enterKeyHint="done"
+                  placeholder="加一步，回车"
+                  className="w-full mt-1 px-2.5 py-1.5 rounded-lg border border-[var(--color-border)] text-[13px] bg-white focus:outline-none focus:border-[var(--color-primary)]"
+                />
+              </div>
+            );
+          })()}
+
+          {/* 完成进度（非时长目标任务，可拖动）。
+              有子任务时不显示——进度由打勾算出来，别让你维护两套账 */}
+          {!task.targetMinutes && (task.subtasks ?? []).length === 0 && (
             <div className="mb-4">
               <div className="flex items-center justify-between mb-1">
                 <span className="flex items-center gap-1.5 text-[13px] font-medium text-[var(--color-text-primary)]">

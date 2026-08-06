@@ -18,6 +18,7 @@ import type {
   HabitLog,
   EntryCategory,
   ISODate,
+  SubTask,
   Task,
   TimeEntry,
   ViewMode,
@@ -204,6 +205,67 @@ export default function TodoApp() {
       id: `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     };
     setTasks((prev) => [...prev, newTask]);
+  }
+
+  // ===== 子任务 =====
+  //
+  // 「梳理项目」这四个字没法动手，得先有「打开文档把项目名写在第一行」。
+  // 这就是 GTD 的下一步行动——但做成列表比做成一个字段强：能打勾，于是白得进度。
+  //
+  // **不要求一次拆完**：加一条做一条也行。完整拆解本身就是会把人劝退的负担。
+
+  function patchSubtasks(taskId: string, fn: (list: SubTask[]) => SubTask[]) {
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id !== taskId) return t;
+        const subtasks = fn(t.subtasks ?? []);
+        // 打勾直接带动任务状态，不让你再手动同步一次：
+        // 全勾完 = done，勾了一部分 = 进行中，全清空 = 回待办。
+        // 反向也成立（取消勾选会退回进行中），所以点错了不会卡住
+        let status = t.status;
+        if (subtasks.length > 0) {
+          const n = subtasks.filter((x) => x.done).length;
+          status = n === subtasks.length ? "done" : n > 0 ? "in_progress" : "todo";
+        }
+        const progress = t.targetMinutes
+          ? t.progress
+          : subtasks.length > 0
+            ? Math.round((subtasks.filter((x) => x.done).length / subtasks.length) * 100)
+            : t.progress;
+        return { ...t, subtasks, status, progress };
+      }),
+    );
+  }
+
+  function addSubtasks(taskId: string, titles: string[]) {
+    const now = Date.now();
+    patchSubtasks(taskId, (list) => [
+      ...list,
+      ...titles
+        .map((x) => x.trim())
+        .filter(Boolean)
+        .map((title, i) => ({
+          id: `st-${now}-${i}-${Math.random().toString(36).slice(2, 7)}`,
+          title,
+          done: false,
+        })),
+    ]);
+  }
+
+  function toggleSubtask(taskId: string, subId: string) {
+    patchSubtasks(taskId, (list) =>
+      list.map((x) => (x.id === subId ? { ...x, done: !x.done } : x)),
+    );
+  }
+
+  function editSubtask(taskId: string, subId: string, title: string) {
+    patchSubtasks(taskId, (list) =>
+      list.map((x) => (x.id === subId ? { ...x, title } : x)),
+    );
+  }
+
+  function deleteSubtask(taskId: string, subId: string) {
+    patchSubtasks(taskId, (list) => list.filter((x) => x.id !== subId));
   }
 
   // Delete task
@@ -664,6 +726,9 @@ export default function TodoApp() {
           tasks={safeTasks}
           entries={safeEntries}
           onCycleTaskStatus={cycleTaskStatus}
+          onAddSubtasks={addSubtasks}
+          onDeleteSubtask={deleteSubtask}
+          onToggleSubtask={toggleSubtask}
           onOpenAddModal={() => setIsModalOpen(true)}
           onCreateTask={createTask}
           onDeleteTask={deleteTask}
@@ -689,7 +754,9 @@ export default function TodoApp() {
           tasks={safeTasks}
           entries={safeEntries}
           onCycleTaskStatus={cycleTaskStatus}
-          onOpenAddModal={() => setIsModalOpen(true)}
+          onAddSubtasks={addSubtasks}
+          onToggleSubtask={toggleSubtask}
+          onDeleteSubtask={deleteSubtask}          onOpenAddModal={() => setIsModalOpen(true)}
           onCreateTask={createTask}
           onDeleteTask={deleteTask}
           onUpdateTask={updateTask}

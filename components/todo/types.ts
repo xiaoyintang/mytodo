@@ -8,6 +8,20 @@ export type TaskTag = "工作" | "进行中" | "已完成" | "学习" | "高优�
 
 export type ISODate = `${number}-${number}-${number}`; // YYYY-MM-DD (best-effort)
 
+/**
+ * 任务的一个子步骤。**内嵌在 Task 里，不单开一张表**——
+ * 子任务没有独立生命：只属于一个任务、跟着任务删、不需要跨任务查询。
+ * 内嵌还白捡一个好处：云同步已经覆盖 tasks，一行同步代码都不用改。
+ *
+ * 它同时顶掉了 GTD 的「下一步行动」字段——所谓 nextAction 就是
+ * "只能有一条、还不能打勾的子任务"，有了列表就不需要那个残废版本了。
+ */
+export interface SubTask {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -21,6 +35,8 @@ export interface Task {
   tag?: TaskTag;
   /** 时长目标任务（柳比歇夫模式）：不限定时间段，只要求累计投入时长（分钟） */
   targetMinutes?: number;
+  /** 拆出来的子步骤。**不要求拆完**——加一条做一条也行，GTD 的省力点就在这 */
+  subtasks?: SubTask[];
   /** 手动完成进度 0-100（非时长目标任务用；与状态联动：0=待办 100=已完成 其余=进行中） */
   progress?: number;
 }

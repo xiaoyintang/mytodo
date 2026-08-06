@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  breakdownTaskWithLLM,
   concreteWithLLM,
   hasLLM,
   magicWandWithLLM,
@@ -10,6 +11,7 @@ import {
 // 习惯实验室 · 行为集群的 AI 接口，两种用法：
 //   { mode: "sort", items: [{id,text}], goal? } → 批量判定：愿望/成果/一次性/可重复/要戒掉
 //   { mode: "wand", aspiration, existing?, context? } → 魔法棒：发散一批候选行为
+//   { mode: "breakdown", text, goal? } → 把一个任务拆成子步骤（穷尽，不筛选）
 // 未配 LLM_API_KEY 一律返回 501，前端各自降级。
 
 const MAX_ITEMS = 40;
@@ -40,6 +42,15 @@ export async function POST(req: Request) {
     const behaviors = await magicWandWithLLM(aspiration, existing, context || undefined);
     if (behaviors === null) return NextResponse.json({ error: "llm_error" }, { status: 502 });
     return NextResponse.json({ behaviors });
+  }
+
+  if (mode === "breakdown") {
+    const text = String(body.text ?? "").trim().slice(0, 200);
+    if (!text) return NextResponse.json({ error: "empty_text" }, { status: 400 });
+    const goal = String(body.goal ?? "").trim().slice(0, 120);
+    const subtasks = await breakdownTaskWithLLM(text, goal || undefined);
+    if (subtasks === null) return NextResponse.json({ error: "llm_error" }, { status: 502 });
+    return NextResponse.json({ subtasks });
   }
 
   if (mode === "shrink" || mode === "concrete") {

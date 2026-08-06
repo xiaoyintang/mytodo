@@ -268,6 +268,32 @@ const CONCRETE_PROMPT = `你是福格行为设计（BJ Fogg, Tiny Habits）的�
 4. type 沿用原行为的类型（不确定就用 onetime）`;
 
 const VALID_TYPE = new Set<string>(["aspiration", "outcome", "onetime", "habit", "stop"]);
+const BREAKDOWN_PROMPT = `把一个任务拆成几个**能直接动手做**的步骤。
+
+【铁律一：穷尽，不筛选】
+拆出来的步骤合起来必须**覆盖这个任务的全部**。
+**绝对不要**判断哪一步更重要、更值得做，也不要因为某步麻烦就省掉——
+少一步这个任务就完不成。要不要做、先做哪个，不归你管。
+
+【铁律二：每一步都要过照片测试】
+能拍一张照片，照片里有人正在做它。
+  ✗ 梳理简历结构     ✓ 打开简历文档，把最近一段工作经历删掉重写
+  ✗ 熟悉一下岗位     ✓ 把 JD 里的任职要求抄到备忘录里
+  ✗ 准备自我介绍     ✓ 把自我介绍写成逐字稿，念三遍
+
+【铁律三：第一条必须是最容易起步的那一条】
+第一条的作用是"让人动起来"，所以要小到几乎不需要下决心——
+往往就是"打开某个东西"。后面的可以正常大小。
+
+【其他】
+- 给 3-6 条，按实际执行顺序排
+- 每条不超过 20 字
+- 每条都要有终点：说得出做到哪算完（限定数量/范围，或要求留下痕迹）
+- 如果这个任务本身已经足够具体、一步就能做完，就只返回它自己一条
+
+【输出】必须是合法 JSON，不要输出其他内容：
+{"subtasks":["第一步","第二步"]}`;
+
 const VALID_BLOCKER = new Set<string>(["timing", "decision", "endpoint"]);
 const WAND_TYPE = new Set<string>(["onetime", "habit", "stop"]);
 
@@ -327,6 +353,24 @@ export async function sortBehaviorsWithLLM(
 }
 
 /** 改具体：把"执行时会卡住"的行为改写成有明确终点或产出物的版本 */
+/** 把一个任务拆成子步骤。穷尽不筛选——和焦点地图的取舍逻辑正相反 */
+export async function breakdownTaskWithLLM(
+  title: string,
+  goal?: string,
+): Promise<string[] | null> {
+  const user = goal ? `我的目标：${goal}\n要拆的任务：${title}` : `要拆的任务：${title}`;
+  const parsed = await callLLMJson(BREAKDOWN_PROMPT, user, { think: true, temperature: 0.3 });
+  if (parsed === null) return null;
+  const raw = (parsed as { subtasks?: unknown })?.subtasks;
+  if (!Array.isArray(raw)) return null;
+  const out: string[] = [];
+  for (const it of raw) {
+    const t = String(it ?? "").trim().slice(0, 60);
+    if (t) out.push(t);
+  }
+  return out.slice(0, 8);
+}
+
 export async function concreteWithLLM(text: string, goal?: string): Promise<LLMBehavior[] | null> {
   const user = goal ? `我的目标：${goal}\n卡住的这条行为：${text}` : `卡住的这条行为：${text}`;
   const parsed = await callLLMJson(CONCRETE_PROMPT, user, { think: true, temperature: 0.4 });
