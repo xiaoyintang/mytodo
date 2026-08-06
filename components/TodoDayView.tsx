@@ -21,6 +21,7 @@ type Props = {
   onCycleTaskStatus: (taskId: string) => void;
   onAddSubtasks: (taskId: string, titles: string[]) => void;
   onDeleteSubtask: (taskId: string, subId: string) => void;
+  onEditSubtask: (taskId: string, subId: string, title: string) => void;
   onToggleSubtask: (taskId: string, subId: string) => void;
   onOpenAddModal: () => void;
   onCreateTask: (task: Omit<Task, "id">) => void;
@@ -95,6 +96,7 @@ export default function TodoDayView({
   onCycleTaskStatus,
   onAddSubtasks,
   onDeleteSubtask,
+  onEditSubtask,
   onToggleSubtask,
   onOpenAddModal,
   onCreateTask,
@@ -584,6 +586,7 @@ export default function TodoDayView({
         onAddSubtasks={onAddSubtasks}
         onToggleSubtask={onToggleSubtask}
         onDeleteSubtask={onDeleteSubtask}
+        onEditSubtask={onEditSubtask}
         task={selectedTask}
         entries={entries}
         isOpen={isBottomSheetOpen}

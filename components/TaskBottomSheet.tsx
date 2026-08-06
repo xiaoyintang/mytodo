@@ -93,6 +93,7 @@ type Props = {
   onAddSubtasks: (taskId: string, titles: string[]) => void;
   onToggleSubtask: (taskId: string, subId: string) => void;
   onDeleteSubtask: (taskId: string, subId: string) => void;
+  onEditSubtask: (taskId: string, subId: string, title: string) => void;
 };
 
 const QUICK_MINUTES = [15, 30, 45, 60, 90, 120];
@@ -143,6 +144,7 @@ export default function TaskBottomSheet({
   onAddSubtasks,
   onToggleSubtask,
   onDeleteSubtask,
+  onEditSubtask,
 }: Props) {
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState("");
@@ -158,6 +160,8 @@ export default function TaskBottomSheet({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [subDraft, setSubDraft] = useState("");
   const [breaking, setBreaking] = useState(false);
+  const [editingSubId, setEditingSubId] = useState<string | null>(null);
+  const [editSubText, setEditSubText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Reset state when task changes
@@ -589,16 +593,40 @@ export default function TaskBottomSheet({
                       >
                         {st.done && <Check className="w-3 h-3 text-white" strokeWidth={3.5} />}
                       </button>
-                      <span
-                        className={[
-                          "flex-1 text-[13px] leading-snug break-words",
-                          st.done
-                            ? "text-[var(--color-text-tertiary)] line-through"
-                            : "text-[var(--color-text-primary)]",
-                        ].join(" ")}
-                      >
-                        {st.title}
-                      </span>
+                      {editingSubId === st.id ? (
+                        <input
+                          type="text"
+                          value={editSubText}
+                          autoFocus
+                          onChange={(e) => setEditSubText(e.target.value)}
+                          onBlur={() => {
+                            const v = editSubText.trim();
+                            if (v && v !== st.title) onEditSubtask(task.id, st.id, v);
+                            setEditingSubId(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.nativeEvent.isComposing) e.currentTarget.blur();
+                            if (e.key === "Escape") setEditingSubId(null);
+                          }}
+                          className="flex-1 min-w-0 px-1.5 py-0.5 rounded border border-[var(--color-primary)] text-[13px] focus:outline-none"
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingSubId(st.id);
+                            setEditSubText(st.title);
+                          }}
+                          className={[
+                            "flex-1 text-left text-[13px] leading-snug break-words",
+                            st.done
+                              ? "text-[var(--color-text-tertiary)] line-through"
+                              : "text-[var(--color-text-primary)]",
+                          ].join(" ")}
+                        >
+                          {st.title}
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => onDeleteSubtask(task.id, st.id)}

@@ -728,6 +728,7 @@ export default function TodoApp() {
           onCycleTaskStatus={cycleTaskStatus}
           onAddSubtasks={addSubtasks}
           onDeleteSubtask={deleteSubtask}
+          onEditSubtask={editSubtask}
           onToggleSubtask={toggleSubtask}
           onOpenAddModal={() => setIsModalOpen(true)}
           onCreateTask={createTask}
@@ -756,7 +757,8 @@ export default function TodoApp() {
           onCycleTaskStatus={cycleTaskStatus}
           onAddSubtasks={addSubtasks}
           onToggleSubtask={toggleSubtask}
-          onDeleteSubtask={deleteSubtask}          onOpenAddModal={() => setIsModalOpen(true)}
+          onDeleteSubtask={deleteSubtask}
+          onEditSubtask={editSubtask}          onOpenAddModal={() => setIsModalOpen(true)}
           onCreateTask={createTask}
           onDeleteTask={deleteTask}
           onUpdateTask={updateTask}

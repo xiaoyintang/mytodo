@@ -620,7 +620,8 @@ export default function FocusMapView({
         </span>
       </div>
 
-      {/* 影响力高但做不到 → 改小。不给入口的话，它藏在几十行里根本找不到 */}
+      {/* 这条**不是 AI 判的**，是你自己拖的两根滑块算出来的，所以不会误报，留着。
+          但不再替你开药方——怎么变简单（改小 / 拆开做）你自己定 */}
       {stuck.length > 0 && (
         <button
           type="button"
@@ -634,7 +635,7 @@ export default function FocusMapView({
         >
           <Scissors className="w-3.5 h-3.5 flex-shrink-0" />
           <span className="flex-1 text-[12px] font-medium">
-            {stuck.length} 条影响力高但做不到 —— 别删，<strong>改小它</strong>
+            {stuck.length} 条<strong>影响力高但你做不到</strong> —— 别删，想想怎么变简单
           </span>
           <span className="text-[11px] flex-shrink-0">{onlyStuck ? "看全部" : "只看这几条"}</span>
         </button>
@@ -836,7 +837,9 @@ export default function FocusMapView({
                 </div>
               )}
 
-              {/* 一行只报一个问题：按 ①起点 ②过程 ③终点 取最早坏掉的那个 */}
+              {/* 一行只报一个问题，而且只剩两种：还不是行为 / 没有边界。
+                  砍掉缺时机、要判断、太费力的理由见 blocker.ts —— 一句话：误报太多，
+                  而且那三种在这一屏上你什么也修不了 */}
               {(() => {
                 const kind = blockerOf(b);
                 if (!kind) return null;
@@ -847,7 +850,7 @@ export default function FocusMapView({
                     <div className="w-full flex items-start gap-1 text-[10px] text-[#B45309] leading-snug">
                       <AlertTriangle className="w-3 h-3 mt-[1px] flex-shrink-0" />
                       <span className="flex-1">
-                        <strong>{info.moment} · {info.label}</strong>
+                        <strong>{info.label}</strong>
                         {b.reason ? `（${b.reason}）` : ""} —— {info.hint}
                       </span>
                     </div>
@@ -871,21 +874,9 @@ export default function FocusMapView({
                         className="self-start flex items-center gap-1 px-2 py-1 rounded-md border border-[#B45309] text-[11px] font-medium text-[#B45309] hover:bg-[#FEF3C7] transition-colors disabled:opacity-50"
                       >
                         <Wand2 className="w-3 h-3" />
-                        {busy ? "改写中，10 秒左右..." : "改成能无脑做的说法"}
+                        {busy ? "改写中，10 秒左右..." : "给它一个边界"}
                       </button>
                     )}
-                    {info.action === "shrink" && (
-                      <button
-                        type="button"
-                        onClick={() => handleShrink(b, "shrink")}
-                        disabled={shrinkingId !== null}
-                        className="self-start flex items-center gap-1 px-2 py-1 rounded-md border border-[#B45309] text-[11px] font-medium text-[#B45309] hover:bg-[#FEF3C7] transition-colors disabled:opacity-50"
-                      >
-                        <Scissors className="w-3 h-3" />
-                        {busy ? "改小中，10 秒左右..." : "改小"}
-                      </button>
-                    )}
-
                     {shrinkNote && shrinkingId === null && !shrink && (
                       <p className="text-[11px] text-[var(--color-text-secondary)]">{shrinkNote}</p>
                     )}
