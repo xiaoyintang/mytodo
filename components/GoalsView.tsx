@@ -5,8 +5,6 @@ import type {
   Aspiration,
   TimeEntry,
   AspirationKind,
-  AspirationShape,
-  ProjectStep,
   BehaviorCard,
   BehaviorType,
   Habit,
@@ -18,7 +16,6 @@ import { callBehaviorAPI } from "@/components/todo/behaviorApi";
 import { goalColor } from "@/components/todo/goal";
 import { formatMinutes } from "@/components/todo/time";
 import FocusMapView from "@/components/FocusMapView";
-import ProjectStepsView from "@/components/ProjectStepsView";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { ArrowLeft, ChevronRight, Plus, Trash2, Undo2, X } from "lucide-react";
 
@@ -29,12 +26,9 @@ type Judgement = {
   blocker?: "timing" | "decision" | "endpoint";
 };
 
-type StepCheck = { id: string; blocker?: "decision" | "endpoint"; reason?: string };
-
 type Props = {
   aspirations: Aspiration[];
   behaviors: BehaviorCard[];
-  steps: ProjectStep[];
   tasks: Task[];
   habits: Habit[];
   entries: TimeEntry[];
@@ -52,13 +46,6 @@ type Props = {
   onSetBehaviorAxis: (id: string, patch: { impact?: number; feasibility?: number }) => void;
   onResetBehaviorAxes: (aspirationId: string) => void;
   onSetWeeklyLimit: (aspirationId: string, limit: number | null) => void;
-  onSetShape: (aspirationId: string, shape: AspirationShape) => void;
-  onAddSteps: (aspirationId: string, texts: string[]) => void;
-  onApplyStepChecks: (results: StepCheck[]) => void;
-  onEditStepText: (id: string, text: string) => void;
-  onDeleteStep: (id: string) => void;
-  onScheduleStep: (stepId: string, title: string, date: ISODate) => void;
-  onUnscheduleStep: (stepId: string) => void;
   onDeleteBehavior: (id: string) => void;
   onAddHabit: (input: Omit<Habit, "id" | "createdAt">) => void;
   onRemoveHabitByBehavior: (behaviorId: string) => void;
@@ -68,56 +55,9 @@ type Props = {
 
 const KIND_LABEL: Record<AspirationKind, string> = { aspiration: "愿望", outcome: "结果" };
 
-/**
- * 目标的形状问一次就够。这是全 app 唯一一处"必须先做个决定才能往下"的地方，
- * 值得——它决定往下走哪条管道，而两条管道的规则是**相反的**（一个做减法，一个必须拆全）。
- * 判断标准只有一句：少了这条，目标还成不成立？
- */
-function ShapePicker({ onPick }: { onPick: (shape: AspirationShape) => void }) {
-  const opts: Array<{ shape: AspirationShape; title: string; desc: string; eg: string }> = [
-    {
-      shape: "state",
-      title: "养成一种状态",
-      desc: "有很多种办法，挑几种做就行，少一种不影响",
-      eg: "早点睡 · 身体好起来 · 变得更自信",
-    },
-    {
-      shape: "project",
-      title: "做成一件事",
-      desc: "是一串步骤，缺一步就完不成",
-      eg: "考研上岸 · 面试通过 · 把店铺开起来",
-    },
-  ];
-  return (
-    <div className="w-full flex flex-col gap-2.5">
-      <div className="w-full flex flex-col gap-1">
-        <span className="text-[14px] font-semibold text-[var(--color-text-primary)]">
-          这个目标是哪一种？
-        </span>
-        <span className="text-[11px] text-[var(--color-text-secondary)]">
-          只问这一次。两种往下拆的规则是反的，选错了会一直别扭
-        </span>
-      </div>
-      {opts.map((o) => (
-        <button
-          key={o.shape}
-          type="button"
-          onClick={() => onPick(o.shape)}
-          className="w-full flex flex-col gap-1 px-3.5 py-3 rounded-[10px] bg-white border border-[var(--color-border)] hover:border-[var(--color-primary)] transition-colors text-left"
-        >
-          <span className="text-[14px] font-medium text-[var(--color-text-primary)]">{o.title}</span>
-          <span className="text-[12px] text-[var(--color-text-secondary)]">{o.desc}</span>
-          <span className="text-[11px] text-[var(--color-text-tertiary)]">{o.eg}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 export default function GoalsView({
   aspirations,
   behaviors,
-  steps,
   tasks,
   habits,
   entries,
@@ -135,13 +75,6 @@ export default function GoalsView({
   onSetBehaviorAxis,
   onResetBehaviorAxes,
   onSetWeeklyLimit,
-  onSetShape,
-  onAddSteps,
-  onApplyStepChecks,
-  onEditStepText,
-  onDeleteStep,
-  onScheduleStep,
-  onUnscheduleStep,
   onDeleteBehavior,
   onAddHabit,
   onRemoveHabitByBehavior,
@@ -285,13 +218,7 @@ export default function GoalsView({
             {open ? open.title : "我的目标"}
           </h1>
           <p className="text-[var(--color-text-secondary)] text-[12px]">
-            {open
-              ? open.shape === "project"
-                ? "项目型 · 步骤缺一不可，全留着"
-                : open.shape === "state"
-                  ? "状态型 · 做法可以互相替代，挑几个做"
-                  : `${KIND_LABEL[open.kind]} · 先说说它是哪一种`
-              : "所有任务和习惯的来源"}
+            {open ? `${KIND_LABEL[open.kind]} · 把它拆成能做的行为` : "所有任务和习惯的来源"}
           </p>
         </div>
         {canUndo && (
@@ -321,14 +248,7 @@ export default function GoalsView({
         {open ? (
           <>
             {/* 每周投入上限：排主线时用它算额度，超了标黄不拦 */}
-            <div
-              className={[
-                "w-full items-center gap-1.5 flex-wrap px-3 py-2 rounded-[10px]",
-                "bg-[var(--color-bg-gray-lighter)] border border-[var(--color-border)]",
-                // 形状还没定的时候先别显示——第一屏只该有那一个问题
-                open.shape ? "flex" : "hidden",
-              ].join(" ")}
-            >
+            <div className="w-full flex items-center gap-1.5 flex-wrap px-3 py-2 rounded-[10px] bg-[var(--color-bg-gray-lighter)] border border-[var(--color-border)]">
               <span className="text-[11px] text-[var(--color-text-secondary)] flex-shrink-0">
                 每周最多排
               </span>
@@ -352,21 +272,6 @@ export default function GoalsView({
               </span>
             </div>
 
-            {!open.shape ? (
-              <ShapePicker onPick={(sh) => onSetShape(open.id, sh)} />
-            ) : open.shape === "project" ? (
-              <ProjectStepsView
-                aspiration={open}
-                steps={steps}
-                tasks={tasks}
-                onAdd={(texts) => onAddSteps(open.id, texts)}
-                onApplyChecks={onApplyStepChecks}
-                onEditText={onEditStepText}
-                onDelete={onDeleteStep}
-                onSchedule={onScheduleStep}
-                onUnschedule={onUnscheduleStep}
-              />
-            ) : (
             <FocusMapView
             aspiration={open}
             cards={openCards}
@@ -391,7 +296,6 @@ export default function GoalsView({
               rejudgeProgress={rejudgeDone}
               rejudgeTotal={behaviors.filter((b) => b.aspirationId === open.id).length}
             />
-            )}
           </>
         ) : (
           <>

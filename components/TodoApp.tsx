@@ -11,7 +11,6 @@ import SyncModal from "@/components/SyncModal";
 import type {
   Aspiration,
   AspirationKind,
-  AspirationShape,
   BehaviorCard,
   BehaviorType,
   DayPlan,
@@ -19,7 +18,6 @@ import type {
   HabitLog,
   EntryCategory,
   ISODate,
-  ProjectStep,
   Task,
   TimeEntry,
   ViewMode,
@@ -37,16 +35,12 @@ const ENTRIES_KEY = "mytodo.entries.v1";
 // 习惯实验室（一期只存本地，暂不进云同步）
 const ASPIRATIONS_KEY = "mytodo.aspirations.v1";
 const BEHAVIORS_KEY = "mytodo.behaviors.v1";
-// 项目型目标的步骤。**故意不和 behaviors 共用一张表**——焦点地图那套筛选
-// 只在"可互相替代"的候选上成立，项目步骤是缺一不可的，混进去地图就会劝你砍掉必要步骤
-const STEPS_KEY = "mytodo.steps.v1";
 const HABITS_KEY = "mytodo.habits.v1";
 const HABIT_LOGS_KEY = "mytodo.habitlogs.v1";
 const DAY_PLANS_KEY = "mytodo.dayplans.v1";
 const EMPTY_ENTRIES: TimeEntry[] = [];
 const EMPTY_ASPIRATIONS: Aspiration[] = [];
 const EMPTY_BEHAVIORS: BehaviorCard[] = [];
-const EMPTY_STEPS: ProjectStep[] = [];
 const EMPTY_HABITS: Habit[] = [];
 const EMPTY_HABIT_LOGS: HabitLog[] = [];
 const EMPTY_DAY_PLANS: Record<string, DayPlan> = {};
@@ -123,9 +117,6 @@ export default function TodoApp() {
   const { value: behaviorCards, setValue: setBehaviorCards, hydrated: behHydrated } =
     useLocalStorageState<BehaviorCard[]>(BEHAVIORS_KEY, EMPTY_BEHAVIORS);
 
-  const { value: steps, setValue: setSteps, hydrated: stepsHydrated } =
-    useLocalStorageState<ProjectStep[]>(STEPS_KEY, EMPTY_STEPS);
-
   const { value: habits, setValue: setHabits, hydrated: habitsHydrated } =
     useLocalStorageState<Habit[]>(HABITS_KEY, EMPTY_HABITS);
   const { value: habitLogs, setValue: setHabitLogs, hydrated: logsHydrated } =
@@ -144,19 +135,13 @@ export default function TodoApp() {
   const [entriesHistory, setEntriesHistory] = useState<TimeEntry[][]>([]);
   // 习惯实验室的撤回栈（愿望 + 行为一起快照）
   const [labHistory, setLabHistory] = useState<
-    Array<{
-      aspirations: Aspiration[];
-      behaviors: BehaviorCard[];
-      steps: ProjectStep[];
-      restoreTasks?: Task[];
-    }>
+    Array<{ aspirations: Aspiration[]; behaviors: BehaviorCard[]; restoreTasks?: Task[] }>
   >([]);
 
   const safeTasks = hydrated ? tasks : seedTasks(todayIso);
   const safeEntries = entriesHydrated ? entries : EMPTY_ENTRIES;
   const safeAspirations = aspHydrated ? aspirations : EMPTY_ASPIRATIONS;
   const safeBehaviors = behHydrated ? behaviorCards : EMPTY_BEHAVIORS;
-  const safeSteps = stepsHydrated ? steps : EMPTY_STEPS;
   const safeHabits = habitsHydrated ? habits : EMPTY_HABITS;
   const safeHabitLogs = logsHydrated ? habitLogs : EMPTY_HABIT_LOGS;
   const safeDayPlans = plansHydrated ? dayPlans : EMPTY_DAY_PLANS;
@@ -165,11 +150,10 @@ export default function TodoApp() {
   // 计时器提到这一层，才能进云同步（手机上开始，电脑上看得到还在跑）
   const timer = useTimer((entry) => addEntries([entry]));
 
-  const labHydrated =
-    aspHydrated && behHydrated && stepsHydrated && habitsHydrated && logsHydrated && plansHydrated;
+  const labHydrated = aspHydrated && behHydrated && habitsHydrated && logsHydrated && plansHydrated;
   const lab = useMemo(
-    () => ({ aspirations, behaviors: behaviorCards, habits, habitLogs, dayPlans, steps }),
-    [aspirations, behaviorCards, habits, habitLogs, dayPlans, steps],
+    () => ({ aspirations, behaviors: behaviorCards, habits, habitLogs, dayPlans }),
+    [aspirations, behaviorCards, habits, habitLogs, dayPlans],
   );
 
   const sync = useCloudSync({
@@ -184,7 +168,6 @@ export default function TodoApp() {
     setLab: (patch) => {
       if (patch.aspirations) setAspirations(patch.aspirations);
       if (patch.behaviors) setBehaviorCards(patch.behaviors);
-      if (patch.steps) setSteps(patch.steps);
       if (patch.habits) setHabits(patch.habits);
       if (patch.habitLogs) setHabitLogs(patch.habitLogs);
       if (patch.dayPlans) setDayPlans(patch.dayPlans);
@@ -326,7 +309,7 @@ export default function TodoApp() {
   function snapshotLab(restoreTasks?: Task[]) {
     setLabHistory((h) => [
       ...h.slice(-29),
-      { aspirations, behaviors: behaviorCards, steps, restoreTasks },
+      { aspirations, behaviors: behaviorCards, restoreTasks },
     ]);
   }
 
@@ -335,7 +318,6 @@ export default function TodoApp() {
     const prev = labHistory[labHistory.length - 1];
     setAspirations(prev.aspirations);
     setBehaviorCards(prev.behaviors);
-    setSteps(prev.steps);
     // 只把当时被连带删掉的任务加回来，不整包覆盖 tasks——
     // 否则会把用户在日视图里的其他改动一起回滚
     if (prev.restoreTasks?.length) {
@@ -361,10 +343,9 @@ export default function TodoApp() {
 
   // 删愿望连它下面的行为一起删，不留孤儿卡片
   function deleteAspiration(id: string) {
-    const taskIds = new Set([
-      ...behaviorCards.filter((b) => b.aspirationId === id && b.taskId).map((b) => b.taskId!),
-      ...steps.filter((st) => st.aspirationId === id && st.taskId).map((st) => st.taskId!),
-    ]);
+    const taskIds = new Set(
+      behaviorCards.filter((b) => b.aspirationId === id && b.taskId).map((b) => b.taskId!),
+    );
     const gone = tasks.filter((t) => taskIds.has(t.id) && t.status !== "done");
     snapshotLab(gone);
     if (gone.length > 0) {
@@ -373,90 +354,6 @@ export default function TodoApp() {
     }
     setAspirations((prev) => prev.filter((a) => a.id !== id));
     setBehaviorCards((prev) => prev.filter((b) => b.aspirationId !== id));
-    setSteps((prev) => prev.filter((st) => st.aspirationId !== id));
-  }
-
-  // ===== 项目型目标：步骤清单 =====
-  //
-  // 和行为集群的关键差别：**这里不做减法**。没有打分、没有排序、没有筛选，
-  // 加进来的每一条都留着——步骤之间是 AND，砍掉任何一条项目就完不成。
-  // 唯一的加工是体检"这一步能不能无脑做"（②过程 ③终点），改写复用同一个「改具体」。
-
-  function setAspirationShape(id: string, shape: AspirationShape) {
-    snapshotLab();
-    setAspirations((prev) => prev.map((a) => (a.id === id ? { ...a, shape } : a)));
-  }
-
-  function addSteps(aspirationId: string, texts: string[]) {
-    snapshotLab();
-    const now = Date.now();
-    setSteps((prev) => [
-      ...prev,
-      ...texts.map((text, i) => ({
-        id: `s-${now}-${i}-${Math.random().toString(36).slice(2, 7)}`,
-        aspirationId,
-        text,
-        createdAt: now,
-      })),
-    ]);
-  }
-
-  function applyStepChecks(
-    results: Array<{ id: string; blocker?: "decision" | "endpoint"; reason?: string }>,
-  ) {
-    const byId = new Map(results.map((r) => [r.id, r]));
-    setSteps((prev) =>
-      prev.map((st) => {
-        const r = byId.get(st.id);
-        if (!r || st.checkSource === "user") return st;
-        return { ...st, blocker: r.blocker, reason: r.reason, checkSource: "ai" as const };
-      }),
-    );
-  }
-
-  /** 改文字 → 退回未体检等重判；已排期的任务跟着改名（做完的不动，那是历史） */
-  function editStepText(id: string, text: string) {
-    snapshotLab();
-    const st = steps.find((x) => x.id === id);
-    if (st?.taskId) {
-      setTasks((prev) =>
-        prev.map((t) => (t.id === st.taskId && t.status !== "done" ? { ...t, title: text } : t)),
-      );
-    }
-    setSteps((prev) =>
-      prev.map((x) =>
-        x.id === id && x.text !== text
-          ? { ...x, text, blocker: undefined, reason: undefined, checkSource: undefined }
-          : x,
-      ),
-    );
-  }
-
-  function deleteStep(id: string) {
-    const st = steps.find((x) => x.id === id);
-    const gone = st?.taskId ? tasks.filter((t) => t.id === st.taskId && t.status !== "done") : [];
-    snapshotLab(gone);
-    if (gone.length > 0) setTasks((prev) => prev.filter((t) => t.id !== st!.taskId));
-    setSteps((prev) => prev.filter((x) => x.id !== id));
-  }
-
-  function scheduleStep(stepId: string, title: string, date: ISODate) {
-    const taskId = `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const aspirationId = steps.find((st) => st.id === stepId)?.aspirationId;
-    setTasks((prev) => [
-      ...prev,
-      { id: taskId, title, date, status: "todo" as TaskStatus, aspirationId },
-    ]);
-    snapshotLab();
-    setSteps((prev) => prev.map((st) => (st.id === stepId ? { ...st, taskId } : st)));
-  }
-
-  function unscheduleStep(stepId: string) {
-    const st = steps.find((x) => x.id === stepId);
-    const gone = st?.taskId ? tasks.filter((t) => t.id === st.taskId) : [];
-    snapshotLab(gone);
-    if (gone.length > 0) setTasks((prev) => prev.filter((t) => t.id !== st!.taskId));
-    setSteps((prev) => prev.map((x) => (x.id === stepId ? { ...x, taskId: undefined } : x)));
   }
 
   // 收集口回车即存：不带 type → 未判定；魔法棒收进来的自带 type
@@ -731,7 +628,6 @@ export default function TodoApp() {
         <GoalsView
           aspirations={safeAspirations}
           behaviors={safeBehaviors}
-          steps={safeSteps}
           tasks={safeTasks}
           habits={safeHabits}
           entries={safeEntries}
@@ -748,13 +644,6 @@ export default function TodoApp() {
           onSetBehaviorType={setBehaviorType}
           onShrinkBehavior={shrinkBehavior}
           onEditBehaviorText={editBehaviorText}
-          onSetShape={setAspirationShape}
-          onAddSteps={addSteps}
-          onApplyStepChecks={applyStepChecks}
-          onEditStepText={editStepText}
-          onDeleteStep={deleteStep}
-          onScheduleStep={scheduleStep}
-          onUnscheduleStep={unscheduleStep}
           onScheduleBehavior={scheduleBehavior}
           onUnscheduleBehavior={unscheduleBehavior}
           onSetBehaviorAxis={setBehaviorAxis}

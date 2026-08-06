@@ -30,20 +30,6 @@ export interface Task {
 /** 愿望("想更健康"，抽象) vs 结果("一个月瘦5斤"，可衡量)——两者都不是行为 */
 export type AspirationKind = "aspiration" | "outcome";
 
-/**
- * 目标的**形状**，决定往下拆的时候是做减法还是拆全。这是和 kind 正交的另一根轴：
- * kind 说的是抽象程度，shape 说的是"少了一条还成不成立"。
- * 「考研上岸」和「早点睡」都可衡量（kind 相同），但一个必须拆全、一个必须做减法。
- *
- * - `state` 状态型：候选做法之间是 **OR**，可互相替代。早点睡有十种办法，做三种就够。
- *   → 走行为集群 + 焦点地图，**筛掉大部分是对的**
- * - `project` 项目型：步骤之间是 **AND**，缺一个就废。考研 = 数学+英语+政治+专业课。
- *   → 走步骤清单，**全留，不排序不筛选**。对 AND 做减法 = 让项目失败
- *
- * 判断只有一句话：**少了这条，目标还成不成立？**
- */
-export type AspirationShape = "state" | "project";
-
 /** 一个愿望/结果，行为集群挂在它下面 */
 export interface Aspiration {
   id: string;
@@ -54,35 +40,6 @@ export interface Aspiration {
   color?: string;
   /** 每周投入天数上限 1-7；null / undefined = 不限。超了只提示不拦 */
   weeklyLimit?: number | null;
-  /** 状态型还是项目型。老数据没有 → 进目标页时问一次，问完就不再问 */
-  shape?: AspirationShape;
-}
-
-/**
- * 项目型目标下的一个步骤。**故意和 BehaviorCard 分表**——
- * 焦点地图那套（打分、排序、取右上角、筛掉左下角）只在 OR 上成立，
- * 一旦项目步骤混进 behaviors 表，地图就会开始劝你砍掉必要的步骤。
- * 两条管道的数据分开放，是这个设计唯一的硬约束。
- *
- * 只做一层平的清单，**不做 WBS 树**：GTD 的省力点就在于只需要想出"下一步"，
- * 一次拆完本身就是把人劝退的认知负担。
- */
-export interface ProjectStep {
-  id: string;
-  aspirationId: string;
-  text: string;
-  createdAt: number;
-  /**
-   * 这一步为什么不好"无脑做"。只有两种——
-   * 任务靠排日期给时机（不判 timing）、没有可行性滑块（不判 effort）、
-   * 它天生就是动作（不判 action）。所以三个时刻里只剩②过程和③终点。
-   */
-  blocker?: "decision" | "endpoint";
-  reason?: string;
-  /** "user" = 你手动改过文字后自己认了，AI 不再重判 */
-  checkSource?: "ai" | "user";
-  /** 排到某天之后关联的 Task id */
-  taskId?: string;
 }
 
 /**
