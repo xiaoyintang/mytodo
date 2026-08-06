@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  checkStepsWithLLM,
   concreteWithLLM,
   hasLLM,
   magicWandWithLLM,
@@ -10,6 +11,7 @@ import {
 // 习惯实验室 · 行为集群的 AI 接口，两种用法：
 //   { mode: "sort", items: [{id,text}], goal? } → 批量判定：愿望/成果/一次性/可重复/要戒掉
 //   { mode: "wand", aspiration, existing?, context? } → 魔法棒：发散一批候选行为
+//   { mode: "steps", items: [{id,text}], goal? } → 项目步骤体检：只查 decision / endpoint
 // 未配 LLM_API_KEY 一律返回 501，前端各自降级。
 
 const MAX_ITEMS = 40;
@@ -54,6 +56,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ behaviors });
   }
 
+  const isSteps = mode === "steps";
+
   const items = Array.isArray(body.items)
     ? (body.items as unknown[])
         .map((it) => {
@@ -67,7 +71,12 @@ export async function POST(req: Request) {
 
   const goal = String(body.goal ?? "").trim().slice(0, 120);
   // 自动判定图快（关思考）；手动「重判」图准（开思考，慢一点无所谓）
-  const results = await sortBehaviorsWithLLM(items, goal || undefined, body.think === true);
+  //
+  // steps 走另一套 prompt：项目步骤是 AND，只检查"能不能无脑做"，
+  // **不判类型、不判该不该做**——对必要步骤做筛选等于让项目失败
+  const results = isSteps
+    ? await checkStepsWithLLM(items, goal || undefined, body.think === true)
+    : await sortBehaviorsWithLLM(items, goal || undefined, body.think === true);
   if (results === null) return NextResponse.json({ error: "llm_error" }, { status: 502 });
   return NextResponse.json({ results });
 }

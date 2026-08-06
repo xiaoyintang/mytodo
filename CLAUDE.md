@@ -50,6 +50,17 @@ TodoApp.tsx（状态管理中心）
 │   ├── 时间安排模式切换：固定时间段 / 时长目标（targetMinutes）
 │   └── TimePicker.tsx - 自定义时间选择器（小时/分钟滚动）
 │
+├── GoalsView.tsx - 目标管理页（从 MainlineBar 进，不是 tab）
+│   ├── 进任一目标先问一次**形状**（`Aspiration.shape`），问完不再问
+│   ├── state 状态型 → FocusMapView（做减法）
+│   └── project 项目型 → ProjectStepsView（全留）
+│
+├── ProjectStepsView.tsx - 项目型目标的步骤清单
+│   ├── 「下一个动作是什么」回车即存，700ms 攒批自动体检（/api/behavior mode:steps）
+│   ├── 只报 ②过程 decision / ③终点 endpoint 两种缺口
+│   ├── 有缺口 → 「改成能无脑做的说法」（复用 concrete，同一条铁律）
+│   └── 出口：排到某天 → 建 Task（继承目标）+ 可撤回
+│
 ├── HabitLabView.tsx - 「习惯」视图 = 习惯实验室（福格行为设计）
 │   ├── 子 tab：我的习惯（HabitTracker，按目标分组、可折叠、直接加）/ 我的目标
 │   ├── 我的目标 → 愿望列表 → 点进去就是 FocusMapView（**只有一页，没有子 tab**）
@@ -90,6 +101,11 @@ TodoApp.tsx（状态管理中心）
 - 日视图卡片和 TaskBottomSheet 显示进度条（`taskLoggedMinutes` 聚合关联 entries）
 - TaskBottomSheet 提供"记一笔"：快捷时长按钮 + 自定义分钟数
 - AI 解析：`app/api/parse/route.ts`，OpenAI 兼容接口（DeepSeek / 硅基流动）
+- **提取任务和判断任务要用不同参数**：抽时间/事项这种提取用 `thinking:disabled`+`temperature:0`
+  图快；判定和改写要开思考（判定准确率 6/6 vs 5/6），改写再加 `temperature` 0.4~0.5。
+  开思考时 **max_tokens 必须给够（8000）**——推理过程也算 completion_tokens，
+  6 条判定就烧掉 1900+，给 2048 的话正文被截断成 `finish_reason:"length"`，整个请求 502。
+  另外思考耗时随条目数涨得极快（6 条 23~45 秒，3 条几秒），所以批量重判是**小批并发**
   - 环境变量：`LLM_API_KEY`（必填）、`LLM_BASE_URL`、`LLM_MODEL`，见 `.env.local.example`
   - 未配置 key 时返回 501，前端自动降级为 `components/todo/nlparse.ts` 规则解析
 - 工具函数：`components/todo/time.ts`（formatMinutes、taskLoggedMinutes、matchTaskByTitle）
@@ -244,12 +260,48 @@ TodoApp.tsx（状态管理中心）
 - 习惯统计：累计次数 + 最近 30 天做了几天。**不做 streak**——
   streak 越长断掉代价越大，而断掉是概率事件，期望结局是"越成功崩得越惨"
 
+### 两条管道：状态型目标 vs 项目型目标
+
+产品的目的是让行为发生，而一个行动要发生得走完八环节
+（想要→选择→明确→触发→能做→执行→回报→固化，见 `11-行为发生的完整理论地图.md`）。
+福格管的是下半截（触发/能做/回报/固化），**③明确那一环他基本没写**——
+所以照着福格搭出来的 app 会天然缺这一块。实测：6 个目标里 5 个是空的，
+而那 5 个恰好都是项目型（考研/面试/开店），用户其实一直在做（台账里 250+ 分钟），
+只是没有任何地方能放。
+
+**分流靠 `Aspiration.shape`，判断只有一句话：少了这条，目标还成不成立？**
+
+| | 状态型 state | 项目型 project |
+|---|---|---|
+| 候选之间 | **OR**，可替代 | **AND**，缺一即废 |
+| 例 | 早点睡、变自信 | 考研上岸、把店开起来 |
+| 表 | `behaviors` | `steps` |
+| 界面 | FocusMapView | ProjectStepsView |
+| 目的 | **做减法**，取右上角 | **全留**，不排序不筛选 |
+| 判类型 | 要（愿望/成果/一次性/可重复/戒） | 不判——它天生就是任务 |
+| 报哪些缺口 | 5 种全报 | 只报 ②过程 ③终点 |
+| 触发 | 锚点 | 排日期 |
+
+**硬约束：两条管道的数据绝不能进同一张表。**焦点地图那套（打分、排序、取右上角、
+筛掉左下角）只在 OR 上成立。项目步骤一旦混进 `behaviors`，地图就会开始劝你砍掉必要步骤，
+**对 AND 做减法 = 让项目失败**。所以宁可多一张 `mytodo.steps.v1`。
+
+项目步骤**不判 timing**（靠排日期给时机）、**不判 effort**（没有可行性滑块）、
+**不判 action**（它天生就是动作），三个时刻里只剩②③——所以 prompt 是独立的
+`STEP_PROMPT`，而且明确禁止 AI 评价"该不该做/要不要合并"。
+
+**只做一层平的清单，不做 WBS 树。**GTD 的省力点就在于只需要想出"下一步"——
+一次把项目拆完本身就是巨大的认知负担，会直接把人劝退。
+
 ### 关键类型（components/todo/types.ts）
 
 - `Task`：id, title, date, aspirationId?, startTime?, endTime?, status, priority?, tag?, targetMinutes?
 - `TimeEntry`：id, date, title, minutes, startTime?, endTime?, taskId?, category?, categorySource?
 - `EntryCategory`："正事" | "娱乐" | "休息"
-- `Aspiration`：id, title, kind, createdAt, color?, weeklyLimit?（每周投入天数上限，null=不限）
+- `Aspiration`：id, title, kind, createdAt, color?, weeklyLimit?（每周投入天数上限，null=不限）, shape?
+  - `kind` 说抽象程度（愿望/成果），`shape` 说结构（state/project）——**两根正交的轴**。
+    「考研上岸」和「早点睡」kind 相同都可衡量，但一个必须拆全、一个必须做减法
+- `ProjectStep`：id, aspirationId, text, createdAt, blocker?("decision"|"endpoint"), reason?, checkSource?, taskId?
 - `DayPlan`：date, primaryAspirationIds（今日主线，可多条）, mustDoTaskId?
 - `BehaviorCard`：id, aspirationId, text, type, typeSource?, reason?, hasDecision?, impact?, feasibility?
   - type: "unsorted" | "aspiration" | "outcome" | "onetime" | "habit" | "stop"
@@ -268,8 +320,8 @@ TodoApp.tsx（状态管理中心）
 ## 硬性约束
 
 - localStorage key 必须保持 `mytodo.tasks.v1`（任务）和 `mytodo.entries.v1`（时间记录）
-- 习惯实验室的 key：`mytodo.aspirations.v1` / `mytodo.behaviors.v1` / `mytodo.habits.v1` / `mytodo.habitlogs.v1` / `mytodo.dayplans.v1`
-- 云同步（`sync.ts`）覆盖 tasks + entries + aspirations + behaviors + habits + habitLogs + dayPlans
+- 习惯实验室的 key：`mytodo.aspirations.v1` / `mytodo.behaviors.v1` / `mytodo.steps.v1` / `mytodo.habits.v1` / `mytodo.habitlogs.v1` / `mytodo.dayplans.v1`
+- 云同步（`sync.ts`）覆盖 tasks + entries + aspirations + behaviors + steps + habits + habitLogs + dayPlans
   - **拉取时云端缺某个集合 → 跳过，绝不能拿 `[]` 覆盖本地**。老版本客户端推上去的 payload
     没有那几个 key，把"云端没有"当成"云端是空的"会直接删掉用户数据
   - dayPlans 按日期 key 合并（`mergePlans`），其余按 id 合并（`mergeById`），冲突以本地为准

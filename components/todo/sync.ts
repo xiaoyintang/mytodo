@@ -1,7 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Aspiration, BehaviorCard, DayPlan, Habit, HabitLog, Task, TimeEntry } from "./types";
+import type {
+  Aspiration,
+  BehaviorCard,
+  DayPlan,
+  Habit,
+  HabitLog,
+  ProjectStep,
+  Task,
+  TimeEntry,
+} from "./types";
 import type { TimerState } from "./useTimer";
 
 export type SyncStatus = "off" | "syncing" | "synced" | "error" | "not_configured";
@@ -25,6 +34,8 @@ export type LabData = {
   habits: Habit[];
   habitLogs: HabitLog[];
   dayPlans: Record<string, DayPlan>;
+  /** 项目型目标的步骤（和 behaviors 分表，见 types.ts ProjectStep） */
+  steps: ProjectStep[];
 };
 
 type Args = {
@@ -212,6 +223,7 @@ export function useCloudSync({
         const cloudBeh = Array.isArray(data?.behaviors) ? (data.behaviors as BehaviorCard[]) : null;
         const cloudHabits = Array.isArray(data?.habits) ? (data.habits as Habit[]) : null;
         const cloudLogs = Array.isArray(data?.habitLogs) ? (data.habitLogs as HabitLog[]) : null;
+        const cloudSteps = Array.isArray(data?.steps) ? (data.steps as ProjectStep[]) : null;
         const cloudPlans =
           data?.dayPlans && typeof data.dayPlans === "object"
             ? (data.dayPlans as Record<string, DayPlan>)
@@ -239,6 +251,7 @@ export function useCloudSync({
             habits: mergeById(cloudHabits ?? [], labRef.current.habits),
             habitLogs: mergeById(cloudLogs ?? [], labRef.current.habitLogs),
             dayPlans: mergePlans(cloudPlans, labRef.current.dayPlans),
+            steps: mergeById(cloudSteps ?? [], labRef.current.steps),
           };
           setTasks(mergedTasks);
           setEntries(mergedEntries);
@@ -259,6 +272,7 @@ export function useCloudSync({
           ...(cloudHabits ? { habits: cloudHabits } : {}),
           ...(cloudLogs ? { habitLogs: cloudLogs } : {}),
           ...(cloudPlans ? { dayPlans: cloudPlans } : {}),
+          ...(cloudSteps ? { steps: cloudSteps } : {}),
         });
         setStatus("synced");
         setLastSyncedAt(Date.now());

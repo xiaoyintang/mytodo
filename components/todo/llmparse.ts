@@ -268,7 +268,33 @@ const CONCRETE_PROMPT = `你是福格行为设计（BJ Fogg, Tiny Habits）的�
 4. type 沿用原行为的类型（不确定就用 onetime）`;
 
 const VALID_TYPE = new Set<string>(["aspiration", "outcome", "onetime", "habit", "stop"]);
+const STEP_PROMPT = `你在检查一个项目的执行步骤，判断每一步是不是**能不动脑直接做**。
+
+这些是**项目的必要步骤，不是备选方案**。你的工作只有一件事：指出它哪里会卡住。
+**绝对不要**评价某一步该不该做、重不重要、要不要合并或删掉——缺一步项目就废了，这不归你管。
+
+只看两个时刻，**只报最早坏掉的那一个**：
+
+① **过程 decision**——做到一半得停下来当场判断/挑选/评估
+   例："挑出简历里写得不好的地方改掉" → decision（"不好的"要现场评估）
+   例："看看哪家公司值得投" → decision
+
+② **终点 endpoint**——做到什么程度算完，说不出来
+   典型词：查一下 / 看下 / 了解一下 / 研究一下 / 熟悉一下 / 复习一下 / 准备一下 / 多 X 一点
+   例："复习数学" → endpoint（能复习十分钟也能复习一整天）
+   例："在网上查一下面试技巧" → endpoint
+
+**两个都没问题就返回 null。**这些是好的，一个都不要标：
+   "把自我介绍写成逐字稿念三遍"、"做完 2015 年数学真题的选择题"、
+   "写出3个最可能被问到的问题"、"买一本《XX考研数学》"、"投 5 家公司的简历"
+
+【输出】必须是合法 JSON，不要输出其他内容：
+{"results":[{"id":"原样返回输入的id","blocker":null,"reason":"不超过20字"}]}
+blocker 只能是 "decision" / "endpoint" / null 三者之一。
+输入几条就输出几条，一条都不能少，id 必须原样返回。`;
+
 const VALID_BLOCKER = new Set<string>(["timing", "decision", "endpoint"]);
+const VALID_STEP_BLOCKER = new Set<string>(["decision", "endpoint"]);
 const WAND_TYPE = new Set<string>(["onetime", "habit", "stop"]);
 
 export type LLMBehavior = { text: string; type: BehaviorType };
@@ -327,6 +353,38 @@ export async function sortBehaviorsWithLLM(
 }
 
 /** 改具体：把"执行时会卡住"的行为改写成有明确终点或产出物的版本 */
+export type LLMStepCheck = { id: string; blocker?: "decision" | "endpoint"; reason?: string };
+
+/**
+ * 检查项目步骤。和 sortBehaviorsWithLLM 的区别：**不判 type**——
+ * 它已经是任务了，没有"这是不是行为"的问题；也不判 timing（靠排期给时机）。
+ */
+export async function checkStepsWithLLM(
+  items: Array<{ id: string; text: string }>,
+  goal?: string,
+  think = false,
+): Promise<LLMStepCheck[] | null> {
+  const head = goal ? `项目目标：${goal}\n步骤：\n` : "步骤：\n";
+  const user = head + items.map((it) => `${it.id}. ${it.text}`).join("\n");
+  const parsed = await callLLMJson(STEP_PROMPT, user, think ? { think: true } : {});
+  if (parsed === null) return null;
+  const raw = (parsed as { results?: unknown })?.results;
+  if (!Array.isArray(raw)) return null;
+  const out: LLMStepCheck[] = [];
+  for (const r of raw) {
+    const o = r as Record<string, unknown>;
+    const id = String(o?.id ?? "").trim();
+    if (!id) continue;
+    const blocker = String(o?.blocker);
+    out.push({
+      id,
+      blocker: VALID_STEP_BLOCKER.has(blocker) ? (blocker as "decision" | "endpoint") : undefined,
+      reason: o?.reason ? String(o.reason).slice(0, 40) : undefined,
+    });
+  }
+  return out;
+}
+
 export async function concreteWithLLM(text: string, goal?: string): Promise<LLMBehavior[] | null> {
   const user = goal ? `我的目标：${goal}\n卡住的这条行为：${text}` : `卡住的这条行为：${text}`;
   const parsed = await callLLMJson(CONCRETE_PROMPT, user, { think: true, temperature: 0.4 });
