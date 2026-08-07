@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   breakdownTaskWithLLM,
+  clarifyBehaviorWithLLM,
   clarifyNextActionWithLLM,
   concreteWithLLM,
   hasLLM,
@@ -14,6 +15,7 @@ import {
 //   { mode: "wand", aspiration, existing?, context? } → 魔法棒：发散一批候选行为
 //   { mode: "breakdown", text, goal? } → 把一个任务拆成子步骤（穷尽，不筛选）
 //   { mode: "clarify-next", text, parentTask } → 检查当前下一步，只给一个问题和一个改写
+//   { mode: "clarify-behavior", text, goal, behaviorType? } → 检查焦点地图候选行为的表达
 // 未配 LLM_API_KEY 一律返回 501，前端各自降级。
 
 const MAX_ITEMS = 40;
@@ -61,6 +63,17 @@ export async function POST(req: Request) {
     const parentTask = String(body.parentTask ?? "").trim().slice(0, 200);
     if (!parentTask) return NextResponse.json({ error: "empty_parent_task" }, { status: 400 });
     const result = await clarifyNextActionWithLLM(text, parentTask);
+    if (result === null) return NextResponse.json({ error: "llm_error" }, { status: 502 });
+    return NextResponse.json(result);
+  }
+
+  if (mode === "clarify-behavior") {
+    const text = String(body.text ?? "").trim().slice(0, 200);
+    if (!text) return NextResponse.json({ error: "empty_text" }, { status: 400 });
+    const goal = String(body.goal ?? "").trim().slice(0, 200);
+    if (!goal) return NextResponse.json({ error: "empty_goal" }, { status: 400 });
+    const behaviorType = String(body.behaviorType ?? "").trim().slice(0, 20);
+    const result = await clarifyBehaviorWithLLM(text, goal, behaviorType || undefined);
     if (result === null) return NextResponse.json({ error: "llm_error" }, { status: 502 });
     return NextResponse.json(result);
   }

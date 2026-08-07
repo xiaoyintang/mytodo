@@ -11,6 +11,14 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 
 type AxisPatch = { impact?: number; feasibility?: number };
 type SortMode = "default" | "impact" | "score";
+type BehaviorReview = {
+  forId: string;
+  sourceText: string;
+  kind: "ready" | "expand" | "rewrite" | "error";
+  issue?: string;
+  suggestion?: string;
+  message?: string;
+};
 
 type Props = {
   aspiration: Aspiration;
@@ -117,6 +125,10 @@ export default function FocusMapView({
     items: PendingItem[];
   } | null>(null);
   const [shrinkNote, setShrinkNote] = useState<string | null>(null);
+  // 已通过基础分类/边界检查的行为，可选做一次更严格的表达检查。
+  // 它不碰影响力和可行性——那两根滑块只能由用户自己拖。
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [behaviorReview, setBehaviorReview] = useState<BehaviorReview | null>(null);
   // 魔法棒：从愿望本身发散，或对某条"愿望/成果"拆解
   const [wandBusy, setWandBusy] = useState<string | "root" | null>(null);
   const [wand, setWand] = useState<{ forId: string | null; note: string; items: PendingItem[] } | null>(null);
@@ -166,6 +178,7 @@ export default function FocusMapView({
         setEdited((prev) => new Set(prev).add(id));
       }
     }
+    if (behaviorReview?.forId === id) setBehaviorReview(null);
     setEditingId(null);
   }
 
@@ -324,6 +337,156 @@ export default function FocusMapView({
       return;
     }
     setShrink({ forId: card.id, mode, items: items.map((it, i) => ({ ...it, checked: i === 0 })) });
+  }
+
+  async function handleBehaviorReview(card: BehaviorCard) {
+    if (reviewingId) return;
+    setReviewingId(card.id);
+    setBehaviorReview(null);
+    const res = await callBehaviorAPI({
+      mode: "clarify-behavior",
+      text: card.text,
+      goal: aspiration.title,
+      behaviorType: card.type,
+    });
+    setReviewingId(null);
+
+    if (!res.ok) {
+      setBehaviorReview({
+        forId: card.id,
+        sourceText: card.text,
+        kind: "error",
+        message: res.noKey ? "还没有配置 AI，原行为不会受影响" : "AI 暂时没响应，稍后再试",
+      });
+      return;
+    }
+
+    const kind = String(res.data.kind ?? "");
+    if (kind === "ready") {
+      setBehaviorReview({ forId: card.id, sourceText: card.text, kind: "ready" });
+      return;
+    }
+
+    const issue = String(res.data.issue ?? "").trim();
+    if (kind === "expand" && issue) {
+      setBehaviorReview({ forId: card.id, sourceText: card.text, kind: "expand", issue });
+      return;
+    }
+
+    const suggestion = String(res.data.suggestion ?? "").trim();
+    if (kind === "rewrite" && issue && suggestion) {
+      setBehaviorReview({
+        forId: card.id,
+        sourceText: card.text,
+        kind: "rewrite",
+        issue,
+        suggestion,
+      });
+      return;
+    }
+
+    setBehaviorReview({
+      forId: card.id,
+      sourceText: card.text,
+      kind: "error",
+      message: "AI 这次没说清楚，稍后再试",
+    });
+  }
+
+  function renderBehaviorReview(card: BehaviorCard) {
+    const review = behaviorReview?.forId === card.id && behaviorReview.sourceText === card.text
+      ? behaviorReview
+      : null;
+
+    if (!review) {
+      return (
+        <div className="w-full flex justify-end">
+          <button
+            type="button"
+            onClick={() => handleBehaviorReview(card)}
+            disabled={reviewingId !== null}
+            className="flex items-center gap-1 text-[10px] font-medium text-[var(--color-primary)] hover:text-[#1D4ED8] disabled:opacity-50 transition-colors"
+            title="只检查行为有没有说清楚，不替你判断影响力和可行性"
+          >
+            <Wand2 className="w-3 h-3" />
+            {reviewingId === card.id ? "正在看…" : "帮我说清楚"}
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="w-full flex flex-col gap-1.5 px-2.5 py-2 rounded-lg border border-[#BFDBFE] bg-[#F8FBFF]">
+        {review.kind === "ready" && (
+          <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-[var(--color-text-secondary)]">
+            <Check className="w-3.5 h-3.5 mt-[1px] text-[var(--color-success)] flex-shrink-0" strokeWidth={3} />
+            表达已经清楚。影响力和你能不能做到，继续由你自己判断。
+          </p>
+        )}
+
+        {review.kind === "error" && (
+          <p className="text-[11px] text-[var(--color-text-tertiary)]">{review.message}</p>
+        )}
+
+        {review.kind === "rewrite" && review.suggestion && (
+          <>
+            <p className="text-[11px] leading-relaxed text-[var(--color-text-secondary)]">
+              还差一点：{review.issue}
+            </p>
+            <p className="text-[12px] font-medium leading-relaxed text-[var(--color-text-primary)]">
+              {review.suggestion}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  onReplaceText(card.id, review.suggestion!);
+                  setBehaviorReview(null);
+                }}
+                className="px-2.5 py-1 rounded-md bg-[var(--color-primary)] text-white text-[10px] font-medium hover:bg-[#1D4ED8] transition-colors"
+              >
+                采用建议
+              </button>
+              <button
+                type="button"
+                onClick={() => setBehaviorReview(null)}
+                className="px-2 py-1 text-[10px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]"
+              >
+                保留原文
+              </button>
+            </div>
+          </>
+        )}
+
+        {review.kind === "expand" && (
+          <>
+            <p className="text-[11px] leading-relaxed text-[var(--color-text-secondary)]">
+              这更像愿望或成果：{review.issue}
+            </p>
+            <button
+              type="button"
+              onClick={() => handleWand(card)}
+              disabled={wandBusy !== null}
+              className="self-start flex items-center gap-1 px-2.5 py-1 rounded-md border border-[var(--color-primary)] text-[10px] font-medium text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] disabled:opacity-50"
+            >
+              <Wand2 className="w-3 h-3" />
+              {wandBusy === card.id ? "发散中…" : "发散成多个行为"}
+            </button>
+            {wand?.forId === card.id && renderWandBox()}
+          </>
+        )}
+
+        {(review.kind === "ready" || review.kind === "error") && (
+          <button
+            type="button"
+            onClick={() => setBehaviorReview(null)}
+            className="self-end text-[10px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]"
+          >
+            收起
+          </button>
+        )}
+      </div>
+    );
   }
 
   function applyShrink() {
@@ -649,6 +812,7 @@ export default function FocusMapView({
           const picked = selected.has(b.id);
           const task = b.taskId ? tasks.find((t) => t.id === b.taskId) : undefined;
           const inHabits = habitBehaviorIds.has(b.id);
+          const issueKind = blockerOf(b);
           return (
             <div
               key={b.id}
@@ -727,7 +891,10 @@ export default function FocusMapView({
                 </button>
                 <button
                   type="button"
-                  onClick={() => onDelete(b.id)}
+                  onClick={() => {
+                    if (behaviorReview?.forId === b.id) setBehaviorReview(null);
+                    onDelete(b.id);
+                  }}
                   className="w-[16px] h-[16px] flex items-center justify-center flex-shrink-0"
                   aria-label="删掉这条"
                 >
@@ -780,6 +947,10 @@ export default function FocusMapView({
                   {renderSlider(b, "feasibility")}
                 </>
               )}
+
+              {/* 已经通过自动分类和边界检查的，才提供可选的二次表达检查。
+                  有明显问题的条目继续走下方现有修复，不重复摆两个 AI 入口。 */}
+              {b.type !== "unsorted" && issueKind === null && renderBehaviorReview(b)}
 
               {edited.has(b.id) && (
                 <div className="w-full flex items-center gap-1.5 text-[10px] text-[#B45309]">
@@ -841,7 +1012,7 @@ export default function FocusMapView({
                   砍掉缺时机、要判断、太费力的理由见 blocker.ts —— 一句话：误报太多，
                   而且那三种在这一屏上你什么也修不了 */}
               {(() => {
-                const kind = blockerOf(b);
+                const kind = issueKind;
                 if (!kind) return null;
                 const info = BLOCKER_INFO[kind];
                 const busy = shrinkingId === b.id || wandBusy === b.id;

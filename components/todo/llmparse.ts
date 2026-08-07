@@ -360,6 +360,37 @@ const CLARIFY_NEXT_ACTION_PROMPT = `你是一个“下一步行动”教练。�
 - 尽量不超过 20 个字，像写给自己的待办
 - 必须输出合法 JSON，不要输出解释或其他字段`;
 
+const CLARIFY_BEHAVIOR_PROMPT = `你是福格行为设计里的“行为表达教练”。用户会给你一个目标和一条准备放进焦点地图比较的候选行为。
+
+你只检查这条话是否已经表达成一个适合比较的行为，不替用户判断它影响力高不高、本人做不做得到，也不要求现在添加触发时机——这些分别由焦点地图滑块和后面的习惯表处理。
+
+按顺序检查：
+1. 它是行为，不是愿望、成果或状态；一般能通过照片测试
+2. 有具体动作和对象，不是“提升、改善、坚持、准备、处理”这类抽象占位词
+3. 一句话只有一个主要行为，不把“然后、并且、做完后”连接的多件事塞在一起
+4. 有完成边界：数量、范围、时长、可见产出，或者动作本身有天然终点（如发送、购买、关闭）
+5. stop 类是例外：“睡前不刷短视频”这类明确要停止什么、在什么范围内停止的说法，可以是合格行为，不要强行改成正向动作
+
+【行为与成果最容易混淆的地方】
+- “每周发布一期视频、完成一份报告、做出一个产品原型”虽然含有动词和数量，但交付它通常要经过多个阶段，仍然是成果，返回 expand
+- “点击发布视频、给客户发送报告、画出首页线框”是一次现场能够发生的行为
+- 如果输入的当前分类是 aspiration 或 outcome，原则上返回 expand；不要因为句子里恰好有一个动词就放行
+
+输出只能是以下三种合法 JSON 之一：
+- 已经适合比较：{"kind":"ready"}
+- 仍是愿望或成果，需要发散出多条行为：{"kind":"expand","issue":"一个最关键的问题"}
+- 已是行为但表达不够清楚：{"kind":"rewrite","issue":"一个最关键的问题","suggestion":"一个改写"}
+
+改写规则：
+- 只解决最关键的一个问题，不打分、不说教
+- issue 不超过 20 个字，用陈述句只说问题，不提问，也不在 issue 里继续给建议
+- 保留原来的核心动词和对象；若一句含多个行为，只保留第一个能独立推进的行为
+- 用最小但有意义的边界；“看完一本书、写完初稿”仍然太大，应缩到一章、10 分钟或第一个段落
+- 不要缩成打开软件、拿出纸笔等机械动作
+- 不要擅自添加“每天、早上、饭后”等触发时机
+- 尽量不超过 20 个字，像写给自己的行为卡
+- 如果它还是愿望或成果，必须返回 expand，不能武断地改成唯一一条行为，因为同一个成果可能有很多实现路径`;
+
 // 只剩「有没有边界」这一种。timing/decision/effort 都撤了——
 // 缺锚点看习惯表里 anchor 字段有没有值就行（不会误判），费不费力只有你自己知道
 const VALID_BLOCKER = new Set<string>(["endpoint"]);
@@ -369,6 +400,11 @@ export type LLMBehavior = { text: string; type: BehaviorType };
 export type BehaviorBlocker = "timing" | "decision" | "endpoint";
 export type NextActionClarification = {
   ready: boolean;
+  issue?: string;
+  suggestion?: string;
+};
+export type BehaviorClarification = {
+  kind: "ready" | "expand" | "rewrite";
   issue?: string;
   suggestion?: string;
 };
@@ -464,6 +500,33 @@ export async function clarifyNextActionWithLLM(
   const suggestion = String(raw.suggestion ?? "").trim().slice(0, 60);
   if (!issue || !suggestion) return null;
   return { ready: false, issue, suggestion };
+}
+
+/** 检查候选行为的表达质量；不碰焦点地图的影响力/可行性判断 */
+export async function clarifyBehaviorWithLLM(
+  text: string,
+  goal: string,
+  behaviorType?: string,
+): Promise<BehaviorClarification | null> {
+  const user = `目标：${goal}\n当前分类：${behaviorType || "未知"}\n候选行为：${text}`;
+  const parsed = await callLLMJson(CLARIFY_BEHAVIOR_PROMPT, user, {
+    think: true,
+    temperature: 0.2,
+  });
+  if (parsed === null || typeof parsed !== "object") return null;
+
+  const raw = parsed as Record<string, unknown>;
+  const kind = String(raw.kind ?? "");
+  if (kind === "ready") return { kind: "ready" };
+
+  const issue = String(raw.issue ?? "").trim().slice(0, 50);
+  if (!issue) return null;
+  if (kind === "expand") return { kind: "expand", issue };
+  if (kind !== "rewrite") return null;
+
+  const suggestion = String(raw.suggestion ?? "").trim().slice(0, 60);
+  if (!suggestion) return null;
+  return { kind: "rewrite", issue, suggestion };
 }
 
 export async function concreteWithLLM(text: string, goal?: string): Promise<LLMBehavior[] | null> {
