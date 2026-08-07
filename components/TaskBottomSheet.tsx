@@ -100,6 +100,15 @@ const QUICK_MINUTES = [15, 30, 45, 60, 90, 120];
 // 时长目标快捷选项（分钟）——与 AddTaskModal 保持一致
 const TARGET_PRESETS = [30, 60, 90, 120, 180, 240];
 
+type NextActionReview = {
+  taskId: string;
+  subtaskId: string;
+  state: "ready" | "suggestion" | "error";
+  issue?: string;
+  suggestion?: string;
+  message?: string;
+};
+
 const STATUS_LABELS: Record<TaskStatus, string> = {
   todo: "待办",
   in_progress: "进行中",
@@ -160,9 +169,12 @@ export default function TaskBottomSheet({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [subDraft, setSubDraft] = useState("");
   const [breaking, setBreaking] = useState(false);
+  const [clarifyingSubId, setClarifyingSubId] = useState<string | null>(null);
+  const [nextActionReview, setNextActionReview] = useState<NextActionReview | null>(null);
   const [editingSubId, setEditingSubId] = useState<string | null>(null);
   const [editSubText, setEditSubText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const clarifyRequestRef = useRef(0);
 
   // Reset state when task changes
   useEffect(() => {
@@ -180,6 +192,9 @@ export default function TaskBottomSheet({
     setIsEditingTarget(false);
     setTargetInput("");
     setShowDeleteConfirm(false);
+    setClarifyingSubId(null);
+    setNextActionReview(null);
+    clarifyRequestRef.current += 1;
   }, [task]);
 
   // Focus input when editing starts
@@ -550,7 +565,10 @@ export default function TaskBottomSheet({
                 >
                   <button
                     type="button"
-                    onClick={() => onToggleSubtask(taskId, st.id)}
+                    onClick={() => {
+                      if (nextActionReview?.subtaskId === st.id) setNextActionReview(null);
+                      onToggleSubtask(taskId, st.id);
+                    }}
                     className={[
                       "w-[16px] h-[16px] rounded-[4px] border flex items-center justify-center flex-shrink-0 mt-[1px] transition-colors",
                       st.done
@@ -572,6 +590,7 @@ export default function TaskBottomSheet({
                       onBlur={() => {
                         const v = editSubText.trim();
                         if (v && v !== st.title) onEditSubtask(taskId, st.id, v);
+                        if (nextActionReview?.subtaskId === st.id) setNextActionReview(null);
                         setEditingSubId(null);
                       }}
                       onKeyDown={(e) => {
@@ -601,7 +620,10 @@ export default function TaskBottomSheet({
                   )}
                   <button
                     type="button"
-                    onClick={() => onDeleteSubtask(taskId, st.id)}
+                    onClick={() => {
+                      if (nextActionReview?.subtaskId === st.id) setNextActionReview(null);
+                      onDeleteSubtask(taskId, st.id);
+                    }}
                     className="w-[16px] h-[16px] flex items-center justify-center flex-shrink-0 mt-[1px]"
                     aria-label="删除子步骤"
                   >
@@ -657,8 +679,110 @@ export default function TaskBottomSheet({
 
                 {nextSubtask && (
                   <div className="flex flex-col gap-1 mb-2">
-                    <span className="text-[10px] font-semibold text-[var(--color-primary)]">当前下一步</span>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-semibold text-[var(--color-primary)]">当前下一步</span>
+                      <button
+                        type="button"
+                        disabled={clarifyingSubId === nextSubtask.id}
+                        onClick={async () => {
+                          const reviewingTaskId = task.id;
+                          const reviewingSubtaskId = nextSubtask.id;
+                          const requestId = ++clarifyRequestRef.current;
+                          setClarifyingSubId(reviewingSubtaskId);
+                          setNextActionReview(null);
+                          const res = await callBehaviorAPI({
+                            mode: "clarify-next",
+                            text: nextSubtask.title,
+                            parentTask: task.title,
+                          });
+                          if (clarifyRequestRef.current !== requestId) return;
+                          setClarifyingSubId((current) => current === reviewingSubtaskId ? null : current);
+
+                          if (!res.ok) {
+                            setNextActionReview({
+                              taskId: reviewingTaskId,
+                              subtaskId: reviewingSubtaskId,
+                              state: "error",
+                              message: res.noKey ? "还没有配置 AI，原步骤不会受影响" : "AI 暂时没响应，稍后再试",
+                            });
+                            return;
+                          }
+
+                          if (res.data.ready === true) {
+                            setNextActionReview({
+                              taskId: reviewingTaskId,
+                              subtaskId: reviewingSubtaskId,
+                              state: "ready",
+                            });
+                            return;
+                          }
+
+                          const issue = String(res.data.issue ?? "").trim();
+                          const suggestion = String(res.data.suggestion ?? "").trim();
+                          if (!issue || !suggestion) return;
+                          setNextActionReview({
+                            taskId: reviewingTaskId,
+                            subtaskId: reviewingSubtaskId,
+                            state: "suggestion",
+                            issue,
+                            suggestion,
+                          });
+                        }}
+                        className="flex items-center gap-1 text-[10px] font-medium text-[var(--color-primary)] hover:text-[#1D4ED8] disabled:opacity-60 transition-colors"
+                      >
+                        <Wand2 className="w-3 h-3" />
+                        {clarifyingSubId === nextSubtask.id ? "正在看…" : "帮我说清楚"}
+                      </button>
+                    </div>
                     {renderSubtaskRow(nextSubtask, true)}
+
+                    {nextActionReview?.taskId === task.id &&
+                      nextActionReview.subtaskId === nextSubtask.id && (
+                        <div className="mt-0.5 px-2.5 py-2 rounded-lg border border-[#BFDBFE] bg-[#F8FBFF]">
+                          {nextActionReview.state === "ready" && (
+                            <p className="flex items-center gap-1.5 text-[11px] text-[var(--color-text-secondary)]">
+                              <Check className="w-3.5 h-3.5 text-[var(--color-success)]" strokeWidth={3} />
+                              这一步已经够清楚，可以直接开始
+                            </p>
+                          )}
+
+                          {nextActionReview.state === "error" && (
+                            <p className="text-[11px] text-[var(--color-text-tertiary)]">
+                              {nextActionReview.message}
+                            </p>
+                          )}
+
+                          {nextActionReview.state === "suggestion" && nextActionReview.suggestion && (
+                            <>
+                              <p className="text-[11px] leading-relaxed text-[var(--color-text-secondary)]">
+                                还差一点：{nextActionReview.issue}
+                              </p>
+                              <p className="mt-1.5 text-[12px] font-medium leading-relaxed text-[var(--color-text-primary)]">
+                                {nextActionReview.suggestion}
+                              </p>
+                              <div className="flex items-center gap-2 mt-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    onEditSubtask(task.id, nextSubtask.id, nextActionReview.suggestion!);
+                                    setNextActionReview(null);
+                                  }}
+                                  className="px-2.5 py-1 rounded-md bg-[var(--color-primary)] text-white text-[10px] font-medium hover:bg-[#1D4ED8] transition-colors"
+                                >
+                                  采用建议
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setNextActionReview(null)}
+                                  className="px-2 py-1 text-[10px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] transition-colors"
+                                >
+                                  保留原文
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
                   </div>
                 )}
 

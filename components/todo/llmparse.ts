@@ -281,29 +281,84 @@ const CONCRETE_PROMPT = `你是福格行为设计（BJ Fogg, Tiny Habits）的�
 const VALID_TYPE = new Set<string>(["aspiration", "outcome", "onetime", "habit", "stop"]);
 const BREAKDOWN_PROMPT = `把一个任务拆成几个**能直接动手做**的步骤。
 
+【先判断：它到底需不需要拆】
+只有当完成任务需要经过多个可以独立完成的阶段或产出物时，才拆解。
+如果标题本身就是一个动作，并且动作有天然终点，就原样返回一条：
+  「给小王发送合同确认邮件」→ ["给小王发送合同确认邮件"]
+  「买一个遮光窗帘」→ ["买一个遮光窗帘"]
+  「打电话确认会议时间」→ ["打电话确认会议时间"]
+
+**绝对不要**把原子动作拆成操作界面的点击或肢体动作：
+  ✗ 打开邮箱 → 填收件人 → 填主题 → 点击发送
+  ✗ 打开购物软件 → 搜索商品 → 点击购买
+这些只是完成一个自然动作时顺手发生的操作，不是值得管理的行动步骤。
+
 【铁律一：穷尽，不筛选】
 拆出来的步骤合起来必须**覆盖这个任务的全部**。
 **绝对不要**判断哪一步更重要、更值得做，也不要因为某步麻烦就省掉——
-少一步这个任务就完不成。要不要做、先做哪个，不归你管。
+少一步这个任务就完不成。只按实际依赖关系排序，不做重要性取舍。
 
 【铁律二：每一步都要过照片测试】
 能拍一张照片，照片里有人正在做它。
-  ✗ 梳理简历结构     ✓ 打开简历文档，把最近一段工作经历删掉重写
-  ✗ 熟悉一下岗位     ✓ 把 JD 里的任职要求抄到备忘录里
-  ✗ 准备自我介绍     ✓ 把自我介绍写成逐字稿，念三遍
+  ✗ 梳理简历结构     ✓ 重写简历里最近一段工作经历
+  ✗ 熟悉一下岗位     ✓ 标出 JD 里的 3 条核心要求
+  ✗ 准备自我介绍     ✓ 写出 200 字自我介绍稿
 
-【铁律三：第一条必须是最容易起步的那一条】
-第一条的作用是"让人动起来"，所以要小到几乎不需要下决心——
-往往就是"打开某个东西"。后面的可以正常大小。
+【铁律三：第一条必须是现在就能开始的下一步行动】
+第一条不能依赖前面尚未完成的步骤，必须同时说清：
+- 做什么动作
+- 对什么对象做
+- 做到哪里算完成
+
+它要足够小，但也要形成一次**有意义的推进**。不要把动作拆成无意义的肢体步骤：
+  ✗ 打开电脑 / 打开软件 / 拿出纸笔
+  ✓ 在备忘录列出视频的 3 个要点
+只有当「打开并定位到某个内容」本身就能解除阻塞时，才可以把“打开”作为一步。
+
+【铁律四：一步只承担一个主要动作】
+如果一句里出现“然后 / 再 / 并且 / 完成后”，优先拆开；但不要把一个自然动作机械地切碎。
+工具和界面操作只是动作的执行方式，不单独成步；每一步应带来一个看得见的推进或产出。
 
 【其他】
-- 给 3-6 条，按实际执行顺序排
+- 需要拆时给 2-6 条，按实际执行顺序排；不需要拆时只返回原任务一条
 - 每条不超过 20 字
 - 每条都要有终点：说得出做到哪算完（限定数量/范围，或要求留下痕迹）
 - 如果这个任务本身已经足够具体、一步就能做完，就只返回它自己一条
 
 【输出】必须是合法 JSON，不要输出其他内容：
 {"subtasks":["第一步","第二步"]}`;
+
+const CLARIFY_NEXT_ACTION_PROMPT = `你是一个“下一步行动”教练。用户会给你一个父任务和它当前排在最前面的行动步骤。
+
+你的目标不是打分，也不是重新拆完整个任务，而是判断：这句话能不能让人读完后直接开始，并且做完时知道自己已经完成。
+
+按以下顺序检查：
+1. 有具体动作：不是“推进、处理、准备、优化、想一下”这类抽象占位词
+2. 有具体对象：知道要对什么东西做这个动作
+3. 有完成边界：有数量、范围、时长、可见产出，或动作本身有天然终点（如发送、购买、发布），能回答“做完了吗”
+4. 只有一个主要动作：不是把多个先后步骤塞在一句话里
+5. 能推进父任务：不是“打开电脑、拿出纸笔”这种几乎没有独立价值的动作
+6. 完成标准在自己控制内：如果需要别人回复，当前行动应结束在“发出询问”，不要结束在“拿到回复”
+
+不要臆测用户是否有时间、文件、权限或动力；仅根据文字本身判断。也不要把自然动作拆成点击、移动鼠标等机械步骤。
+
+如果已经能直接行动，输出：
+{"ready":true}
+
+如果还不够清楚，只指出**最影响开工的一个问题**，并给一个改写：
+{"ready":false,"issue":"一个简短问题","suggestion":"改写后的下一步行动"}
+
+改写规则：
+- 原动作有实际意义时，必须保留核心动词和对象，不把“看/研究/联系”偷换成“写/收集/等待”
+- 例如「研究面试技巧」应改成「研究 1 篇面试技巧文章」，不能改成「阅读文章并记要点」；后者同时换了动作又增加了第二步
+- 只有“打开软件、处理、推进”这类动作本身没有独立推进价值时，才改成父任务里第一个有意义的动作
+- 补上最小但明确的边界，一句话只保留一个主要动作
+- 形成一次有意义的推进，而不是无意义地变小
+- 优先采用能在一个短时段完成的小边界，例如 1 个来源/章节、3 个要点、10 分钟或 100-300 字
+- “写初稿/做完初版”如果仍覆盖整个交付物，不算变小；应缩到第一个自然段、开头 30 秒或一个页面
+- 不要把“下一步”扩成整个交付物，也不要一次要求研究多篇资料
+- 尽量不超过 20 个字，像写给自己的待办
+- 必须输出合法 JSON，不要输出解释或其他字段`;
 
 // 只剩「有没有边界」这一种。timing/decision/effort 都撤了——
 // 缺锚点看习惯表里 anchor 字段有没有值就行（不会误判），费不费力只有你自己知道
@@ -312,6 +367,11 @@ const WAND_TYPE = new Set<string>(["onetime", "habit", "stop"]);
 
 export type LLMBehavior = { text: string; type: BehaviorType };
 export type BehaviorBlocker = "timing" | "decision" | "endpoint";
+export type NextActionClarification = {
+  ready: boolean;
+  issue?: string;
+  suggestion?: string;
+};
 
 export type LLMJudgement = {
   id: string;
@@ -382,6 +442,28 @@ export async function breakdownTaskWithLLM(
     if (t) out.push(t);
   }
   return out.slice(0, 8);
+}
+
+/** 检查当前下一步是否足够清楚；不打分，只返回一个最重要的问题和一个改写建议 */
+export async function clarifyNextActionWithLLM(
+  text: string,
+  parentTask: string,
+): Promise<NextActionClarification | null> {
+  const user = `父任务：${parentTask}\n当前下一步：${text}`;
+  const parsed = await callLLMJson(CLARIFY_NEXT_ACTION_PROMPT, user, {
+    think: true,
+    temperature: 0.2,
+  });
+  if (parsed === null || typeof parsed !== "object") return null;
+
+  const raw = parsed as Record<string, unknown>;
+  if (raw.ready === true) return { ready: true };
+  if (raw.ready !== false) return null;
+
+  const issue = String(raw.issue ?? "").trim().slice(0, 40);
+  const suggestion = String(raw.suggestion ?? "").trim().slice(0, 60);
+  if (!issue || !suggestion) return null;
+  return { ready: false, issue, suggestion };
 }
 
 export async function concreteWithLLM(text: string, goal?: string): Promise<LLMBehavior[] | null> {

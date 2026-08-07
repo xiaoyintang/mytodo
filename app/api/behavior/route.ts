@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   breakdownTaskWithLLM,
+  clarifyNextActionWithLLM,
   concreteWithLLM,
   hasLLM,
   magicWandWithLLM,
@@ -12,6 +13,7 @@ import {
 //   { mode: "sort", items: [{id,text}], goal? } → 批量判定：愿望/成果/一次性/可重复/要戒掉
 //   { mode: "wand", aspiration, existing?, context? } → 魔法棒：发散一批候选行为
 //   { mode: "breakdown", text, goal? } → 把一个任务拆成子步骤（穷尽，不筛选）
+//   { mode: "clarify-next", text, parentTask } → 检查当前下一步，只给一个问题和一个改写
 // 未配 LLM_API_KEY 一律返回 501，前端各自降级。
 
 const MAX_ITEMS = 40;
@@ -51,6 +53,16 @@ export async function POST(req: Request) {
     const subtasks = await breakdownTaskWithLLM(text, goal || undefined);
     if (subtasks === null) return NextResponse.json({ error: "llm_error" }, { status: 502 });
     return NextResponse.json({ subtasks });
+  }
+
+  if (mode === "clarify-next") {
+    const text = String(body.text ?? "").trim().slice(0, 200);
+    if (!text) return NextResponse.json({ error: "empty_text" }, { status: 400 });
+    const parentTask = String(body.parentTask ?? "").trim().slice(0, 200);
+    if (!parentTask) return NextResponse.json({ error: "empty_parent_task" }, { status: 400 });
+    const result = await clarifyNextActionWithLLM(text, parentTask);
+    if (result === null) return NextResponse.json({ error: "llm_error" }, { status: 502 });
+    return NextResponse.json(result);
   }
 
   if (mode === "shrink" || mode === "concrete") {
