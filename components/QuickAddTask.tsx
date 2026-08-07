@@ -147,14 +147,16 @@ export default function QuickAddTask({ onCreate }: { onCreate: (task: Omit<Task,
                   {t.targetMinutes ? (
                     <span className="flex items-center gap-0.5 text-[11px] font-medium text-[var(--color-primary)]">
                       <Timer className="w-3 h-3" />
-                      {formatMinutes(t.targetMinutes)}
+                      不限时段 · {formatMinutes(t.targetMinutes)}
                     </span>
                   ) : t.startTime ? (
                     <span className="text-[11px] text-[var(--color-text-tertiary)]">
                       {t.startTime}
                       {t.endTime ? ` - ${t.endTime}` : ""}
                     </span>
-                  ) : null}
+                  ) : (
+                    <span className="text-[11px] font-medium text-[var(--color-primary)]">不限时段</span>
+                  )}
                   {t.priority === "high" && (
                     <span className="flex items-center gap-0.5 text-[10px] font-medium text-[var(--color-danger)]">
                       <Flag className="w-3 h-3" fill="currentColor" strokeWidth={0} />

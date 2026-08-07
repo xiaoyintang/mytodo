@@ -46,10 +46,10 @@ function timeLabel(t: Task) {
   return "";
 }
 
-// 分组规则：时长目标任务单独一组「不限时段」；其余按开始时间 00:00-11:59 上午，12:00-17:59 下午，18:00+ 晚间
+// 分组规则：只要没给具体开始时间，就属于「不限时段」；
+// 有开始时间的再按 00:00-11:59 上午，12:00-17:59 下午，18:00+ 晚间。
 function sectionForTask(t: Task): "不限时段" | "上午" | "下午" | "晚间" {
-  if (t.targetMinutes) return "不限时段"; // 柳比歇夫模式：不限定几点做
-  if (!t.startTime) return "晚间"; // 无时间的放到晚间
+  if (!t.startTime) return "不限时段";
   const h = Number(t.startTime.slice(0, 2));
   if (h < 12) return "上午";
   if (h < 18) return "下午";
@@ -154,14 +154,21 @@ export default function TodoDayView({
   const weekStart = startOfWeek(selected, true);
   const days = Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
 
-  const dayTasks = tasks
-    .filter((t) => t.date === selectedDate)
-    .slice()
-    .sort((a, b) => (a.startTime ?? "99:99").localeCompare(b.startTime ?? "99:99"));
-
   // 今天主线
   const plan = dayPlans[selectedDate];
   const mainIds = plan?.primaryAspirationIds ?? [];
+  const isMainlineTask = (t: Task) => !!t.aspirationId && mainIds.includes(t.aspirationId);
+
+  const dayTasks = tasks
+    .filter((t) => t.date === selectedDate)
+    .slice()
+    .sort((a, b) => {
+      // 没有时间可比时，主线就是当天最重要的排序依据。
+      if (!a.startTime && !b.startTime) {
+        return Number(isMainlineTask(b)) - Number(isMainlineTask(a));
+      }
+      return (a.startTime ?? "99:99").localeCompare(b.startTime ?? "99:99");
+    });
 
   /**
    * 不属于今天主线的任务。**没归属目标的不算**——零必填，不填目标不该被折起来。
@@ -341,6 +348,11 @@ export default function TodoDayView({
             )}
 
             {/* 标签/状态 */}
+            {isMainlineTask(t) && !isDone && (
+              <div className="rounded bg-[var(--color-primary-light)] px-1.5 py-0.5">
+                <span className="text-[10px] font-semibold text-[var(--color-primary)]">主线</span>
+              </div>
+            )}
             {isDone ? (
               <div className="bg-[var(--color-success-light)] rounded px-1.5 py-0.5">
   <span className="text-[var(--color-success)] text-[10px] font-medium">已完成</span>

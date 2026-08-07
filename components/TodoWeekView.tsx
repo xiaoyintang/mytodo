@@ -44,10 +44,12 @@ type Props = {
 function WeekTaskRow({
   task,
   entries,
+  isMainline,
   onClick,
 }: {
   task: Task;
   entries: TimeEntry[];
+  isMainline: boolean;
   onClick: () => void;
 }) {
   const isDone = task.status === "done";
@@ -99,6 +101,12 @@ function WeekTaskRow({
         {task.title}
       </span>
 
+      {isMainline && !isDone && (
+        <span className="flex-shrink-0 rounded bg-[var(--color-primary-light)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-primary)]">
+          主线
+        </span>
+      )}
+
       {/* 右侧：时长目标进度 / 手动完成进度 / 开始时间 */}
       {target > 0 ? (
         <span
@@ -130,11 +138,13 @@ function DayRow({
   date,
   tasks,
   entries,
+  mainlineIds,
   onTaskClick,
 }: {
   date: Date;
   tasks: Task[];
   entries: TimeEntry[];
+  mainlineIds: string[];
   onTaskClick: (task: Task) => void;
 }) {
   const iso = toISODate(date);
@@ -142,11 +152,17 @@ function DayRow({
   const dayNum = date.getDate();
   const weekday = CN_WEEKDAY[date.getDay()];
 
-  // 时长目标任务排最前（对应日视图的「不限时段」），其余按开始时间
+  const isMainlineTask = (task: Task) =>
+    !!task.aspirationId && mainlineIds.includes(task.aspirationId);
+
+  // 不限时段排在具体时间之前；其中属于当天主线的再优先。
   const sortedTasks = [...tasks].sort((a, b) => {
-    const aKey = a.targetMinutes ? "00:00!" : (a.startTime ?? "99:99");
-    const bKey = b.targetMinutes ? "00:00!" : (b.startTime ?? "99:99");
-    return aKey.localeCompare(bKey);
+    if (!a.startTime && !b.startTime) {
+      return Number(isMainlineTask(b)) - Number(isMainlineTask(a));
+    }
+    if (!a.startTime) return -1;
+    if (!b.startTime) return 1;
+    return a.startTime.localeCompare(b.startTime);
   });
 
   const doneTasks = tasks.filter((t) => t.status === "done").length;
@@ -187,6 +203,7 @@ function DayRow({
               key={task.id}
               task={task}
               entries={entries}
+              isMainline={isMainlineTask(task)}
               onClick={() => onTaskClick(task)}
             />
           ))
@@ -364,6 +381,7 @@ export default function TodoWeekView({
                 date={d}
                 tasks={dayTasks}
                 entries={entries}
+                mainlineIds={dayPlans[iso]?.primaryAspirationIds ?? []}
                 onTaskClick={handleTaskClick}
               />
             );
