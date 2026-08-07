@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import type { ISODate } from "./types";
 
 export function pad2(n: number): string {
@@ -34,3 +37,31 @@ export function formatCNDateTitle(date: Date): string {
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 · ${CN_WEEKDAY[date.getDay()]}`;
 }
 
+
+/**
+ * "今天"必须是活的。**别用 `useMemo(() => toISODate(new Date()), [])`**——
+ * 依赖数组是空的，挂载时算一次就永远不变了。手机上 app 挂后台过一夜，
+ * 顶上的「今天主线」还停在昨天，而周视图里每次渲染重算的"今天"已经跳到今天，
+ * 两个"今天"当场对不上（真实踩过）。
+ *
+ * 一分钟查一次够了（只是比字符串，不重渲染），另外切回页面时立刻查一次——
+ * 手机锁屏一夜再点开，靠定时器要等最多一分钟才对，切回来查是即时的。
+ */
+export function useToday(): ISODate {
+  const [today, setToday] = useState<ISODate>(() => toISODate(new Date()));
+  useEffect(() => {
+    const check = () => {
+      const now = toISODate(new Date());
+      setToday((prev) => (prev === now ? prev : now));
+    };
+    const timer = setInterval(check, 60_000);
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("focus", check);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("focus", check);
+    };
+  }, []);
+  return today;
+}

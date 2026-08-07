@@ -140,6 +140,8 @@ export interface HabitLog {
   habitId: string;
   date: ISODate;
   at: string; // "HH:mm"
+  /** 做完之后立刻记下的正向变化。可选，不给打卡增加负担。 */
+  impact?: string;
 }
 
 /** 记录的大类，用于"今天时间都去哪了"的饼图 */
@@ -158,4 +160,3 @@ export interface TimeEntry {
   category?: EntryCategory; // 大类（关键词规则或 AI 判定）
   categorySource?: "user" | "ai"; // "user"=手动改过，以后同名记录都听它的，AI 不再覆盖
 }
-

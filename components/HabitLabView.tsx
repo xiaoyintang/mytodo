@@ -29,7 +29,8 @@ type Props = {
   habitLogs: HabitLog[];
   onAddHabit: (input: Omit<Habit, "id" | "createdAt">) => void;
   habitHasLogs: (habitId: string) => boolean;
-  onLogHabit: (habitId: string) => void;
+  onLogHabit: (habitId: string) => string;
+  onSetHabitLogImpact: (logId: string, impact: string) => void;
   onUndoHabitLog: (habitId: string) => void;
   onSetHabitAnchor: (habitId: string, anchor: string) => void;
   onToggleHabitMeasure: (habitId: string) => void;
@@ -64,6 +65,7 @@ export default function HabitLabView({
   onAddHabit,
   habitHasLogs,
   onLogHabit,
+  onSetHabitLogImpact,
   onUndoHabitLog,
   onSetHabitAnchor,
   onToggleHabitMeasure,
@@ -165,6 +167,7 @@ export default function HabitLabView({
             entries={entries}
             today={today}
             onLog={onLogHabit}
+            onSetLogImpact={onSetHabitLogImpact}
             onUndoLog={onUndoHabitLog}
             onSetAnchor={onSetHabitAnchor}
             onToggleMeasure={onToggleHabitMeasure}

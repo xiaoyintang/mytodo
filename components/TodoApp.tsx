@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import TodoDayView from "@/components/TodoDayView";
 import TodoWeekView from "@/components/TodoWeekView";
 import TimeLogView from "@/components/TimeLogView";
@@ -24,7 +24,7 @@ import type {
   ViewMode,
   TaskStatus,
 } from "@/components/todo/types";
-import { toISODate, parseISODate, addDays, startOfWeek } from "@/components/todo/date";
+import { toISODate, parseISODate, addDays, startOfWeek, useToday } from "@/components/todo/date";
 import { useLocalStorageState } from "@/components/todo/storage";
 import { useCloudSync } from "@/components/todo/sync";
 import { nextGoalColor } from "@/components/todo/goal";
@@ -102,7 +102,8 @@ const STATUS_CYCLE: Record<TaskStatus, TaskStatus> = {
 };
 
 export default function TodoApp() {
-  const todayIso = useMemo(() => toISODate(new Date()), []);
+  // 活的"今天"：跨零点会自己跳。写死成 useMemo(..., []) 踩过坑，见 useToday 注释
+  const todayIso = useToday();
   const { value: tasks, setValue: setTasks, hydrated } = useLocalStorageState<Task[]>(
     STORAGE_KEY,
     seedTasks(todayIso),
@@ -130,6 +131,15 @@ export default function TodoApp() {
   const [viewMode, setViewMode] = useState<ViewMode>("day");
   const [goalsOpen, setGoalsOpen] = useState(false); // 从常驻条进的目标管理页
   const [selectedDate, setSelectedDate] = useState<ISODate>(todayIso);
+
+  // 跨零点时，**只有当你正停在"昨天的今天"上**才跟着跳到新的今天。
+  // 你自己翻到别的日期看，就别动——那是你主动选的
+  const prevTodayRef = useRef(todayIso);
+  useEffect(() => {
+    if (prevTodayRef.current === todayIso) return;
+    setSelectedDate((cur) => (cur === prevTodayRef.current ? todayIso : cur));
+    prevTodayRef.current = todayIso;
+  }, [todayIso]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSyncOpen, setIsSyncOpen] = useState(false);
   // 时间记录撤回栈：每次用户改动记录前先存一份快照，最多留 30 步
@@ -621,7 +631,7 @@ export default function TodoApp() {
   }
 
   // 打卡：一天可以点很多次，每次一行（锚点一天可能触发好几次）
-  function logHabit(habitId: string) {
+  function logHabit(habitId: string): string {
     const d = new Date();
     const log: HabitLog = {
       id: `hl-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -630,6 +640,14 @@ export default function TodoApp() {
       at: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`,
     };
     setHabitLogs((prev) => [...prev, log]);
+    return log.id;
+  }
+
+  // 正向影响跟着这次真实发生的行为走，不另外建一张“感受表”。
+  function setHabitLogImpact(logId: string, impact: string) {
+    setHabitLogs((prev) =>
+      prev.map((log) => (log.id === logId ? { ...log, impact: impact.trim() || undefined } : log)),
+    );
   }
 
   // 点错了撤掉今天最后一次
@@ -816,6 +834,7 @@ export default function TodoApp() {
           onAddHabit={addHabit}
           habitHasLogs={habitHasLogs}
           onLogHabit={logHabit}
+          onSetHabitLogImpact={setHabitLogImpact}
           onUndoHabitLog={undoHabitLog}
           onSetHabitAnchor={setHabitAnchor}
           onToggleHabitMeasure={toggleHabitMeasure}

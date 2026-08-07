@@ -1,10 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Aspiration, Habit, HabitLog, ISODate, TimeEntry } from "@/components/todo/types";
 import { formatMinutes } from "@/components/todo/time";
 import { toISODate } from "@/components/todo/date";
-import { Check, ChevronDown, ChevronRight, Clock, Plus, Target, Trash2, Undo2 } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  Plus,
+  Sparkles,
+  Target,
+  Trash2,
+  Undo2,
+  X,
+} from "lucide-react";
 import { useLocalStorageState } from "@/components/todo/storage";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
@@ -14,7 +25,8 @@ type Props = {
   logs: HabitLog[];
   entries: TimeEntry[];
   today: ISODate;
-  onLog: (habitId: string) => void;
+  onLog: (habitId: string) => string;
+  onSetLogImpact: (logId: string, impact: string) => void;
   onUndoLog: (habitId: string) => void;
   onSetAnchor: (habitId: string, anchor: string) => void;
   onToggleMeasure: (habitId: string) => void;
@@ -23,6 +35,50 @@ type Props = {
 };
 
 const EMPTY_COLLAPSED: string[] = [];
+const POSITIVE_IMPACTS = ["更轻松", "更清醒", "更有能量", "更踏实"];
+const MILESTONES = new Set([3, 7, 10, 25, 50, 100, 200, 365]);
+
+type Celebration = {
+  habitId: string;
+  logId: string;
+  title: string;
+  headline: string;
+  detail: string;
+  impact?: string;
+};
+
+function celebrationCopy(total: number, todayCount: number, aspirationTitle?: string) {
+  if (total === 1) {
+    return {
+      headline: "第一次发生，值得记住",
+      detail: aspirationTitle
+        ? `这不是计划。你已经为「${aspirationTitle}」做了一次真实行动。`
+        : "这不是“打算做”，而是一次已经发生的行动。",
+    };
+  }
+  if (MILESTONES.has(total)) {
+    return {
+      headline: `这是累计第 ${total} 次`,
+      detail: aspirationTitle
+        ? `一次次行动，正在让「${aspirationTitle}」变得更真实。`
+        : "你正在把偶然发生，慢慢变成更自然的选择。",
+    };
+  }
+  if (todayCount > 1) {
+    return {
+      headline: `今天第 ${todayCount} 次`,
+      detail: aspirationTitle
+        ? `你又为「${aspirationTitle}」投了一票。`
+        : "重复正在降低下一次行动的启动成本。",
+    };
+  }
+  return {
+    headline: "这次算数",
+    detail: aspirationTitle
+      ? `你刚刚为「${aspirationTitle}」投了一票。`
+      : "它已经从“想做”变成了“做过”。",
+  };
+}
 
 /**
  * 累计次数 + 最近 30 天做了几天。
@@ -62,6 +118,7 @@ export default function HabitTracker({
   entries,
   today,
   onLog,
+  onSetLogImpact,
   onUndoLog,
   onSetAnchor,
   onToggleMeasure,
@@ -76,7 +133,15 @@ export default function HabitTracker({
   const [editAnchor, setEditAnchor] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [justTapped, setJustTapped] = useState<string | null>(null);
+  const [celebration, setCelebration] = useState<Celebration | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<Habit | null>(null);
+  const celebrationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (celebrationTimer.current) clearTimeout(celebrationTimer.current);
+    };
+  }, []);
 
   const live = habits.filter((h) => !h.archived);
   if (live.length === 0) return null;
@@ -90,9 +155,45 @@ export default function HabitTracker({
   const orphans = live.filter((h) => !h.aspirationId || !aspirations.some((a) => a.id === h.aspirationId));
   if (orphans.length > 0) groups.push({ key: "__none__", title: null, items: orphans });
 
+  const todayActiveHabits = live.filter((h) => {
+    if (h.measure === "duration") return fromLedger(h, entries, today).count > 0;
+    return logs.some((l) => l.habitId === h.id && l.date === today);
+  });
+  const todayActionCount = live.reduce((sum, h) => {
+    if (h.measure === "duration") return sum + fromLedger(h, entries, today).count;
+    return sum + logs.filter((l) => l.habitId === h.id && l.date === today).length;
+  }, 0);
+  const todayTargetTitles = Array.from(
+    new Set(
+      todayActiveHabits
+        .map((h) => aspirations.find((a) => a.id === h.aspirationId)?.title)
+        .filter((title): title is string => Boolean(title)),
+    ),
+  );
+  const todayImpacts = Array.from(
+    new Set(
+      logs
+        .filter((l) => l.date === today && l.impact)
+        .map((l) => l.impact as string)
+        .reverse(),
+    ),
+  ).slice(0, 3);
+
+  function dismissCelebration(afterMs = 0) {
+    if (celebrationTimer.current) clearTimeout(celebrationTimer.current);
+    celebrationTimer.current = setTimeout(() => setCelebration(null), afterMs);
+  }
+
   function tap(h: Habit) {
-    onLog(h.id);
-    // 点一下要有回应——这一下就是奖励本身（福格的「庆祝」）
+    const logId = onLog(h.id);
+    const aspirationTitle = aspirations.find((a) => a.id === h.aspirationId)?.title;
+    const currentStats = habitStats(h, logs, entries, today);
+    const todayCount = logs.filter((l) => l.habitId === h.id && l.date === today).length + 1;
+    const copy = celebrationCopy(currentStats.total + 1, todayCount, aspirationTitle);
+
+    // 不只闪一下：把“发生了什么、为什么算数”明确说出来，再允许顺手记下正向影响。
+    setCelebration({ habitId: h.id, logId, title: h.title, ...copy });
+    dismissCelebration(6500);
     setJustTapped(h.id);
     try {
       navigator.vibrate?.(12); // 安卓上多一层触感；iOS 不支持，静默忽略
@@ -100,6 +201,13 @@ export default function HabitTracker({
       /* ignore */
     }
     setTimeout(() => setJustTapped((cur) => (cur === h.id ? null : cur)), 750);
+  }
+
+  function chooseImpact(impact: string) {
+    if (!celebration) return;
+    onSetLogImpact(celebration.logId, impact);
+    setCelebration((current) => (current ? { ...current, impact } : current));
+    dismissCelebration(1800);
   }
 
   function isShut(key: string): boolean {
@@ -128,9 +236,51 @@ export default function HabitTracker({
       <div className="w-full flex items-center justify-between">
         <span className="text-[var(--color-text-primary)] text-[15px] font-semibold">今天</span>
         <span className="text-[var(--color-text-tertiary)] text-[11px]">
-          做了就点一下 · 不看连续天数
+          只积累，不因中断清零
         </span>
       </div>
+
+      {todayActionCount > 0 && (
+        <div
+          className="relative overflow-hidden rounded-[14px] border border-[#BBF7D0] bg-gradient-to-br from-[#F0FDF4] via-white to-[#EFF6FF] px-4 py-3.5"
+          aria-live="polite"
+        >
+          <div className="absolute -right-5 -top-7 h-20 w-20 rounded-full bg-[#86EFAC]/20" />
+          <div className="relative flex items-start gap-3">
+            <div className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[#16A34A] text-white shadow-[0_5px_14px_rgba(22,163,74,0.22)]">
+              <Sparkles className="h-4 w-4" strokeWidth={2.5} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline gap-1.5">
+                <strong className="text-[24px] leading-none tabular-nums text-[#15803D]">
+                  {todayActionCount}
+                </strong>
+                <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">
+                  次行动已经真实发生
+                </span>
+              </div>
+              <p className="mt-1 text-[11px] leading-relaxed text-[var(--color-text-secondary)]">
+                {todayTargetTitles.length > 0
+                  ? `正在推动「${todayTargetTitles.slice(0, 2).join("」「")}」${todayTargetTitles.length > 2 ? `等 ${todayTargetTitles.length} 个目标` : ""}`
+                  : `今天有 ${todayActiveHabits.length} 个习惯从“想做”变成了“做过”`}
+              </p>
+              {todayImpacts.length > 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] text-[var(--color-text-tertiary)]">今天感受到</span>
+                  {todayImpacts.map((impact) => (
+                    <span
+                      key={impact}
+                      className="rounded-full border border-[#BBF7D0] bg-white/80 px-2 py-0.5 text-[10px] font-medium text-[#15803D]"
+                    >
+                      {impact}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {groups.map((g) => (
         <div key={g.key} className="w-full flex flex-col gap-1.5">
@@ -168,6 +318,8 @@ export default function HabitTracker({
               : logs.filter((l) => l.habitId === h.id && l.date === today).length;
             const flash = justTapped === h.id;
             const editing = editAnchor === h.id;
+            const stats = habitStats(h, logs, entries, today);
+            const activeCelebration = celebration?.habitId === h.id ? celebration : null;
 
             return (
               <div
@@ -218,66 +370,82 @@ export default function HabitTracker({
                   )
                 )}
 
-                <div className="w-full flex items-start gap-1.5">
-                  <span className="flex-1 min-w-0 text-[13px] font-medium text-[var(--color-text-primary)] leading-snug break-words">
-                    {h.title}
-                    {!h.anchor && !editing && (
+                <div className="w-full flex items-center gap-3 py-0.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start gap-1">
+                      <span className="min-w-0 flex-1 break-words text-[14px] font-semibold leading-snug text-[var(--color-text-primary)]">
+                        {h.title}
+                        {!h.anchor && !editing && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditAnchor(h.id);
+                              setDraft("");
+                            }}
+                            className="ml-1.5 text-[10px] font-normal text-[var(--color-primary)]"
+                          >
+                            ＋锚点
+                          </button>
+                        )}
+                      </span>
                       <button
                         type="button"
-                        onClick={() => {
-                          setEditAnchor(h.id);
-                          setDraft("");
-                        }}
-                        className="ml-1.5 text-[10px] font-normal text-[var(--color-primary)]"
+                        onClick={() => setConfirmRemove(h)}
+                        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md hover:bg-[var(--color-bg-gray-light)]"
+                        aria-label="移出习惯表"
+                        title="移出习惯表（行为还在焦点地图上，随时能加回来）"
                       >
-                        ＋锚点
+                        <Trash2 className="h-[13px] w-[13px] text-[#A1A1AA]" />
                       </button>
-                    )}
-                  </span>
+                    </div>
 
-                  {/* 今天的成绩，一小段，不单独占行 */}
-                  <span
-                    key={`${h.id}-${count}`}
-                    className={[
-                      "text-[11px] tabular-nums flex-shrink-0 mt-[3px]",
-                      count > 0 ? "text-[var(--color-primary)] font-semibold" : "text-[var(--color-text-tertiary)]",
-                      flash ? "animate-habit-pop text-[#16A34A]" : "",
-                    ].join(" ")}
-                  >
-                    {isDuration
-                      ? count > 0
-                        ? `${count}次 ${formatMinutes(ledger?.minutes ?? 0)}`
-                        : "记录里记"
-                      : count > 0
-                        ? `${count}次`
-                        : "—"}
-                  </span>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] tabular-nums text-[var(--color-text-tertiary)]">
+                      <span
+                        key={`${h.id}-${count}`}
+                        className={[
+                          count > 0 ? "font-semibold text-[#15803D]" : "",
+                          flash ? "animate-habit-pop text-[#16A34A]" : "",
+                        ].join(" ")}
+                      >
+                        {isDuration
+                          ? count > 0
+                            ? `今天 ${count} 次 · ${formatMinutes(ledger?.minutes ?? 0)}`
+                            : "今天还没有时长记录"
+                          : count > 0
+                            ? `今天 ${count} 次`
+                            : "今天还没发生"}
+                      </span>
+                      {stats.total > 0 && <span>累计 {stats.total}</span>}
+                      {stats.total > 0 && <span>近 30 天 {stats.days30} 天</span>}
+                    </div>
+                  </div>
 
                   {isDuration ? (
                     <button
                       type="button"
                       onClick={() => onToggleMeasure(h.id)}
-                      className="w-9 h-8 rounded-lg bg-[var(--color-bg-gray-lighter)] border border-[var(--color-border)] flex items-center justify-center flex-shrink-0"
-                      title="按时长记（成绩来自「记录」）。点这里改成点一下计次"
+                      className="flex h-10 flex-shrink-0 items-center gap-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-gray-lighter)] px-3 text-[11px] font-medium text-[var(--color-text-secondary)]"
+                      title="按时长记，成绩来自「记录」。点这里改成点一下计次"
                     >
-                      <Clock className="w-3.5 h-3.5 text-[var(--color-text-tertiary)]" />
+                      <Clock className="h-3.5 w-3.5" />
+                      记录读取
                     </button>
                   ) : (
-                    <>
+                    <div className="flex flex-shrink-0 items-center gap-1">
                       {count > 0 && (
                         <button
                           type="button"
                           onClick={() => onUndoLog(h.id)}
-                          className="w-6 h-8 flex items-center justify-center flex-shrink-0"
+                          className="flex h-10 w-7 items-center justify-center rounded-lg hover:bg-[var(--color-bg-gray-light)]"
                           aria-label="点错了，撤掉一次"
                           title="点错了，撤掉一次"
                         >
-                          <Undo2 className="w-3.5 h-3.5 text-[#A1A1AA]" />
+                          <Undo2 className="h-3.5 w-3.5 text-[#A1A1AA]" />
                         </button>
                       )}
-                      <div className="relative flex-shrink-0">
+                      <div className="relative">
                         {flash && (
-                          <span className="animate-habit-float-up pointer-events-none absolute -top-1 left-1/2 -translate-x-1/2 text-[15px] font-bold text-[#16A34A]">
+                          <span className="animate-habit-float-up pointer-events-none absolute -top-2 left-1/2 -translate-x-1/2 text-[15px] font-bold text-[#16A34A]">
                             +1
                           </span>
                         )}
@@ -285,43 +453,83 @@ export default function HabitTracker({
                           type="button"
                           onClick={() => tap(h)}
                           className={[
-                            "w-11 h-8 rounded-lg flex items-center justify-center",
-                            "text-white transition-all duration-200 active:scale-90",
-                            flash ? "bg-[#16A34A] scale-110" : "bg-[var(--color-primary)] hover:bg-[#1d4ed8]",
+                            "flex h-10 min-w-[88px] items-center justify-center gap-1.5 rounded-xl px-3 text-[12px] font-semibold text-white shadow-sm",
+                            "transition-all duration-200 active:scale-95",
+                            flash
+                              ? "scale-105 bg-[#16A34A] shadow-[0_5px_14px_rgba(22,163,74,0.25)]"
+                              : "bg-[var(--color-primary)] hover:bg-[#1d4ed8]",
                           ].join(" ")}
                           aria-label={`记一次「${h.title}」`}
                         >
                           {flash ? (
-                            <Check className="w-4 h-4" strokeWidth={3} />
+                            <Check className="h-4 w-4" strokeWidth={3} />
                           ) : (
-                            <Plus className="w-4 h-4" strokeWidth={3} />
+                            <Plus className="h-4 w-4" strokeWidth={3} />
                           )}
+                          {flash ? "记下了" : count > 0 ? "再记一次" : "我做了"}
                         </button>
                       </div>
-                    </>
+                    </div>
                   )}
-
-                  {(() => {
-                    const st = habitStats(h, logs, entries, today);
-                    if (st.total === 0) return null;
-                    return (
-                      <span className="text-[10px] text-[var(--color-text-tertiary)] tabular-nums flex-shrink-0 mt-[4px] leading-tight text-right">
-                        累计 {st.total}
-                        <br />
-                        30天 {st.days30} 天
-                      </span>
-                    );
-                  })()}
-                  <button
-                    type="button"
-                    onClick={() => setConfirmRemove(h)}
-                    className="w-4 h-8 flex items-center justify-center flex-shrink-0"
-                    aria-label="移出习惯表"
-                    title="移出习惯表（行为还在焦点地图上，随时能加回来）"
-                  >
-                    <Trash2 className="w-[13px] h-[13px] text-[#A1A1AA]" />
-                  </button>
                 </div>
+
+                {activeCelebration && (
+                  <div
+                    key={activeCelebration.logId}
+                    className="animate-habit-celebrate-in relative mt-2 overflow-hidden rounded-[12px] border border-[#BBF7D0] bg-[#F0FDF4] p-3"
+                    role="status"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => dismissCelebration()}
+                      className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-[#86A690] hover:bg-white/70"
+                      aria-label="收起完成反馈"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                    <div className="flex items-start gap-2.5 pr-6">
+                      <div className="animate-habit-check-burst relative flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#16A34A] text-white">
+                        <Check className="h-4 w-4" strokeWidth={3} />
+                        <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-[#60A5FA]" />
+                        <span className="absolute -bottom-0.5 -left-1 h-1 w-1 rounded-full bg-[#F59E0B]" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13px] font-bold text-[#166534]">{activeCelebration.headline}</p>
+                        <p className="mt-0.5 text-[11px] leading-relaxed text-[#3F6650]">
+                          {activeCelebration.detail}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-2.5 border-t border-[#DCFCE7] pt-2.5">
+                      <p className="text-[10px] font-medium text-[#4F6F5B]">
+                        {activeCelebration.impact ? "正向变化也记下来了" : "做完后，有什么正向变化？（可选）"}
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {POSITIVE_IMPACTS.map((impact) => {
+                          const selected = activeCelebration.impact === impact;
+                          return (
+                            <button
+                              key={impact}
+                              type="button"
+                              onClick={() => chooseImpact(impact)}
+                              aria-pressed={selected}
+                              className={[
+                                "rounded-full border px-2.5 py-1 text-[10px] font-medium transition-all active:scale-95",
+                                selected
+                                  ? "border-[#16A34A] bg-[#16A34A] text-white"
+                                  : "border-[#BBF7D0] bg-white text-[#3F6650] hover:border-[#4ADE80]",
+                              ].join(" ")}
+                            >
+                              {selected && <Check className="mr-1 inline h-3 w-3" strokeWidth={3} />}
+                              {impact}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
