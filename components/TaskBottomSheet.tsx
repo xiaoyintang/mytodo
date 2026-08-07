@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import type { Aspiration, Task, TaskStatus, ISODate, TimeEntry } from "@/components/todo/types";
+import type { Aspiration, Task, TaskStatus, ISODate, SubTask, TimeEntry } from "@/components/todo/types";
 import { parseISODate, toISODate, startOfWeek, addDays, CN_WEEKDAY } from "@/components/todo/date";
 import { goalColor } from "@/components/todo/goal";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
@@ -527,18 +527,96 @@ export default function TaskBottomSheet({
             </div>
           )}
 
-          {/* 拆解成子步骤。
-              「梳理项目」四个字没法动手，得先有「打开文档把项目名写在第一行」。
-              做成列表而不是一个 nextAction 字段：能打勾，于是白得一个进度。 */}
+          {/* 成果可以作为父任务，但执行现场要明确当前下一步。 */}
           {(() => {
+            const taskId = task.id;
             const subs = task.subtasks ?? [];
             const doneN = subs.filter((x) => x.done).length;
+            const openSubs = subs.filter((x) => !x.done);
+            const nextSubtask = openSubs[0];
+            const futureSubtasks = openSubs.slice(1);
+            const completedSubtasks = subs.filter((x) => x.done);
+
+            function renderSubtaskRow(st: SubTask, isNext = false) {
+              return (
+                <div
+                  key={st.id}
+                  className={[
+                    "w-full flex items-start gap-2 px-2.5 py-2 rounded-lg border",
+                    isNext
+                      ? "bg-[var(--color-primary-light)] border-[#BFDBFE]"
+                      : "bg-white border-transparent",
+                  ].join(" ")}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onToggleSubtask(taskId, st.id)}
+                    className={[
+                      "w-[16px] h-[16px] rounded-[4px] border flex items-center justify-center flex-shrink-0 mt-[1px] transition-colors",
+                      st.done
+                        ? "bg-[var(--color-success)] border-[var(--color-success)]"
+                        : isNext
+                          ? "border-[var(--color-primary)] bg-white"
+                          : "border-[var(--color-border)] hover:border-[var(--color-primary)]",
+                    ].join(" ")}
+                    aria-label={st.done ? "取消完成" : isNext ? "完成当前下一步" : "标记完成"}
+                  >
+                    {st.done && <Check className="w-3 h-3 text-white" strokeWidth={3.5} />}
+                  </button>
+                  {editingSubId === st.id ? (
+                    <input
+                      type="text"
+                      value={editSubText}
+                      autoFocus
+                      onChange={(e) => setEditSubText(e.target.value)}
+                      onBlur={() => {
+                        const v = editSubText.trim();
+                        if (v && v !== st.title) onEditSubtask(taskId, st.id, v);
+                        setEditingSubId(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.nativeEvent.isComposing) e.currentTarget.blur();
+                        if (e.key === "Escape") setEditingSubId(null);
+                      }}
+                      className="flex-1 min-w-0 px-1.5 py-0.5 rounded border border-[var(--color-primary)] text-[13px] focus:outline-none"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingSubId(st.id);
+                        setEditSubText(st.title);
+                      }}
+                      className={[
+                        "flex-1 text-left text-[13px] leading-snug break-words",
+                        st.done
+                          ? "text-[var(--color-text-tertiary)] line-through"
+                          : isNext
+                            ? "text-[var(--color-text-primary)] font-medium"
+                            : "text-[var(--color-text-primary)]",
+                      ].join(" ")}
+                    >
+                      {st.title}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => onDeleteSubtask(taskId, st.id)}
+                    className="w-[16px] h-[16px] flex items-center justify-center flex-shrink-0 mt-[1px]"
+                    aria-label="删除子步骤"
+                  >
+                    <Trash2 className="w-[14px] h-[14px] text-[#A1A1AA]" />
+                  </button>
+                </div>
+              );
+            }
+
             return (
               <div className="mb-4">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="flex items-center gap-1.5 text-[13px] font-medium text-[var(--color-text-primary)]">
                     <ListChecks className="w-4 h-4 text-[var(--color-primary)]" />
-                    拆解
+                    行动步骤
                     {subs.length > 0 && (
                       <span className="text-[12px] font-normal text-[var(--color-text-tertiary)] tabular-nums">
                         {doneN}/{subs.length}
@@ -566,78 +644,41 @@ export default function TaskBottomSheet({
                     className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-[var(--color-primary-light)] text-[var(--color-primary)] text-[11px] font-medium hover:bg-[#DBEAFE] transition-colors disabled:opacity-60"
                   >
                     <Wand2 className="w-3 h-3" />
-                    {breaking ? "拆解中…" : "AI 拆一下"}
+                    {breaking ? "拆解中…" : "AI 拆成步骤"}
                   </button>
                 </div>
 
                 {subs.length === 0 && (
                   <p className="text-[11px] leading-relaxed text-[var(--color-text-tertiary)] mb-1.5">
-                    盯着任务名发呆的时候，先写一句「现在具体动哪根手指」。
-                    不用一次拆完，加一条做一条也行。
+                    标题本身能直接做，就不用拆；如果它表达的是一个成果，先写下现在能做的第一步。
+                    不用一次拆完，加一步、做一步也可以。
                   </p>
                 )}
 
-                <div className="flex flex-col gap-0.5">
-                  {subs.map((st) => (
-                    <div key={st.id} className="w-full flex items-start gap-2 py-1">
-                      <button
-                        type="button"
-                        onClick={() => onToggleSubtask(task.id, st.id)}
-                        className={[
-                          "w-[16px] h-[16px] rounded-[4px] border flex items-center justify-center flex-shrink-0 mt-[1px] transition-colors",
-                          st.done
-                            ? "bg-[var(--color-success)] border-[var(--color-success)]"
-                            : "border-[var(--color-border)] hover:border-[var(--color-primary)]",
-                        ].join(" ")}
-                        aria-label={st.done ? "取消完成" : "标记完成"}
-                      >
-                        {st.done && <Check className="w-3 h-3 text-white" strokeWidth={3.5} />}
-                      </button>
-                      {editingSubId === st.id ? (
-                        <input
-                          type="text"
-                          value={editSubText}
-                          autoFocus
-                          onChange={(e) => setEditSubText(e.target.value)}
-                          onBlur={() => {
-                            const v = editSubText.trim();
-                            if (v && v !== st.title) onEditSubtask(task.id, st.id, v);
-                            setEditingSubId(null);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && !e.nativeEvent.isComposing) e.currentTarget.blur();
-                            if (e.key === "Escape") setEditingSubId(null);
-                          }}
-                          className="flex-1 min-w-0 px-1.5 py-0.5 rounded border border-[var(--color-primary)] text-[13px] focus:outline-none"
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingSubId(st.id);
-                            setEditSubText(st.title);
-                          }}
-                          className={[
-                            "flex-1 text-left text-[13px] leading-snug break-words",
-                            st.done
-                              ? "text-[var(--color-text-tertiary)] line-through"
-                              : "text-[var(--color-text-primary)]",
-                          ].join(" ")}
-                        >
-                          {st.title}
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => onDeleteSubtask(task.id, st.id)}
-                        className="w-[16px] h-[16px] flex items-center justify-center flex-shrink-0 mt-[1px]"
-                        aria-label="删除子步骤"
-                      >
-                        <Trash2 className="w-[14px] h-[14px] text-[#A1A1AA]" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
+                {nextSubtask && (
+                  <div className="flex flex-col gap-1 mb-2">
+                    <span className="text-[10px] font-semibold text-[var(--color-primary)]">当前下一步</span>
+                    {renderSubtaskRow(nextSubtask, true)}
+                  </div>
+                )}
+
+                {futureSubtasks.length > 0 && (
+                  <div className="flex flex-col gap-0.5 mb-2">
+                    <span className="text-[10px] font-medium text-[var(--color-text-tertiary)] px-0.5">
+                      后续步骤
+                    </span>
+                    {futureSubtasks.map((st) => renderSubtaskRow(st))}
+                  </div>
+                )}
+
+                {completedSubtasks.length > 0 && (
+                  <div className="flex flex-col gap-0.5 mb-2">
+                    <span className="text-[10px] font-medium text-[var(--color-text-tertiary)] px-0.5">
+                      已完成
+                    </span>
+                    {completedSubtasks.map((st) => renderSubtaskRow(st))}
+                  </div>
+                )}
 
                 <input
                   type="text"
@@ -652,7 +693,7 @@ export default function TaskBottomSheet({
                     }
                   }}
                   enterKeyHint="done"
-                  placeholder="加一步，回车"
+                  placeholder="添加一个行动步骤，回车"
                   className="w-full mt-1 px-2.5 py-1.5 rounded-lg border border-[var(--color-border)] text-[13px] bg-white focus:outline-none focus:border-[var(--color-primary)]"
                 />
               </div>

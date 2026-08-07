@@ -120,6 +120,15 @@ export default function TodoDayView({
   // 展开的任务（看子任务）。默认全收起——卡片列表要保持一眼扫得完
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
+  function toggleTaskExpanded(taskId: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  }
+
   // Get the latest task data from tasks array
   const selectedTask = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) ?? null : null;
   const deleteTarget = deleteTargetId ? tasks.find((t) => t.id === deleteTargetId) ?? null : null;
@@ -169,9 +178,9 @@ export default function TodoDayView({
     晚间: focusTasks.filter((t) => sectionForTask(t) === "晚间"),
   } as const;
 
-  // 任务卡：必做卡、正常分组、折叠区三处共用
+  // 任务卡：简单任务直接执行；有子步骤的任务把第一条未完成步骤露成「下一步」。
   function renderTaskCard(t: Task) {
-                  const isDone = t.status === "done";
+    const isDone = t.status === "done";
     const isInProgress = t.status === "in_progress";
     const isHigh = t.priority === "high";
     const time = timeLabel(t);
@@ -181,6 +190,7 @@ export default function TodoDayView({
     const manualPct = target > 0 ? 0 : (t.progress ?? 0);
     const subs = t.subtasks ?? [];
     const subDone = subs.filter((x) => x.done).length;
+    const nextSubtask = subs.find((x) => !x.done);
     const isExpanded = expanded.has(t.id);
 
     return (
@@ -195,7 +205,10 @@ export default function TodoDayView({
       >
       <div
         className="w-full flex items-center gap-3 px-3.5 py-3 cursor-pointer"
-        onClick={() => onCycleTaskStatus(t.id)}
+        onClick={() => {
+          if (subs.length > 0) toggleTaskExpanded(t.id);
+          else onCycleTaskStatus(t.id);
+        }}
       >
         {/* Status Indicator */}
         <StatusIndicator status={t.status} onClick={() => onCycleTaskStatus(t.id)} />
@@ -211,6 +224,27 @@ export default function TodoDayView({
           >
             {t.title}
           </span>
+
+          {/* 项目型任务的执行入口：父标题交代成果，第一条未完成步骤负责让行为发生。 */}
+          {nextSubtask && !isExpanded && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleSubtask(t.id, nextSubtask.id);
+              }}
+              className="w-full flex items-start gap-2 mt-1.5 px-2.5 py-2 rounded-lg bg-[var(--color-primary-light)] text-left hover:bg-[#DBEAFE] transition-colors"
+              aria-label={`完成下一步：${nextSubtask.title}`}
+            >
+              <span className="mt-[1px] w-[15px] h-[15px] rounded-[4px] border border-[var(--color-primary)] bg-white flex items-center justify-center flex-shrink-0" />
+              <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+                <span className="text-[10px] font-semibold text-[var(--color-primary)]">下一步</span>
+                <span className="text-[12px] leading-snug text-[var(--color-text-primary)] break-words">
+                  {nextSubtask.title}
+                </span>
+              </span>
+            </button>
+          )}
 
           {/* 时长目标进度（柳比歇夫模式任务） */}
           {target > 0 && (
@@ -287,12 +321,7 @@ export default function TodoDayView({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setExpanded((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(t.id)) next.delete(t.id);
-                    else next.add(t.id);
-                    return next;
-                  });
+                  toggleTaskExpanded(t.id);
                 }}
                 className="flex items-center gap-0.5 rounded px-1.5 py-0.5 bg-[var(--color-bg-gray-light)] hover:bg-[var(--color-border)] transition-colors"
               >
@@ -353,35 +382,50 @@ export default function TodoDayView({
 
         {isExpanded && subs.length > 0 && (
           <div className="w-full flex flex-col gap-0.5 px-3.5 pb-2.5 pt-0.5 border-t border-[var(--color-border)]">
-            {subs.map((st) => (
-              <button
-                key={st.id}
-                type="button"
-                onClick={() => onToggleSubtask(t.id, st.id)}
-                className="w-full flex items-start gap-2 py-1 text-left group"
-              >
-                <span
+            {subs.map((st) => {
+              const isNext = st.id === nextSubtask?.id;
+              return (
+                <button
+                  key={st.id}
+                  type="button"
+                  onClick={() => onToggleSubtask(t.id, st.id)}
                   className={[
-                    "w-[15px] h-[15px] rounded-[4px] border flex items-center justify-center flex-shrink-0 mt-[1px] transition-colors",
-                    st.done
-                      ? "bg-[var(--color-success)] border-[var(--color-success)]"
-                      : "border-[var(--color-border)] group-hover:border-[var(--color-primary)]",
+                    "w-full flex items-start gap-2 px-2 py-1.5 rounded-md text-left group",
+                    isNext ? "bg-[var(--color-primary-light)]" : "",
                   ].join(" ")}
                 >
-                  {st.done && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3.5} />}
-                </span>
-                <span
-                  className={[
-                    "flex-1 text-[12px] leading-snug break-words",
-                    st.done
-                      ? "text-[var(--color-text-tertiary)] line-through"
-                      : "text-[var(--color-text-secondary)]",
-                  ].join(" ")}
-                >
-                  {st.title}
-                </span>
-              </button>
-            ))}
+                  <span
+                    className={[
+                      "w-[15px] h-[15px] rounded-[4px] border flex items-center justify-center flex-shrink-0 mt-[1px] transition-colors",
+                      st.done
+                        ? "bg-[var(--color-success)] border-[var(--color-success)]"
+                        : isNext
+                          ? "border-[var(--color-primary)] bg-white"
+                          : "border-[var(--color-border)] group-hover:border-[var(--color-primary)]",
+                    ].join(" ")}
+                  >
+                    {st.done && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3.5} />}
+                  </span>
+                  <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+                    {isNext && (
+                      <span className="text-[9px] font-semibold text-[var(--color-primary)]">下一步</span>
+                    )}
+                    <span
+                      className={[
+                        "text-[12px] leading-snug break-words",
+                        st.done
+                          ? "text-[var(--color-text-tertiary)] line-through"
+                          : isNext
+                            ? "text-[var(--color-text-primary)] font-medium"
+                            : "text-[var(--color-text-secondary)]",
+                      ].join(" ")}
+                    >
+                      {st.title}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>

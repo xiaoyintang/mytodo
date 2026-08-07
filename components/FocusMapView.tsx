@@ -810,7 +810,7 @@ export default function FocusMapView({
               {task && (
                 <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-success)]">
                   <Check className="w-3 h-3" />
-                  已排到 {cnDate(task.date)}
+                  已安排为一次性任务 · {cnDate(task.date)}
                   {task.status === "done" ? " · 已完成" : ""}
                   <button
                     type="button"
@@ -919,7 +919,7 @@ export default function FocusMapView({
           {scheduling ? (
             /* 七天按钮，不用原生 date input——它在 iOS 上放固定定位条里选完常常不生效 */
             <div className="w-full flex flex-col gap-1.5">
-              <span className="text-[11px] text-[var(--color-text-secondary)]">排到哪天做？</span>
+              <span className="text-[11px] text-[var(--color-text-secondary)]">一次性行为安排到哪天？</span>
               <div className="w-full grid grid-cols-4 gap-1.5">
                 {Array.from({ length: 7 }).map((_, i) => {
                   const d = addDays(new Date(), i);
@@ -957,7 +957,7 @@ export default function FocusMapView({
                   className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg bg-[var(--color-primary)] text-white text-[13px] font-semibold"
                 >
                   <Star className="w-3.5 h-3.5" fill="currentColor" strokeWidth={0} />
-                  加入习惯表（{chosenHabits.length}）
+                  加入习惯（{chosenHabits.length}）
                 </button>
               )}
               {chosenOnetime.length > 0 && (
@@ -966,7 +966,7 @@ export default function FocusMapView({
                   onClick={() => setScheduling(true)}
                   className="flex-1 py-2 rounded-lg bg-[#4F46E5] text-white text-[13px] font-semibold"
                 >
-                  排到某天（{chosenOnetime.length}）
+                  安排一次性任务（{chosenOnetime.length}）
                 </button>
               )}
               {chosenHabits.length === 0 && chosenOnetime.length === 0 && (
