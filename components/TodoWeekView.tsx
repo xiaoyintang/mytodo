@@ -22,7 +22,7 @@ type Props = {
   onToggleSubtask: (taskId: string, subId: string) => void;
   onDeleteSubtask: (taskId: string, subId: string) => void;
   onEditSubtask: (taskId: string, subId: string, title: string) => void;
-  onMoveSubtask: (taskId: string, subId: string, direction: "up" | "down") => void;
+  onReorderSubtask: (taskId: string, subId: string, targetId: string, edge: "before" | "after") => void;
   onOpenAddModal: () => void;
   onCreateTask: (task: Omit<Task, "id">) => void;
   onDeleteTask: (taskId: string) => void;
@@ -210,7 +210,7 @@ export default function TodoWeekView({
   onToggleSubtask,
   onDeleteSubtask,
   onEditSubtask,
-  onMoveSubtask,
+  onReorderSubtask,
   onOpenAddModal,
   onCreateTask,
   onDeleteTask,
@@ -388,7 +388,7 @@ export default function TodoWeekView({
         onToggleSubtask={onToggleSubtask}
         onDeleteSubtask={onDeleteSubtask}
         onEditSubtask={onEditSubtask}
-        onMoveSubtask={onMoveSubtask}
+        onReorderSubtask={onReorderSubtask}
         task={selectedTask}
         entries={entries}
         isOpen={isBottomSheetOpen}

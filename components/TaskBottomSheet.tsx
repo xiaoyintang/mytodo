@@ -5,7 +5,7 @@ import type { Aspiration, Task, TaskStatus, ISODate, SubTask, TimeEntry } from "
 import { parseISODate, toISODate, startOfWeek, addDays, CN_WEEKDAY } from "@/components/todo/date";
 import { goalColor } from "@/components/todo/goal";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
-import { X, Check, Calendar, Clock, Flag, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Target, Timer, Plus, Gauge, ListChecks, Wand2 } from "lucide-react";
+import { X, Check, Calendar, Clock, Flag, Trash2, ChevronLeft, ChevronRight, GripVertical, Target, Timer, Plus, Gauge, ListChecks, Wand2 } from "lucide-react";
 import { callBehaviorAPI } from "@/components/todo/behaviorApi";
 import TimePicker from "@/components/TimePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -94,7 +94,7 @@ type Props = {
   onToggleSubtask: (taskId: string, subId: string) => void;
   onDeleteSubtask: (taskId: string, subId: string) => void;
   onEditSubtask: (taskId: string, subId: string, title: string) => void;
-  onMoveSubtask: (taskId: string, subId: string, direction: "up" | "down") => void;
+  onReorderSubtask: (taskId: string, subId: string, targetId: string, edge: "before" | "after") => void;
 };
 
 const QUICK_MINUTES = [15, 30, 45, 60, 90, 120];
@@ -109,6 +109,8 @@ type NextActionReview = {
   suggestion?: string;
   message?: string;
 };
+
+type StepDropPlacement = { targetId: string; edge: "before" | "after" };
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
   todo: "待办",
@@ -155,7 +157,7 @@ export default function TaskBottomSheet({
   onToggleSubtask,
   onDeleteSubtask,
   onEditSubtask,
-  onMoveSubtask,
+  onReorderSubtask,
 }: Props) {
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState("");
@@ -177,8 +179,11 @@ export default function TaskBottomSheet({
   const [nextActionReview, setNextActionReview] = useState<NextActionReview | null>(null);
   const [editingSubId, setEditingSubId] = useState<string | null>(null);
   const [editSubText, setEditSubText] = useState("");
+  const [draggingSubId, setDraggingSubId] = useState<string | null>(null);
+  const [stepDropPlacement, setStepDropPlacement] = useState<StepDropPlacement | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const clarifyRequestRef = useRef(0);
+  const stepDragRef = useRef<{ sourceId: string; placement: StepDropPlacement | null } | null>(null);
 
   // Reset state when task changes
   useEffect(() => {
@@ -201,6 +206,9 @@ export default function TaskBottomSheet({
     setInsertDraft("");
     setClarifyingSubId(null);
     setNextActionReview(null);
+    setDraggingSubId(null);
+    setStepDropPlacement(null);
+    stepDragRef.current = null;
     clarifyRequestRef.current += 1;
   }, [task]);
 
@@ -323,7 +331,7 @@ export default function TaskBottomSheet({
         </button>
 
         {/* Scrollable Content */}
-        <div className="px-6 overflow-y-auto overflow-x-hidden flex-1">
+        <div data-task-sheet-scroll className="px-6 overflow-y-auto overflow-x-hidden flex-1">
           {/* Title - 可点击编辑 */}
           {isEditing ? (
             <input
@@ -574,17 +582,96 @@ export default function TaskBottomSheet({
               resetNextActionAssist();
             }
 
+            function beginStepDrag(e: React.PointerEvent<HTMLButtonElement>, sourceId: string) {
+              if (e.button !== 0) return;
+              e.preventDefault();
+              e.stopPropagation();
+              resetNextActionAssist();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              const placement = { targetId: sourceId, edge: "before" as const };
+              stepDragRef.current = { sourceId, placement };
+              setDraggingSubId(sourceId);
+              setStepDropPlacement(placement);
+            }
+
+            function moveStepDrag(e: React.PointerEvent<HTMLButtonElement>) {
+              const drag = stepDragRef.current;
+              if (!drag) return;
+              e.preventDefault();
+
+              const scroller = document.querySelector<HTMLElement>("[data-task-sheet-scroll]");
+              if (scroller) {
+                const scrollRect = scroller.getBoundingClientRect();
+                if (e.clientY < scrollRect.top + 48) scroller.scrollTop -= 14;
+                if (e.clientY > scrollRect.bottom - 48) scroller.scrollTop += 14;
+              }
+
+              const hit = document
+                .elementFromPoint(e.clientX, e.clientY)
+                ?.closest<HTMLElement>("[data-open-subtask-id]");
+              const targetId = hit?.dataset.openSubtaskId;
+              if (!hit || !targetId) return;
+              const rect = hit.getBoundingClientRect();
+              const placement: StepDropPlacement = {
+                targetId,
+                edge: e.clientY < rect.top + rect.height / 2 ? "before" : "after",
+              };
+              if (
+                drag.placement?.targetId === placement.targetId &&
+                drag.placement.edge === placement.edge
+              ) return;
+              drag.placement = placement;
+              setStepDropPlacement(placement);
+            }
+
+            function endStepDrag(e: React.PointerEvent<HTMLButtonElement>) {
+              const drag = stepDragRef.current;
+              try {
+                e.currentTarget.releasePointerCapture(e.pointerId);
+              } catch {
+                /* pointer capture may already be gone */
+              }
+              if (drag?.placement && drag.sourceId !== drag.placement.targetId) {
+                onReorderSubtask(
+                  taskId,
+                  drag.sourceId,
+                  drag.placement.targetId,
+                  drag.placement.edge,
+                );
+              }
+              stepDragRef.current = null;
+              setDraggingSubId(null);
+              setStepDropPlacement(null);
+            }
+
+            function cancelStepDrag() {
+              stepDragRef.current = null;
+              setDraggingSubId(null);
+              setStepDropPlacement(null);
+            }
+
             function renderSubtaskRow(st: SubTask, isNext = false, openIndex?: number) {
+              const isDragging = draggingSubId === st.id;
+              const isDropTarget = stepDropPlacement?.targetId === st.id && draggingSubId !== null;
               return (
                 <div
                   key={st.id}
+                  data-open-subtask-id={!st.done ? st.id : undefined}
                   className={[
-                    "w-full flex items-start gap-2 px-2.5 py-2 rounded-lg border",
+                    "relative w-full flex items-start gap-2 px-2.5 py-2 rounded-lg border transition-[opacity,transform,box-shadow]",
                     isNext
                       ? "bg-[var(--color-primary-light)] border-[#BFDBFE]"
                       : "bg-white border-transparent",
+                    isDragging ? "opacity-45 scale-[0.99]" : "",
+                    isDropTarget ? "shadow-[0_2px_10px_rgba(37,99,235,0.12)]" : "",
                   ].join(" ")}
                 >
+                  {isDropTarget && stepDropPlacement?.edge === "before" && (
+                    <span className="pointer-events-none absolute -top-[3px] left-2 right-2 h-[2px] rounded-full bg-[var(--color-primary)]" />
+                  )}
+                  {isDropTarget && stepDropPlacement?.edge === "after" && (
+                    <span className="pointer-events-none absolute -bottom-[3px] left-2 right-2 h-[2px] rounded-full bg-[var(--color-primary)]" />
+                  )}
                   <button
                     type="button"
                     onClick={() => {
@@ -644,37 +731,31 @@ export default function TaskBottomSheet({
                       {st.title}
                     </button>
                   )}
-                  {!st.done && openIndex != null && (
-                    <div className="flex items-center gap-0.5 flex-shrink-0">
-                      {openIndex > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            resetNextActionAssist();
-                            onMoveSubtask(taskId, st.id, "up");
-                          }}
-                          className="w-[18px] h-[18px] flex items-center justify-center rounded hover:bg-white"
-                          aria-label="上移一步"
-                          title="上移一步"
-                        >
-                          <ChevronUp className="w-[14px] h-[14px] text-[var(--color-text-tertiary)]" />
-                        </button>
-                      )}
-                      {openIndex < openSubs.length - 1 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            resetNextActionAssist();
-                            onMoveSubtask(taskId, st.id, "down");
-                          }}
-                          className="w-[18px] h-[18px] flex items-center justify-center rounded hover:bg-white"
-                          aria-label="下移一步"
-                          title="下移一步"
-                        >
-                          <ChevronDown className="w-[14px] h-[14px] text-[var(--color-text-tertiary)]" />
-                        </button>
-                      )}
-                    </div>
+                  {!st.done && openIndex != null && openSubs.length > 1 && (
+                    <button
+                      type="button"
+                      onPointerDown={(e) => beginStepDrag(e, st.id)}
+                      onPointerMove={moveStepDrag}
+                      onPointerUp={endStepDrag}
+                      onPointerCancel={cancelStepDrag}
+                      onKeyDown={(e) => {
+                        if (e.key === "ArrowUp" && openIndex > 0) {
+                          e.preventDefault();
+                          resetNextActionAssist();
+                          onReorderSubtask(taskId, st.id, openSubs[openIndex - 1].id, "before");
+                        }
+                        if (e.key === "ArrowDown" && openIndex < openSubs.length - 1) {
+                          e.preventDefault();
+                          resetNextActionAssist();
+                          onReorderSubtask(taskId, st.id, openSubs[openIndex + 1].id, "after");
+                        }
+                      }}
+                      className="w-[20px] h-[20px] flex items-center justify-center rounded flex-shrink-0 -mt-[1px] touch-none select-none cursor-grab active:cursor-grabbing hover:bg-white"
+                      aria-label={`拖动调整「${st.title}」顺序`}
+                      title="拖动调整顺序"
+                    >
+                      <GripVertical className="w-[15px] h-[15px] text-[var(--color-text-tertiary)]" />
+                    </button>
                   )}
                   <button
                     type="button"

@@ -270,19 +270,24 @@ export default function TodoApp() {
     patchSubtasks(taskId, (list) => list.filter((x) => x.id !== subId));
   }
 
-  // 只在未完成步骤之间调整顺序；已完成步骤单独展示，不参与“当前下一步”的竞争。
-  function moveSubtask(taskId: string, subId: string, direction: "up" | "down") {
+  // 拖动只重排未完成步骤；已完成步骤仍留在原数据槽位，展示时单独归档。
+  function reorderSubtask(
+    taskId: string,
+    subId: string,
+    targetId: string,
+    edge: "before" | "after",
+  ) {
     patchSubtasks(taskId, (list) => {
       const open = list.filter((x) => !x.done);
-      const fromOpen = open.findIndex((x) => x.id === subId);
-      const toOpen = direction === "up" ? fromOpen - 1 : fromOpen + 1;
-      if (fromOpen < 0 || toOpen < 0 || toOpen >= open.length) return list;
-
-      const from = list.findIndex((x) => x.id === open[fromOpen].id);
-      const to = list.findIndex((x) => x.id === open[toOpen].id);
-      const next = [...list];
-      [next[from], next[to]] = [next[to], next[from]];
-      return next;
+      const moving = open.find((x) => x.id === subId);
+      if (!moving || subId === targetId) return list;
+      const without = open.filter((x) => x.id !== subId);
+      const targetIndex = without.findIndex((x) => x.id === targetId);
+      if (targetIndex < 0) return list;
+      const insertAt = targetIndex + (edge === "after" ? 1 : 0);
+      const reordered = [...without.slice(0, insertAt), moving, ...without.slice(insertAt)];
+      let openIndex = 0;
+      return list.map((x) => (x.done ? x : reordered[openIndex++]));
     });
   }
 
@@ -748,7 +753,7 @@ export default function TodoApp() {
           onDeleteSubtask={deleteSubtask}
           onEditSubtask={editSubtask}
           onToggleSubtask={toggleSubtask}
-          onMoveSubtask={moveSubtask}
+          onReorderSubtask={reorderSubtask}
           onOpenAddModal={() => setIsModalOpen(true)}
           onCreateTask={createTask}
           onDeleteTask={deleteTask}
@@ -778,7 +783,7 @@ export default function TodoApp() {
           onToggleSubtask={toggleSubtask}
           onDeleteSubtask={deleteSubtask}
           onEditSubtask={editSubtask}
-          onMoveSubtask={moveSubtask}
+          onReorderSubtask={reorderSubtask}
           onOpenAddModal={() => setIsModalOpen(true)}
           onCreateTask={createTask}
           onDeleteTask={deleteTask}
