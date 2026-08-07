@@ -19,10 +19,11 @@ type Props = {
   tasks: Task[];
   entries: TimeEntry[];
   onCycleTaskStatus: (taskId: string) => void;
-  onAddSubtasks: (taskId: string, titles: string[]) => void;
+  onAddSubtasks: (taskId: string, titles: string[], beforeSubtaskId?: string) => void;
   onDeleteSubtask: (taskId: string, subId: string) => void;
   onEditSubtask: (taskId: string, subId: string, title: string) => void;
   onToggleSubtask: (taskId: string, subId: string) => void;
+  onMoveSubtask: (taskId: string, subId: string, direction: "up" | "down") => void;
   onOpenAddModal: () => void;
   onCreateTask: (task: Omit<Task, "id">) => void;
   onDeleteTask: (taskId: string) => void;
@@ -98,6 +99,7 @@ export default function TodoDayView({
   onDeleteSubtask,
   onEditSubtask,
   onToggleSubtask,
+  onMoveSubtask,
   onOpenAddModal,
   onCreateTask,
   onDeleteTask,
@@ -631,6 +633,7 @@ export default function TodoDayView({
         onToggleSubtask={onToggleSubtask}
         onDeleteSubtask={onDeleteSubtask}
         onEditSubtask={onEditSubtask}
+        onMoveSubtask={onMoveSubtask}
         task={selectedTask}
         entries={entries}
         isOpen={isBottomSheetOpen}

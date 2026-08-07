@@ -5,7 +5,7 @@ import type { Aspiration, Task, TaskStatus, ISODate, SubTask, TimeEntry } from "
 import { parseISODate, toISODate, startOfWeek, addDays, CN_WEEKDAY } from "@/components/todo/date";
 import { goalColor } from "@/components/todo/goal";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
-import { X, Check, Calendar, Clock, Flag, Trash2, ChevronLeft, ChevronRight, Target, Timer, Plus, Gauge, ListChecks, Wand2 } from "lucide-react";
+import { X, Check, Calendar, Clock, Flag, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Target, Timer, Plus, Gauge, ListChecks, Wand2 } from "lucide-react";
 import { callBehaviorAPI } from "@/components/todo/behaviorApi";
 import TimePicker from "@/components/TimePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -90,10 +90,11 @@ type Props = {
   onUpdate: (taskId: string, updates: Partial<Omit<Task, "id">>) => void;
   onAddEntry: (entry: Omit<TimeEntry, "id">) => void;
   aspirations: Aspiration[];
-  onAddSubtasks: (taskId: string, titles: string[]) => void;
+  onAddSubtasks: (taskId: string, titles: string[], beforeSubtaskId?: string) => void;
   onToggleSubtask: (taskId: string, subId: string) => void;
   onDeleteSubtask: (taskId: string, subId: string) => void;
   onEditSubtask: (taskId: string, subId: string, title: string) => void;
+  onMoveSubtask: (taskId: string, subId: string, direction: "up" | "down") => void;
 };
 
 const QUICK_MINUTES = [15, 30, 45, 60, 90, 120];
@@ -154,6 +155,7 @@ export default function TaskBottomSheet({
   onToggleSubtask,
   onDeleteSubtask,
   onEditSubtask,
+  onMoveSubtask,
 }: Props) {
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState("");
@@ -168,6 +170,8 @@ export default function TaskBottomSheet({
   const [targetInput, setTargetInput] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [subDraft, setSubDraft] = useState("");
+  const [insertingBeforeNext, setInsertingBeforeNext] = useState(false);
+  const [insertDraft, setInsertDraft] = useState("");
   const [breaking, setBreaking] = useState(false);
   const [clarifyingSubId, setClarifyingSubId] = useState<string | null>(null);
   const [nextActionReview, setNextActionReview] = useState<NextActionReview | null>(null);
@@ -192,6 +196,9 @@ export default function TaskBottomSheet({
     setIsEditingTarget(false);
     setTargetInput("");
     setShowDeleteConfirm(false);
+    setSubDraft("");
+    setInsertingBeforeNext(false);
+    setInsertDraft("");
     setClarifyingSubId(null);
     setNextActionReview(null);
     clarifyRequestRef.current += 1;
@@ -552,7 +559,22 @@ export default function TaskBottomSheet({
             const futureSubtasks = openSubs.slice(1);
             const completedSubtasks = subs.filter((x) => x.done);
 
-            function renderSubtaskRow(st: SubTask, isNext = false) {
+            function resetNextActionAssist() {
+              clarifyRequestRef.current += 1;
+              setClarifyingSubId(null);
+              setNextActionReview(null);
+            }
+
+            function submitInsertBeforeNext() {
+              const title = insertDraft.trim();
+              if (!title || !nextSubtask) return;
+              onAddSubtasks(taskId, [title], nextSubtask.id);
+              setInsertDraft("");
+              setInsertingBeforeNext(false);
+              resetNextActionAssist();
+            }
+
+            function renderSubtaskRow(st: SubTask, isNext = false, openIndex?: number) {
               return (
                 <div
                   key={st.id}
@@ -567,6 +589,10 @@ export default function TaskBottomSheet({
                     type="button"
                     onClick={() => {
                       if (nextActionReview?.subtaskId === st.id) setNextActionReview(null);
+                      if (isNext) {
+                        setInsertingBeforeNext(false);
+                        setInsertDraft("");
+                      }
                       onToggleSubtask(taskId, st.id);
                     }}
                     className={[
@@ -618,10 +644,46 @@ export default function TaskBottomSheet({
                       {st.title}
                     </button>
                   )}
+                  {!st.done && openIndex != null && (
+                    <div className="flex items-center gap-0.5 flex-shrink-0">
+                      {openIndex > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            resetNextActionAssist();
+                            onMoveSubtask(taskId, st.id, "up");
+                          }}
+                          className="w-[18px] h-[18px] flex items-center justify-center rounded hover:bg-white"
+                          aria-label="上移一步"
+                          title="上移一步"
+                        >
+                          <ChevronUp className="w-[14px] h-[14px] text-[var(--color-text-tertiary)]" />
+                        </button>
+                      )}
+                      {openIndex < openSubs.length - 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            resetNextActionAssist();
+                            onMoveSubtask(taskId, st.id, "down");
+                          }}
+                          className="w-[18px] h-[18px] flex items-center justify-center rounded hover:bg-white"
+                          aria-label="下移一步"
+                          title="下移一步"
+                        >
+                          <ChevronDown className="w-[14px] h-[14px] text-[var(--color-text-tertiary)]" />
+                        </button>
+                      )}
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
                       if (nextActionReview?.subtaskId === st.id) setNextActionReview(null);
+                      if (isNext) {
+                        setInsertingBeforeNext(false);
+                        setInsertDraft("");
+                      }
                       onDeleteSubtask(taskId, st.id);
                     }}
                     className="w-[16px] h-[16px] flex items-center justify-center flex-shrink-0 mt-[1px]"
@@ -681,10 +743,22 @@ export default function TaskBottomSheet({
                   <div className="flex flex-col gap-1 mb-2">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[10px] font-semibold text-[var(--color-primary)]">当前下一步</span>
-                      <button
-                        type="button"
-                        disabled={clarifyingSubId === nextSubtask.id}
-                        onClick={async () => {
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setInsertingBeforeNext((value) => !value);
+                            setInsertDraft("");
+                          }}
+                          className="flex items-center gap-0.5 text-[10px] font-medium text-[var(--color-text-tertiary)] hover:text-[var(--color-primary)] transition-colors"
+                        >
+                          <Plus className="w-3 h-3" />
+                          插在前面
+                        </button>
+                        <button
+                          type="button"
+                          disabled={clarifyingSubId === nextSubtask.id}
+                          onClick={async () => {
                           const reviewingTaskId = task.id;
                           const reviewingSubtaskId = nextSubtask.id;
                           const requestId = ++clarifyRequestRef.current;
@@ -727,14 +801,55 @@ export default function TaskBottomSheet({
                             issue,
                             suggestion,
                           });
-                        }}
-                        className="flex items-center gap-1 text-[10px] font-medium text-[var(--color-primary)] hover:text-[#1D4ED8] disabled:opacity-60 transition-colors"
-                      >
-                        <Wand2 className="w-3 h-3" />
-                        {clarifyingSubId === nextSubtask.id ? "正在看…" : "帮我说清楚"}
-                      </button>
+                          }}
+                          className="flex items-center gap-1 text-[10px] font-medium text-[var(--color-primary)] hover:text-[#1D4ED8] disabled:opacity-60 transition-colors"
+                        >
+                          <Wand2 className="w-3 h-3" />
+                          {clarifyingSubId === nextSubtask.id ? "正在看…" : "帮我说清楚"}
+                        </button>
+                      </div>
                     </div>
-                    {renderSubtaskRow(nextSubtask, true)}
+
+                    {insertingBeforeNext && (
+                      <div className="flex items-center gap-1.5 p-1.5 rounded-lg border border-dashed border-[var(--color-primary)] bg-white">
+                        <input
+                          type="text"
+                          value={insertDraft}
+                          autoFocus
+                          onChange={(e) => setInsertDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.nativeEvent.isComposing) submitInsertBeforeNext();
+                            if (e.key === "Escape") {
+                              setInsertingBeforeNext(false);
+                              setInsertDraft("");
+                            }
+                          }}
+                          placeholder="写下更早的一步"
+                          className="flex-1 min-w-0 px-2 py-1 rounded-md text-[12px] focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={submitInsertBeforeNext}
+                          disabled={!insertDraft.trim()}
+                          className="px-2 py-1 rounded-md bg-[var(--color-primary)] text-white text-[10px] font-medium disabled:opacity-40"
+                        >
+                          插入
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setInsertingBeforeNext(false);
+                            setInsertDraft("");
+                          }}
+                          className="w-5 h-5 flex items-center justify-center"
+                          aria-label="取消插入"
+                        >
+                          <X className="w-3.5 h-3.5 text-[var(--color-text-tertiary)]" />
+                        </button>
+                      </div>
+                    )}
+
+                    {renderSubtaskRow(nextSubtask, true, 0)}
 
                     {nextActionReview?.taskId === task.id &&
                       nextActionReview.subtaskId === nextSubtask.id && (
@@ -791,7 +906,7 @@ export default function TaskBottomSheet({
                     <span className="text-[10px] font-medium text-[var(--color-text-tertiary)] px-0.5">
                       后续步骤
                     </span>
-                    {futureSubtasks.map((st) => renderSubtaskRow(st))}
+                    {futureSubtasks.map((st, index) => renderSubtaskRow(st, false, index + 1))}
                   </div>
                 )}
 
@@ -817,7 +932,7 @@ export default function TaskBottomSheet({
                     }
                   }}
                   enterKeyHint="done"
-                  placeholder="添加一个行动步骤，回车"
+                  placeholder={subs.length > 0 ? "添加到最后，回车" : "添加第一个行动步骤，回车"}
                   className="w-full mt-1 px-2.5 py-1.5 rounded-lg border border-[var(--color-border)] text-[13px] bg-white focus:outline-none focus:border-[var(--color-primary)]"
                 />
               </div>

@@ -237,19 +237,21 @@ export default function TodoApp() {
     );
   }
 
-  function addSubtasks(taskId: string, titles: string[]) {
+  function addSubtasks(taskId: string, titles: string[], beforeSubtaskId?: string) {
     const now = Date.now();
-    patchSubtasks(taskId, (list) => [
-      ...list,
-      ...titles
+    patchSubtasks(taskId, (list) => {
+      const added = titles
         .map((x) => x.trim())
         .filter(Boolean)
         .map((title, i) => ({
           id: `st-${now}-${i}-${Math.random().toString(36).slice(2, 7)}`,
           title,
           done: false,
-        })),
-    ]);
+        }));
+      if (added.length === 0) return list;
+      const at = beforeSubtaskId ? list.findIndex((x) => x.id === beforeSubtaskId) : -1;
+      return at >= 0 ? [...list.slice(0, at), ...added, ...list.slice(at)] : [...list, ...added];
+    });
   }
 
   function toggleSubtask(taskId: string, subId: string) {
@@ -266,6 +268,22 @@ export default function TodoApp() {
 
   function deleteSubtask(taskId: string, subId: string) {
     patchSubtasks(taskId, (list) => list.filter((x) => x.id !== subId));
+  }
+
+  // 只在未完成步骤之间调整顺序；已完成步骤单独展示，不参与“当前下一步”的竞争。
+  function moveSubtask(taskId: string, subId: string, direction: "up" | "down") {
+    patchSubtasks(taskId, (list) => {
+      const open = list.filter((x) => !x.done);
+      const fromOpen = open.findIndex((x) => x.id === subId);
+      const toOpen = direction === "up" ? fromOpen - 1 : fromOpen + 1;
+      if (fromOpen < 0 || toOpen < 0 || toOpen >= open.length) return list;
+
+      const from = list.findIndex((x) => x.id === open[fromOpen].id);
+      const to = list.findIndex((x) => x.id === open[toOpen].id);
+      const next = [...list];
+      [next[from], next[to]] = [next[to], next[from]];
+      return next;
+    });
   }
 
   // Delete task
@@ -730,6 +748,7 @@ export default function TodoApp() {
           onDeleteSubtask={deleteSubtask}
           onEditSubtask={editSubtask}
           onToggleSubtask={toggleSubtask}
+          onMoveSubtask={moveSubtask}
           onOpenAddModal={() => setIsModalOpen(true)}
           onCreateTask={createTask}
           onDeleteTask={deleteTask}
@@ -758,7 +777,9 @@ export default function TodoApp() {
           onAddSubtasks={addSubtasks}
           onToggleSubtask={toggleSubtask}
           onDeleteSubtask={deleteSubtask}
-          onEditSubtask={editSubtask}          onOpenAddModal={() => setIsModalOpen(true)}
+          onEditSubtask={editSubtask}
+          onMoveSubtask={moveSubtask}
+          onOpenAddModal={() => setIsModalOpen(true)}
           onCreateTask={createTask}
           onDeleteTask={deleteTask}
           onUpdateTask={updateTask}
