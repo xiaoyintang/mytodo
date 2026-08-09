@@ -7,6 +7,7 @@ import type {
   Habit,
   HabitLog,
   ISODate,
+  Task,
   TimeEntry,
   ViewMode,
 } from "@/components/todo/types";
@@ -25,11 +26,13 @@ type Props = {
   elapsedMs: number;
   onStopTimer: () => void;
   entries: TimeEntry[];
+  tasks: Task[];
   habits: Habit[];
   habitLogs: HabitLog[];
   onAddHabit: (input: Omit<Habit, "id" | "createdAt">) => void;
   habitHasLogs: (habitId: string) => boolean;
   onLogHabit: (habitId: string) => string;
+  onScheduleHabitToday: (habitId: string) => void;
   onSetHabitLogImpact: (logId: string, impact: string) => void;
   onUndoHabitLog: (habitId: string) => void;
   onSetHabitAnchor: (habitId: string, anchor: string) => void;
@@ -47,7 +50,8 @@ const TABS: Array<[ViewMode, string]> = [
 /**
  * 「习惯」tab。只剩打卡——「我的目标」已经搬到目标管理页（从常驻条进）。
  * 硬约束：习惯不受「今日主线」过滤，每天照常全部出现。
- * 任务靠日程触发，习惯靠锚点触发，是两套机制，混了整条链就废了。
+ * 默认仍是两套机制：任务靠日程、习惯靠锚点。
+ * 只有用户主动点「排到今天」时，才把某一次习惯实例化成 Todo，完成后回写一次记录。
  */
 export default function HabitLabView({
   viewMode,
@@ -60,11 +64,13 @@ export default function HabitLabView({
   elapsedMs,
   onStopTimer,
   entries,
+  tasks,
   habits,
   habitLogs,
   onAddHabit,
   habitHasLogs,
   onLogHabit,
+  onScheduleHabitToday,
   onSetHabitLogImpact,
   onUndoHabitLog,
   onSetHabitAnchor,
@@ -165,8 +171,10 @@ export default function HabitLabView({
             habits={habits}
             logs={habitLogs}
             entries={entries}
+            tasks={tasks}
             today={today}
             onLog={onLogHabit}
+            onScheduleToday={onScheduleHabitToday}
             onSetLogImpact={onSetHabitLogImpact}
             onUndoLog={onUndoHabitLog}
             onSetAnchor={onSetHabitAnchor}

@@ -28,6 +28,8 @@ export interface Task {
   date: ISODate;
   /** 属于哪个目标（可选，不强制。新建任务时默认沿用上次选的） */
   aspirationId?: string;
+  /** 从哪条习惯手动排到今天。可选；用于完成 Todo 时自动回写习惯记录。 */
+  sourceHabitId?: string;
   startTime?: string; // "HH:mm"
   endTime?: string; // "HH:mm"
   status: TaskStatus;
@@ -140,6 +142,8 @@ export interface HabitLog {
   habitId: string;
   date: ISODate;
   at: string; // "HH:mm"
+  /** 由哪条 Todo 完成产生；手动打卡没有。用于防重复和撤销联动。 */
+  taskId?: string;
   /** 做完之后立刻记下的正向变化。可选，不给打卡增加负担。 */
   impact?: string;
 }

@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Aspiration, Habit, HabitLog, ISODate, TimeEntry } from "@/components/todo/types";
+import type { Aspiration, Habit, HabitLog, ISODate, Task, TimeEntry } from "@/components/todo/types";
 import { formatMinutes } from "@/components/todo/time";
 import { toISODate } from "@/components/todo/date";
 import {
   Check,
+  CalendarCheck2,
+  CalendarPlus,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -24,8 +26,10 @@ type Props = {
   habits: Habit[];
   logs: HabitLog[];
   entries: TimeEntry[];
+  tasks: Task[];
   today: ISODate;
   onLog: (habitId: string) => string;
+  onScheduleToday: (habitId: string) => void;
   onSetLogImpact: (logId: string, impact: string) => void;
   onUndoLog: (habitId: string) => void;
   onSetAnchor: (habitId: string, anchor: string) => void;
@@ -92,9 +96,18 @@ function habitStats(h: Habit, logs: HabitLog[], entries: TimeEntry[], today: ISO
 
   if (h.measure === "duration") {
     const hit = entries.filter((e) => e.title.trim() === h.title.trim());
+    const taskLogs = logs.filter(
+      (log) =>
+        log.habitId === h.id &&
+        !!log.taskId &&
+        !hit.some((entry) => entry.taskId && entry.taskId === log.taskId),
+    );
     return {
-      total: hit.length,
-      days30: new Set(hit.filter((e) => e.date >= fromISO && e.date <= today).map((e) => e.date)).size,
+      total: hit.length + taskLogs.length,
+      days30: new Set([
+        ...hit.filter((e) => e.date >= fromISO && e.date <= today).map((e) => e.date),
+        ...taskLogs.filter((log) => log.date >= fromISO && log.date <= today).map((log) => log.date),
+      ]).size,
     };
   }
   const mine = logs.filter((l) => l.habitId === h.id);
@@ -104,11 +117,22 @@ function habitStats(h: Habit, logs: HabitLog[], entries: TimeEntry[], today: ISO
   };
 }
 
-/** 时长型习惯今天的成绩：直接从时间台账里按同名记录算，不要求打第二次卡 */
-function fromLedger(habit: Habit, entries: TimeEntry[], today: ISODate) {
+/** 时长型习惯今天的成绩：优先读时间台账，也承认由关联 Todo 完成产生的那一次。 */
+function fromLedger(habit: Habit, entries: TimeEntry[], logs: HabitLog[], today: ISODate) {
   const title = habit.title.trim();
   const hit = entries.filter((e) => e.date === today && e.title.trim() === title);
-  return { count: hit.length, minutes: hit.reduce((s, e) => s + e.minutes, 0) };
+  const scheduledLogs = logs.filter(
+    (log) =>
+      log.habitId === habit.id &&
+      log.date === today &&
+      !!log.taskId &&
+      !hit.some((entry) => entry.taskId && entry.taskId === log.taskId),
+  );
+  return {
+    count: hit.length + scheduledLogs.length,
+    minutes: hit.reduce((s, e) => s + e.minutes, 0),
+    scheduledCount: scheduledLogs.length,
+  };
 }
 
 export default function HabitTracker({
@@ -116,8 +140,10 @@ export default function HabitTracker({
   habits,
   logs,
   entries,
+  tasks,
   today,
   onLog,
+  onScheduleToday,
   onSetLogImpact,
   onUndoLog,
   onSetAnchor,
@@ -156,11 +182,11 @@ export default function HabitTracker({
   if (orphans.length > 0) groups.push({ key: "__none__", title: null, items: orphans });
 
   const todayActiveHabits = live.filter((h) => {
-    if (h.measure === "duration") return fromLedger(h, entries, today).count > 0;
+    if (h.measure === "duration") return fromLedger(h, entries, logs, today).count > 0;
     return logs.some((l) => l.habitId === h.id && l.date === today);
   });
   const todayActionCount = live.reduce((sum, h) => {
-    if (h.measure === "duration") return sum + fromLedger(h, entries, today).count;
+    if (h.measure === "duration") return sum + fromLedger(h, entries, logs, today).count;
     return sum + logs.filter((l) => l.habitId === h.id && l.date === today).length;
   }, 0);
   const todayTargetTitles = Array.from(
@@ -221,7 +247,7 @@ export default function HabitTracker({
   /** 这一组今天一共记了多少次（时长型的从台账算） */
   function groupDone(items: Habit[]): number {
     return items.reduce((sum, h) => {
-      if (h.measure === "duration") return sum + fromLedger(h, entries, today).count;
+      if (h.measure === "duration") return sum + fromLedger(h, entries, logs, today).count;
       return sum + logs.filter((l) => l.habitId === h.id && l.date === today).length;
     }, 0);
   }
@@ -312,10 +338,16 @@ export default function HabitTracker({
 
           {!isShut(g.key) && g.items.map((h) => {
             const isDuration = h.measure === "duration";
-            const ledger = isDuration ? fromLedger(h, entries, today) : null;
+            const ledger = isDuration ? fromLedger(h, entries, logs, today) : null;
             const count = isDuration
               ? (ledger?.count ?? 0)
               : logs.filter((l) => l.habitId === h.id && l.date === today).length;
+            const todayTask = tasks.find(
+              (task) => task.sourceHabitId === h.id && task.date === today,
+            );
+            const canUndoManual = logs.some(
+              (log) => log.habitId === h.id && log.date === today && !log.taskId,
+            );
             const flash = justTapped === h.id;
             const editing = editAnchor === h.id;
             const stats = habitStats(h, logs, entries, today);
@@ -409,7 +441,9 @@ export default function HabitTracker({
                       >
                         {isDuration
                           ? count > 0
-                            ? `今天 ${count} 次 · ${formatMinutes(ledger?.minutes ?? 0)}`
+                            ? (ledger?.minutes ?? 0) > 0
+                              ? `今天 ${count} 次 · ${formatMinutes(ledger?.minutes ?? 0)}`
+                              : `今天 ${count} 次 · 由 Todo 记下`
                             : "今天还没有时长记录"
                           : count > 0
                             ? `今天 ${count} 次`
@@ -417,6 +451,41 @@ export default function HabitTracker({
                       </span>
                       {stats.total > 0 && <span>累计 {stats.total}</span>}
                       {stats.total > 0 && <span>近 30 天 {stats.days30} 天</span>}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (todayTask) return;
+                          onScheduleToday(h.id);
+                          try {
+                            navigator.vibrate?.(8);
+                          } catch {
+                            /* ignore */
+                          }
+                        }}
+                        disabled={Boolean(todayTask)}
+                        className={[
+                          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium transition-colors",
+                          todayTask?.status === "done"
+                            ? "border-[#BBF7D0] bg-[#F0FDF4] text-[#15803D]"
+                            : todayTask
+                              ? "border-[var(--color-border)] bg-[var(--color-bg-gray-lighter)] text-[var(--color-text-tertiary)]"
+                              : "border-[#BFDBFE] bg-[var(--color-primary-light)] text-[var(--color-primary)] hover:border-[var(--color-primary)]",
+                        ].join(" ")}
+                        aria-label={
+                          todayTask?.status === "done"
+                            ? `「${h.title}」的今日任务已完成`
+                            : todayTask
+                              ? `「${h.title}」已排到今天`
+                              : `把「${h.title}」排到今天`
+                        }
+                      >
+                        {todayTask ? (
+                          <CalendarCheck2 className="h-3 w-3" />
+                        ) : (
+                          <CalendarPlus className="h-3 w-3" />
+                        )}
+                        {todayTask?.status === "done" ? "今日已完成" : todayTask ? "已在今日" : "排到今天"}
+                      </button>
                     </div>
                   </div>
 
@@ -432,7 +501,7 @@ export default function HabitTracker({
                     </button>
                   ) : (
                     <div className="flex flex-shrink-0 items-center gap-1">
-                      {count > 0 && (
+                      {canUndoManual && (
                         <button
                           type="button"
                           onClick={() => onUndoLog(h.id)}

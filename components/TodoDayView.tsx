@@ -353,6 +353,11 @@ export default function TodoDayView({
                 <span className="text-[10px] font-semibold text-[var(--color-primary)]">主线</span>
               </div>
             )}
+            {t.sourceHabitId && !isDone && (
+              <div className="rounded bg-[#F5F3FF] px-1.5 py-0.5">
+                <span className="text-[10px] font-medium text-[#7C3AED]">来自习惯</span>
+              </div>
+            )}
             {isDone ? (
               <div className="bg-[var(--color-success-light)] rounded px-1.5 py-0.5">
   <span className="text-[var(--color-success)] text-[10px] font-medium">已完成</span>

@@ -186,6 +186,63 @@ export default function TodoApp() {
     adoptTimer: timer.adopt,
   });
 
+  // “习惯排到今天”生成的 Todo 是那次行为的执行实例。
+  // 无论通过状态圆点、进度滑块还是最后一个子步骤完成，都在这里统一校准习惯记录，
+  // 避免每条完成路径各写一遍并产生重复计数。
+  useEffect(() => {
+    if (!hydrated || !logsHydrated) return;
+    const linkedTasks = tasks.filter((task) => task.sourceHabitId);
+    if (linkedTasks.length === 0) return;
+    const taskById = new Map(linkedTasks.map((task) => [task.id, task]));
+
+    setHabitLogs((prev) => {
+      let changed = false;
+      const seenTaskIds = new Set<string>();
+      const next: HabitLog[] = [];
+
+      for (const log of prev) {
+        if (!log.taskId) {
+          next.push(log);
+          continue;
+        }
+        const task = taskById.get(log.taskId);
+        // 任务已被删除时，保留历史事实；只有重新打开现存任务才撤掉联动记录。
+        if (!task) {
+          next.push(log);
+          continue;
+        }
+        if (task.status !== "done" || seenTaskIds.has(task.id)) {
+          changed = true;
+          continue;
+        }
+        seenTaskIds.add(task.id);
+        if (log.habitId !== task.sourceHabitId || log.date !== task.date) {
+          next.push({ ...log, habitId: task.sourceHabitId!, date: task.date });
+          changed = true;
+        } else {
+          next.push(log);
+        }
+      }
+
+      const now = new Date();
+      const at = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      for (const task of linkedTasks) {
+        if (task.status !== "done" || seenTaskIds.has(task.id)) continue;
+        next.push({
+          id: `hl-task-${task.id}`,
+          habitId: task.sourceHabitId!,
+          taskId: task.id,
+          date: task.date,
+          at,
+        });
+        seenTaskIds.add(task.id);
+        changed = true;
+      }
+
+      return changed ? next : prev;
+    });
+  }, [hydrated, logsHydrated, setHabitLogs, tasks]);
+
   // Toggle task status: todo → in_progress → done → todo
   // 非时长目标任务：状态与手动进度联动（完成=100% 待办=0% 进行中保持原值）
   function cycleTaskStatus(taskId: string) {
@@ -594,6 +651,20 @@ export default function TodoApp() {
     setHabits((prev) => [...prev, h]);
   }
 
+  /** 手动把一条习惯实例化成今天的 Todo；同一习惯当天只保留一个执行实例。 */
+  function scheduleHabitToday(habitId: string) {
+    const habit = habits.find((item) => item.id === habitId && !item.archived);
+    if (!habit) return;
+    if (tasks.some((task) => task.sourceHabitId === habitId && task.date === todayIso)) return;
+    createTask({
+      title: habit.title,
+      date: todayIso,
+      status: "todo",
+      aspirationId: habit.aspirationId,
+      sourceHabitId: habit.id,
+    });
+  }
+
   /** 这个习惯有没有打卡记录（决定移出去时是归档还是真删） */
   function habitHasLogs(habitId: string): boolean {
     return habitLogs.some((l) => l.habitId === habitId);
@@ -650,13 +721,14 @@ export default function TodoApp() {
     );
   }
 
-  // 点错了撤掉今天最后一次
+  // 点错了撤掉今天最后一次“手动打卡”。由 Todo 完成产生的记录必须回 Todo 撤销，
+  // 否则任务仍是完成、习惯却被删掉，两边会互相矛盾。
   function undoHabitLog(habitId: string) {
     const todayIso2 = toISODate(new Date());
     setHabitLogs((prev) => {
       let lastIdx = -1;
       prev.forEach((l, i) => {
-        if (l.habitId === habitId && l.date === todayIso2) lastIdx = i;
+        if (l.habitId === habitId && l.date === todayIso2 && !l.taskId) lastIdx = i;
       });
       if (lastIdx < 0) return prev;
       return prev.filter((_, i) => i !== lastIdx);
@@ -829,11 +901,13 @@ export default function TodoApp() {
           elapsedMs={timer.elapsedMs}
           onStopTimer={timer.stop}
           entries={safeEntries}
+          tasks={safeTasks}
           habits={safeHabits}
           habitLogs={safeHabitLogs}
           onAddHabit={addHabit}
           habitHasLogs={habitHasLogs}
           onLogHabit={logHabit}
+          onScheduleHabitToday={scheduleHabitToday}
           onSetHabitLogImpact={setHabitLogImpact}
           onUndoHabitLog={undoHabitLog}
           onSetHabitAnchor={setHabitAnchor}
