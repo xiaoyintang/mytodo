@@ -13,7 +13,19 @@ import { callBehaviorAPI, toPendingItems, type PendingItem } from "@/components/
 import { TYPE_LABEL, TYPE_STYLE, goldenScore, isGolden, isRepeatable, needsBreakdown } from "@/components/todo/behavior";
 import { CN_WEEKDAY, addDays, toISODate } from "@/components/todo/date";
 import { BLOCKER_INFO, blockerOf } from "@/components/todo/blocker";
-import { AlertTriangle, ArrowUpDown, Check, RefreshCw, RotateCcw, Scissors, Star, Trash2, Wand2, X } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowUpDown,
+  CalendarPlus,
+  Check,
+  RefreshCw,
+  RotateCcw,
+  Scissors,
+  Star,
+  Trash2,
+  Wand2,
+  X,
+} from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
 type AxisPatch = { impact?: number; feasibility?: number };
@@ -120,6 +132,7 @@ export default function FocusMapView({
   const [order, setOrder] = useState<string[]>(() => unratedFirst(cards));
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [scheduling, setScheduling] = useState(false);
+  const [singleSchedulingId, setSingleSchedulingId] = useState<string | null>(null);
   const [onlyStuck, setOnlyStuck] = useState(false);
   // 点上去看是哪条：hover 是鼠标预览，pinned 是点/触摸钉住（手机没有 hover）
   const [draft, setDraft] = useState("");           // 顶上直接加一条
@@ -230,6 +243,11 @@ export default function FocusMapView({
     chosenOnetime.forEach((c) => onSchedule(c.id, c.text, date));
     setSelected(new Set());
     setScheduling(false);
+  }
+
+  function scheduleOne(card: BehaviorCard, date: ISODate) {
+    onSchedule(card.id, card.text, date);
+    setSingleSchedulingId(null);
   }
 
   // seed 为空 = 从愿望本身发散；有 seed = 拆这一条愿望/成果
@@ -796,6 +814,9 @@ export default function FocusMapView({
               ? "想比较两条谁更重要？这样排一下它俩就挨着了。拖完想重排，再点一次这个按钮"
               : "影响力占 60%，能做到占 40%；两边都重要，影响力略高的优先"}
         </span>
+        <span className="w-full text-[10px] font-medium leading-relaxed text-[var(--color-text-secondary)]">
+          左边方框只用于多选；单条行为直接用卡片里的按钮。
+        </span>
       </div>
 
       {/* 这条**不是 AI 判的**，是你自己拖的两根滑块算出来的，所以不会误报，留着。
@@ -854,7 +875,8 @@ export default function FocusMapView({
                       ? "bg-[var(--color-primary)] border-[var(--color-primary)]"
                       : "bg-white border-[var(--color-border)]",
                   ].join(" ")}
-                  aria-label="选中"
+                  aria-label={`批量选择「${b.text}」`}
+                  title="加入批量选择"
                 >
                   {picked && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
                 </button>
@@ -982,6 +1004,65 @@ export default function FocusMapView({
                     ))}
                   </select>
                 </label>
+              )}
+
+              {/* 单条行为有自己的快路径；左上方框只负责多选和批量操作。 */}
+              {((isRepeatable(b.type) && !inHabits) || (b.type === "onetime" && !task)) && (
+                <div className="mt-0.5 flex w-full items-center gap-1.5">
+                  {isRepeatable(b.type) && !inHabits && (
+                    <button
+                      type="button"
+                      onClick={() => onAddHabit(b)}
+                      className="flex items-center gap-1 rounded-md border border-[var(--color-primary)] bg-white px-2 py-1 text-[10px] font-semibold text-[var(--color-primary)] transition-colors hover:bg-[var(--color-primary-light)]"
+                    >
+                      <Star className="h-3 w-3" />
+                      加入习惯
+                    </button>
+                  )}
+                  {b.type === "onetime" && !task && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSingleSchedulingId((current) => (current === b.id ? null : b.id))
+                      }
+                      className="flex items-center gap-1 rounded-md border border-[#C7D2FE] bg-[#EEF2FF] px-2 py-1 text-[10px] font-semibold text-[#4F46E5] transition-colors hover:bg-[#E0E7FF]"
+                      aria-expanded={singleSchedulingId === b.id}
+                    >
+                      <CalendarPlus className="h-3 w-3" />
+                      排日程
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {singleSchedulingId === b.id && b.type === "onetime" && !task && (
+                <div className="mt-0.5 grid w-full grid-cols-4 gap-1.5 rounded-lg bg-[var(--color-bg-gray-lighter)] p-2">
+                  {Array.from({ length: 7 }).map((_, i) => {
+                    const date = addDays(new Date(), i);
+                    const iso = toISODate(date) as ISODate;
+                    const label = i === 0 ? "今天" : i === 1 ? "明天" : CN_WEEKDAY[date.getDay()];
+                    return (
+                      <button
+                        key={iso}
+                        type="button"
+                        onClick={() => scheduleOne(b, iso)}
+                        className="flex flex-col items-center rounded-md border border-[#C7D2FE] bg-white py-1 text-[#4F46E5] transition-colors hover:bg-[#EEF2FF]"
+                      >
+                        <span className="text-[10px] font-semibold leading-tight">{label}</span>
+                        <span className="text-[9px] leading-tight opacity-70">
+                          {date.getMonth() + 1}/{date.getDate()}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => setSingleSchedulingId(null)}
+                    className="rounded-md py-1 text-[10px] text-[var(--color-text-tertiary)]"
+                  >
+                    取消
+                  </button>
+                </div>
               )}
 
               {/* 已经通过自动分类和边界检查的，才提供可选的二次表达检查。

@@ -90,8 +90,6 @@ export default function HabitLabView({
   return (
     <AppShell>
       <AppHeader title="习惯" subtitle="靠锚点触发，让重复自然发生" />
-      <ViewTabs value={viewMode} onChange={onChangeViewMode} />
-
       <MainlineBar
         today={today}
         aspirations={aspirations}
@@ -101,6 +99,7 @@ export default function HabitLabView({
         elapsedMs={elapsedMs}
         onStopTimer={onStopTimer}
       />
+      <ViewTabs value={viewMode} onChange={onChangeViewMode} />
 
       <div className="flex w-full flex-col gap-4 px-[18px] pb-6 pt-2">
         <div className="w-full flex items-center gap-2">

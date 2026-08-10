@@ -377,8 +377,6 @@ export default function TodoDayView({
         onNext={onNextWeek}
         onAdd={onOpenAddModal}
       />
-      <ViewTabs value={viewMode} onChange={onChangeViewMode} />
-      <WeekDateStrip days={days} selectedDate={selectedDate} today={today} onSelect={onSelectDate} />
       <MainlineBar
         today={today}
         aspirations={aspirations}
@@ -388,6 +386,8 @@ export default function TodoDayView({
         elapsedMs={elapsedMs}
         onStopTimer={onStopTimer}
       />
+      <ViewTabs value={viewMode} onChange={onChangeViewMode} />
+      <WeekDateStrip days={days} selectedDate={selectedDate} today={today} onSelect={onSelectDate} />
 
       <div className="flex w-full flex-col gap-5 px-[18px] pb-6 pt-1">
         <QuickAddTask onCreate={onCreateTask} />

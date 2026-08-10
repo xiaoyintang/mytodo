@@ -557,9 +557,6 @@ export default function TimeLogView({
         onPrev={onPrevWeek}
         onNext={onNextWeek}
       />
-      <ViewTabs value={viewMode} onChange={onChangeViewMode} />
-      <WeekDateStrip days={days} selectedDate={selectedDate} today={today} onSelect={onSelectDate} />
-
       <MainlineBar
         today={today}
         aspirations={aspirations}
@@ -569,6 +566,8 @@ export default function TimeLogView({
         elapsedMs={elapsedMs}
         onStopTimer={onStopTimer}
       />
+      <ViewTabs value={viewMode} onChange={onChangeViewMode} />
+      <WeekDateStrip days={days} selectedDate={selectedDate} today={today} onSelect={onSelectDate} />
 
       {/* Content */}
       <div className="flex w-full flex-col gap-5 px-[18px] pb-6 pt-2">

@@ -285,8 +285,6 @@ export default function TodoWeekView({
     <>
       <AppShell>
         <AppHeader title="本周" subtitle={rangeLabel} onPrev={onPrevWeek} onNext={onNextWeek} onAdd={onOpenAddModal} />
-        <ViewTabs value={viewMode} onChange={onChangeViewMode} />
-
         <MainlineBar
           today={today}
           aspirations={aspirations}
@@ -296,6 +294,7 @@ export default function TodoWeekView({
           elapsedMs={elapsedMs}
           onStopTimer={onStopTimer}
         />
+        <ViewTabs value={viewMode} onChange={onChangeViewMode} />
 
         {/* 本周完成/未完成（原来挤在 tab 右边，把 tab 挤窄了，切过来按钮就移位） */}
         <div className="flex w-full items-center gap-3 px-[18px] pb-1 pt-1 text-[11px] font-medium">
