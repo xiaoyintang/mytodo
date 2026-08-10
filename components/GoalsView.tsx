@@ -19,7 +19,7 @@ import { formatMinutes } from "@/components/todo/time";
 import FocusMapView from "@/components/FocusMapView";
 import GoalResultsPanel, { UNASSIGNED_RESULT_ID } from "@/components/GoalResultsPanel";
 import ConfirmDialog from "@/components/ConfirmDialog";
-import { ArrowLeft, ChevronRight, Plus, Search, Target, Trash2, Undo2, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, Plus, Search, Trash2, Undo2, X } from "lucide-react";
 
 type Judgement = {
   id: string;
@@ -545,7 +545,7 @@ export default function GoalsView({
                 </button>
               </div>
             ) : (
-              <div className="w-full flex flex-col gap-2">
+              <div className="w-full flex flex-col gap-1.5">
                 {visibleAspirations.map((a) => {
                   const originalIndex = aspirations.findIndex((item) => item.id === a.id);
                   const color = goalColor(a, originalIndex);
@@ -575,40 +575,32 @@ export default function GoalsView({
                         className="pointer-events-none absolute inset-0 opacity-60"
                         style={{ background: `linear-gradient(90deg, ${color}0D 0%, transparent 48%)` }}
                       />
-                      <div className="relative flex w-full items-center gap-2 py-3 pl-3.5 pr-3">
+                      <div className="relative flex min-h-[54px] w-full items-center gap-1 py-2 pl-3.5 pr-2">
                         <button
                           type="button"
                           onClick={() => {
                             setOpenId(a.id);
                             setActiveResultId(null);
                           }}
-                          className="flex-1 flex items-center gap-2.5 min-w-0 text-left"
+                          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
                         >
-                          <span
-                            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[9px] border"
-                            style={{ backgroundColor: `${color}12`, borderColor: `${color}28`, color }}
-                          >
-                            <Target className="h-4 w-4" strokeWidth={2.25} />
-                          </span>
-                          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                            <span className="flex min-w-0 items-center">
-                              <span className="line-clamp-2 text-[14px] font-semibold leading-snug text-[var(--color-text-primary)]">
-                                {a.title}
-                              </span>
+                          <div className="flex min-w-0 flex-1 flex-col gap-1">
+                            <span className="truncate text-[14px] font-semibold leading-[18px] text-[var(--color-text-primary)]">
+                              {a.title}
                             </span>
-                            <span className="flex items-center gap-1.5 text-[10px]">
+                            <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-[10px] leading-[14px]">
                               {resultCount > 0 && (
-                                <span className="rounded-md bg-[var(--color-primary-light)] px-1.5 py-0.5 text-[var(--color-primary)]">
+                                <span className="text-[var(--color-primary)]">
                                   结果 {resultCount}
                                 </span>
                               )}
                               <span
-                                className={`rounded-md px-1.5 py-0.5 ${taskLeg === 0 ? "bg-[#FFF7ED] text-[#C27720]" : "bg-[var(--color-bg-gray-lighter)] text-[var(--color-text-secondary)]"}`}
+                                className={taskLeg === 0 ? "text-[#C27720]" : "text-[var(--color-text-secondary)]"}
                               >
                                 任务 {taskLeg}
                               </span>
                               <span
-                                className={`rounded-md px-1.5 py-0.5 ${habitLeg === 0 ? "bg-[#FFF7ED] text-[#C27720]" : "bg-[var(--color-bg-gray-lighter)] text-[var(--color-text-secondary)]"}`}
+                                className={habitLeg === 0 ? "text-[#C27720]" : "text-[var(--color-text-secondary)]"}
                               >
                                 习惯 {habitLeg}
                               </span>
@@ -620,15 +612,15 @@ export default function GoalsView({
                               )}
                             </span>
                           </div>
-                          <ChevronRight className="w-4 h-4 text-[var(--color-text-tertiary)] flex-shrink-0" />
+                          <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-text-tertiary)]" />
                         </button>
                         <button
                           type="button"
                           onClick={() => setDeleteAspId(a.id)}
-                          className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0"
+                          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bg-gray-lighter)]"
                           aria-label="删除目标"
                         >
-                          <Trash2 className="w-[16px] h-[16px] text-[#A1A1AA]" />
+                          <Trash2 className="h-3.5 w-3.5 text-[#A1A1AA]" />
                         </button>
                       </div>
                     </div>
