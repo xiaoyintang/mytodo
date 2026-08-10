@@ -367,6 +367,8 @@ export default function TodoDayView({
   const headerSubtitle = selectedDate === today
     ? `${selected.getMonth() + 1}月${selected.getDate()}日 · ${CN_WEEKDAY[selected.getDay()]}`
     : `${selected.getFullYear()}年 · ${CN_WEEKDAY[selected.getDay()]}`;
+  const useDesktopSplit =
+    scheduledTasks.length > 0 && (anytimeTasks.length > 0 || offTasks.length > 0);
 
   return (
     <AppShell>
@@ -392,83 +394,103 @@ export default function TodoDayView({
       <div className="flex w-full flex-col gap-5 px-[18px] pb-6 pt-1">
         <QuickAddTask onCreate={onCreateTask} />
 
-        {anytimeTasks.length > 0 && (
-          <section className="w-full">
-            <div className="flex h-7 items-center justify-between border-b border-[var(--color-border)]">
-              <h2 className="text-[12px] font-semibold text-[var(--color-text-primary)]">
-                {selectedDate === today ? "今日待办" : "当天待办"}
-              </h2>
-              <span className="text-[10px] font-medium text-[var(--color-text-tertiary)]">{anytimeTasks.length} 项</span>
-            </div>
-            <div className="divide-y divide-[var(--color-border)]">{anytimeTasks.map((task) => renderTaskCard(task, false))}</div>
-          </section>
-        )}
+        <div
+          className={
+            useDesktopSplit
+              ? "flex w-full flex-col gap-5 md:grid md:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] md:items-start md:gap-x-6 md:gap-y-4"
+              : "flex w-full flex-col gap-5"
+          }
+        >
+          {anytimeTasks.length > 0 && (
+            <section className={useDesktopSplit ? "w-full md:col-start-1 md:row-start-1" : "w-full"}>
+              <div className="flex h-7 items-center justify-between border-b border-[var(--color-border)]">
+                <h2 className="text-[12px] font-semibold text-[var(--color-text-primary)]">
+                  {selectedDate === today ? "今日待办" : "当天待办"}
+                </h2>
+                <span className="text-[10px] font-medium text-[var(--color-text-tertiary)]">{anytimeTasks.length} 项</span>
+              </div>
+              <div className="divide-y divide-[var(--color-border)]">{anytimeTasks.map((task) => renderTaskCard(task, false))}</div>
+            </section>
+          )}
 
-        {scheduledTasks.length > 0 && (
-          <section className="w-full">
-            <div className="flex h-7 items-center justify-between border-b border-[var(--color-border)]">
-              <h2 className="text-[12px] font-semibold text-[var(--color-text-primary)]">日程</h2>
-              <span className="text-[10px] font-medium text-[var(--color-text-tertiary)]">{scheduledTasks.length} 项</span>
-            </div>
-            <div>
-              {scheduledTasks.map((task, index) => (
-                <div key={task.id} className="flex border-b border-[var(--color-border)] last:border-b-0">
-                  <div className="w-[42px] flex-shrink-0 py-3 pr-1 text-right tabular-nums">
-                    <span className="block text-[11px] font-semibold leading-4 text-[var(--color-text-secondary)]">
-                      {task.startTime}
-                    </span>
-                    {task.endTime && (
-                      <span className="block text-[9px] leading-3 text-[var(--color-text-tertiary)]">{task.endTime}</span>
-                    )}
-                  </div>
-                  <div className="relative w-5 flex-shrink-0">
-                    {index < scheduledTasks.length - 1 && (
-                      <span className="absolute bottom-0 left-1/2 top-[17px] w-px -translate-x-1/2 bg-[var(--color-border)]" />
-                    )}
-                    <span className="absolute left-1/2 top-[15px] h-2 w-2 -translate-x-1/2 rounded-full border-2 border-white bg-[var(--color-primary)] shadow-[0_0_0_1px_var(--color-primary)]" />
-                  </div>
-                  <div className="min-w-0 flex-1">{renderTaskCard(task, false)}</div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* 非主线目标的任务：默认折起来，可展开，不阻止 */}
-        {offTasks.length > 0 && (
-          <div className="w-full">
-            <button
-              type="button"
-              onClick={() => setOffOpen((v) => !v)}
-              className="flex h-8 w-full items-center gap-1.5 border-b border-[var(--color-border)] text-left"
+          {scheduledTasks.length > 0 && (
+            <section
+              className={
+                useDesktopSplit
+                  ? "w-full md:col-start-2 md:row-span-2 md:row-start-1"
+                  : "w-full"
+              }
             >
-              <ChevronDown
-                className={[
-                  "h-3.5 w-3.5 text-[var(--color-text-tertiary)] transition-transform",
-                  offOpen ? "" : "-rotate-90",
-                ].join(" ")}
-              />
-              <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">
-                不是今天主线的 {offTasks.length} 项
-              </span>
-              <div className="flex-1" />
-              <span className="flex items-center gap-1 flex-shrink-0">
-                {[...new Set(offTasks.map((t) => t.aspirationId))].map((id) => {
-                  const gi = aspirations.findIndex((a) => a.id === id);
-                  return gi >= 0 ? (
-                    <span
-                      key={id}
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: goalColor(aspirations[gi], gi) }}
-                      title={aspirations[gi].title}
-                    />
-                  ) : null;
-                })}
-              </span>
-            </button>
-            {offOpen && <div className="divide-y divide-[var(--color-border)]">{offTasks.map((task) => renderTaskCard(task))}</div>}
-          </div>
-        )}
+              <div className="flex h-7 items-center justify-between border-b border-[var(--color-border)]">
+                <h2 className="text-[12px] font-semibold text-[var(--color-text-primary)]">日程</h2>
+                <span className="text-[10px] font-medium text-[var(--color-text-tertiary)]">{scheduledTasks.length} 项</span>
+              </div>
+              <div>
+                {scheduledTasks.map((task, index) => (
+                  <div key={task.id} className="flex border-b border-[var(--color-border)] last:border-b-0">
+                    <div className="w-[42px] flex-shrink-0 py-3 pr-1 text-right tabular-nums">
+                      <span className="block text-[11px] font-semibold leading-4 text-[var(--color-text-secondary)]">
+                        {task.startTime}
+                      </span>
+                      {task.endTime && (
+                        <span className="block text-[9px] leading-3 text-[var(--color-text-tertiary)]">{task.endTime}</span>
+                      )}
+                    </div>
+                    <div className="relative w-5 flex-shrink-0">
+                      {index < scheduledTasks.length - 1 && (
+                        <span className="absolute bottom-0 left-1/2 top-[17px] w-px -translate-x-1/2 bg-[var(--color-border)]" />
+                      )}
+                      <span className="absolute left-1/2 top-[15px] h-2 w-2 -translate-x-1/2 rounded-full border-2 border-white bg-[var(--color-primary)] shadow-[0_0_0_1px_var(--color-primary)]" />
+                    </div>
+                    <div className="min-w-0 flex-1">{renderTaskCard(task, false)}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* 非主线目标的任务：默认折起来，可展开，不阻止 */}
+          {offTasks.length > 0 && (
+            <div
+              className={
+                useDesktopSplit
+                  ? `w-full md:col-start-1 ${anytimeTasks.length > 0 ? "md:row-start-2" : "md:row-start-1"}`
+                  : "w-full"
+              }
+            >
+              <button
+                type="button"
+                onClick={() => setOffOpen((v) => !v)}
+                className="flex h-8 w-full items-center gap-1.5 border-b border-[var(--color-border)] text-left"
+              >
+                <ChevronDown
+                  className={[
+                    "h-3.5 w-3.5 text-[var(--color-text-tertiary)] transition-transform",
+                    offOpen ? "" : "-rotate-90",
+                  ].join(" ")}
+                />
+                <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">
+                  不是今天主线的 {offTasks.length} 项
+                </span>
+                <div className="flex-1" />
+                <span className="flex items-center gap-1 flex-shrink-0">
+                  {[...new Set(offTasks.map((t) => t.aspirationId))].map((id) => {
+                    const gi = aspirations.findIndex((a) => a.id === id);
+                    return gi >= 0 ? (
+                      <span
+                        key={id}
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: goalColor(aspirations[gi], gi) }}
+                        title={aspirations[gi].title}
+                      />
+                    ) : null;
+                  })}
+                </span>
+              </button>
+              {offOpen && <div className="divide-y divide-[var(--color-border)]">{offTasks.map((task) => renderTaskCard(task))}</div>}
+            </div>
+          )}
+        </div>
 
         {dayTasks.length === 0 ? (
           <div className="py-10 text-center text-[12px] text-[var(--color-text-tertiary)]">

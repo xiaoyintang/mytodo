@@ -251,7 +251,7 @@ export default function GoalsView({
   }
 
   return (
-    <div className="flex min-h-full w-full max-w-[460px] flex-col overflow-hidden bg-[var(--color-bg-white)] pb-14 sm:min-h-0 sm:rounded-[16px] sm:border sm:border-[var(--color-border)] sm:pb-0">
+    <div className="flex min-h-full w-full max-w-[460px] flex-col overflow-hidden bg-[var(--color-bg-white)] pb-14 sm:min-h-0 sm:rounded-[16px] sm:border sm:border-[var(--color-border)] sm:pb-0 md:min-h-[calc(100vh-48px)] md:max-w-[960px] lg:max-w-[1040px]">
       <div className="w-full flex items-center gap-2 px-6 pt-6 pb-4">
         <button
           type="button"
@@ -549,7 +549,7 @@ export default function GoalsView({
                 </button>
               </div>
             ) : (
-              <div className="w-full flex flex-col gap-1.5">
+              <div className="grid w-full grid-cols-1 gap-1.5 md:grid-cols-2 md:gap-3">
                 {visibleAspirations.map((a) => {
                   const originalIndex = aspirations.findIndex((item) => item.id === a.id);
                   const color = goalColor(a, originalIndex);

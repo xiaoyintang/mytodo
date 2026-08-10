@@ -570,7 +570,7 @@ export default function TimeLogView({
       <WeekDateStrip days={days} selectedDate={selectedDate} today={today} onSelect={onSelectDate} />
 
       {/* Content */}
-      <div className="flex w-full flex-col gap-5 px-[18px] pb-6 pt-2">
+      <div className="flex w-full flex-col gap-5 px-[18px] pb-6 pt-2 md:mx-auto md:max-w-[760px]">
         {/* 计时器（今天可开始；有计时在跑时始终显示，保证能停止） */}
         {(selectedDate === todayISO || timer.running) && (
           <TimerPanel

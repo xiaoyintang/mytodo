@@ -350,15 +350,16 @@ export default function HabitTracker({
         </div>
       )}
 
-      {groups.map((group) => {
-        const shut = collapsed.includes(group.key);
-        const done = groupTodayCount(group.items);
-        const aspirationIndex = group.aspiration
-          ? aspirations.findIndex((item) => item.id === group.aspiration?.id)
-          : 0;
+      <div className="grid w-full grid-cols-1 items-start gap-3 md:grid-cols-2 md:gap-x-4">
+        {groups.map((group) => {
+          const shut = collapsed.includes(group.key);
+          const done = groupTodayCount(group.items);
+          const aspirationIndex = group.aspiration
+            ? aspirations.findIndex((item) => item.id === group.aspiration?.id)
+            : 0;
 
-        return (
-          <section key={group.key} className="flex w-full flex-col gap-1">
+          return (
+            <section key={group.key} className="flex w-full flex-col gap-1">
             <div className="flex h-7 w-full items-center gap-1 px-0.5">
               <button
                 type="button"
@@ -668,9 +669,10 @@ export default function HabitTracker({
                 })}
               </div>
             )}
-          </section>
-        );
-      })}
+            </section>
+          );
+        })}
+      </div>
 
       {celebration && (
         <div
