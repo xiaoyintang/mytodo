@@ -17,7 +17,7 @@ import { goalColor } from "@/components/todo/goal";
 import { formatMinutes } from "@/components/todo/time";
 import FocusMapView from "@/components/FocusMapView";
 import ConfirmDialog from "@/components/ConfirmDialog";
-import { ArrowLeft, ChevronRight, Plus, Trash2, Undo2, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, Plus, Search, Target, Trash2, Undo2, X } from "lucide-react";
 
 type Judgement = {
   id: string;
@@ -85,6 +85,7 @@ export default function GoalsView({
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newKind, setNewKind] = useState<AspirationKind>("aspiration");
+  const [query, setQuery] = useState("");
   const [deleteAspId, setDeleteAspId] = useState<string | null>(null);
   const [rejudging, setRejudging] = useState(false);
   const [rejudgeDone, setRejudgeDone] = useState(0);
@@ -94,6 +95,10 @@ export default function GoalsView({
   const habitBehaviorIds = new Set(
     habits.filter((h) => !h.archived && h.behaviorId).map((h) => h.behaviorId!),
   );
+  const normalizedQuery = query.trim().toLocaleLowerCase("zh-CN");
+  const visibleAspirations = normalizedQuery
+    ? aspirations.filter((a) => a.title.toLocaleLowerCase("zh-CN").includes(normalizedQuery))
+    : aspirations;
 
   // 新条目自己去判定，不用点按钮。非阻塞：行立刻出现（"判定中…"），
   // 700ms 内连着加的攒成一次请求。
@@ -182,6 +187,7 @@ export default function GoalsView({
     onCreateAspiration(t, newKind);
     setNewTitle("");
     setNewKind("aspiration");
+    setQuery("");
     setAdding(false);
   }
 
@@ -300,9 +306,16 @@ export default function GoalsView({
         ) : (
           <>
             <div className="w-full flex items-center justify-between">
-              <span className="text-[var(--color-text-primary)] text-[15px] font-semibold">
-                目标 {aspirations.length > 0 ? aspirations.length : ""}
-              </span>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[var(--color-text-primary)] text-[15px] font-semibold">
+                  目标 {aspirations.length > 0 ? aspirations.length : ""}
+                </span>
+                {aspirations.length > 0 && (
+                  <span className="text-[10px] text-[var(--color-text-tertiary)]">
+                    每个目标都有自己的任务、习惯和投入
+                  </span>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => setAdding((v) => !v)}
@@ -312,6 +325,30 @@ export default function GoalsView({
                 新目标
               </button>
             </div>
+
+            {aspirations.length >= 5 && (
+              <div className="relative w-full">
+                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-tertiary)]" />
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={`搜索 ${aspirations.length} 个目标`}
+                  className="w-full rounded-[10px] border border-[var(--color-border)] bg-[var(--color-bg-gray-lighter)] py-2 pl-9 pr-14 text-[13px] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] focus:border-[var(--color-primary)] focus:bg-white focus:outline-none"
+                />
+                {query ? (
+                  <button
+                    type="button"
+                    onClick={() => setQuery("")}
+                    className="absolute right-2.5 top-1/2 flex h-6 items-center gap-1 -translate-y-1/2 rounded-md px-1.5 text-[10px] text-[var(--color-text-tertiary)] hover:bg-white"
+                    aria-label="清空搜索"
+                  >
+                    {visibleAspirations.length}/{aspirations.length}
+                    <X className="h-3 w-3" />
+                  </button>
+                ) : null}
+              </div>
+            )}
 
             {adding && (
               <div className="w-full flex flex-col gap-2.5 p-3.5 rounded-[10px] bg-[var(--color-bg-gray-lighter)] border-[1.5px] border-[var(--color-primary)]">
@@ -403,9 +440,25 @@ export default function GoalsView({
                   又有用、又做得到的那几条。一次性行为安排到某天成为任务，可重复行为加入习惯。
                 </p>
               </div>
+            ) : visibleAspirations.length === 0 ? (
+              <div className="flex w-full flex-col items-center gap-2 rounded-[12px] border border-dashed border-[var(--color-border)] bg-[var(--color-bg-gray-lighter)] px-4 py-8 text-center">
+                <Search className="h-5 w-5 text-[var(--color-text-tertiary)]" />
+                <span className="text-[13px] font-medium text-[var(--color-text-secondary)]">
+                  没找到“{query.trim()}”
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setQuery("")}
+                  className="text-[12px] font-medium text-[var(--color-primary)]"
+                >
+                  看全部目标
+                </button>
+              </div>
             ) : (
               <div className="w-full flex flex-col gap-2">
-                {aspirations.map((a, i) => {
+                {visibleAspirations.map((a) => {
+                  const originalIndex = aspirations.findIndex((item) => item.id === a.id);
+                  const color = goalColor(a, originalIndex);
                   const cards = behaviors.filter((b) => b.aspirationId === a.id);
                   const un = cards.filter((c) => c.type === "unsorted").length;
                   // 两条腿：任务腿=推进，习惯腿=维持。缺任何一条都走不动，
@@ -420,60 +473,65 @@ export default function GoalsView({
                   return (
                     <div
                       key={a.id}
-                      className="w-full flex items-center gap-2 px-3.5 py-3 rounded-[10px] bg-white border border-[var(--color-border)]"
+                      className="group relative w-full overflow-hidden rounded-[12px] border bg-white transition-[border-color,box-shadow,transform] hover:-translate-y-px hover:shadow-sm"
+                      style={{ borderColor: `${color}35` }}
                     >
-                      <button
-                        type="button"
-                        onClick={() => setOpenId(a.id)}
-                        className="flex-1 flex items-center gap-2.5 min-w-0 text-left"
-                      >
-                        <span
-                          className="w-3 h-3 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: goalColor(a, i) }}
-                        />
-                        <div className="flex-1 flex flex-col gap-0.5 min-w-0">
-                          <span className="text-[14px] font-medium text-[var(--color-text-primary)] truncate">
-                            {a.title}
+                      <span
+                        className="absolute inset-y-0 left-0 w-1"
+                        style={{ backgroundColor: color }}
+                      />
+                      <div
+                        className="pointer-events-none absolute inset-0 opacity-60"
+                        style={{ background: `linear-gradient(90deg, ${color}0D 0%, transparent 48%)` }}
+                      />
+                      <div className="relative flex w-full items-center gap-2 py-3 pl-3.5 pr-3">
+                        <button
+                          type="button"
+                          onClick={() => setOpenId(a.id)}
+                          className="flex-1 flex items-center gap-2.5 min-w-0 text-left"
+                        >
+                          <span
+                            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[9px] border"
+                            style={{ backgroundColor: `${color}12`, borderColor: `${color}28`, color }}
+                          >
+                            <Target className="h-4 w-4" strokeWidth={2.25} />
                           </span>
-                          <span className="flex items-center gap-1.5 text-[11px]">
-                            <span
-                              className={
-                                taskLeg === 0
-                                  ? "text-[#D4A76A]"
-                                  : "text-[var(--color-text-secondary)]"
-                              }
-                            >
-                              任务 {taskLeg}
+                          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                            <span className="flex min-w-0 items-center">
+                              <span className="line-clamp-2 text-[14px] font-semibold leading-snug text-[var(--color-text-primary)]">
+                                {a.title}
+                              </span>
                             </span>
-                            <span className="text-[var(--color-text-tertiary)]">·</span>
-                            <span
-                              className={
-                                habitLeg === 0
-                                  ? "text-[#D4A76A]"
-                                  : "text-[var(--color-text-secondary)]"
-                              }
-                            >
-                              习惯 {habitLeg}
+                            <span className="flex items-center gap-1.5 text-[10px]">
+                              <span
+                                className={`rounded-md px-1.5 py-0.5 ${taskLeg === 0 ? "bg-[#FFF7ED] text-[#C27720]" : "bg-[var(--color-bg-gray-lighter)] text-[var(--color-text-secondary)]"}`}
+                              >
+                                任务 {taskLeg}
+                              </span>
+                              <span
+                                className={`rounded-md px-1.5 py-0.5 ${habitLeg === 0 ? "bg-[#FFF7ED] text-[#C27720]" : "bg-[var(--color-bg-gray-lighter)] text-[var(--color-text-secondary)]"}`}
+                              >
+                                习惯 {habitLeg}
+                              </span>
+                              <span className="truncate text-[var(--color-text-tertiary)]">
+                                本周 {invested > 0 ? formatMinutes(invested) : "0分钟"}
+                              </span>
+                              {un > 0 && (
+                                <span className="flex-shrink-0 text-[#EA580C]">· {un} 待判定</span>
+                              )}
                             </span>
-                            <span className="text-[var(--color-text-tertiary)]">·</span>
-                            <span className="text-[var(--color-text-tertiary)]">
-                              本周 {invested > 0 ? formatMinutes(invested) : "0分钟"}
-                            </span>
-                            {un > 0 && (
-                              <span className="text-[#EA580C]">· {un} 待判定</span>
-                            )}
-                          </span>
-                        </div>
-                        <ChevronRight className="w-4 h-4 text-[var(--color-text-tertiary)] flex-shrink-0" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeleteAspId(a.id)}
-                        className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0"
-                        aria-label="删除目标"
-                      >
-                        <Trash2 className="w-[16px] h-[16px] text-[#A1A1AA]" />
-                      </button>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-[var(--color-text-tertiary)] flex-shrink-0" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteAspId(a.id)}
+                          className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0"
+                          aria-label="删除目标"
+                        >
+                          <Trash2 className="w-[16px] h-[16px] text-[#A1A1AA]" />
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
