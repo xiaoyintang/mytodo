@@ -249,7 +249,7 @@ export default function GoalsView({
   }
 
   return (
-    <div className="w-[420px] bg-[var(--color-bg-white)] flex flex-col rounded-[16px] overflow-hidden border border-[var(--color-border)]">
+    <div className="flex min-h-full w-full max-w-[460px] flex-col overflow-hidden bg-[var(--color-bg-white)] pb-14 sm:min-h-0 sm:rounded-[16px] sm:border sm:border-[var(--color-border)] sm:pb-0">
       <div className="w-full flex items-center gap-2 px-6 pt-6 pb-4">
         <button
           type="button"

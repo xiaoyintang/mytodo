@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import type { Aspiration, DayPlan, EntryCategory, ISODate, Task, TimeEntry, ViewMode } from "@/components/todo/types";
-import { CN_WEEKDAY, addDays, formatCNDateTitle, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
+import { CN_WEEKDAY, addDays, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
 import { formatMinutes, matchTaskByTitle, timeToMinutes, minutesToTime } from "@/components/todo/time";
 import { goalColor } from "@/components/todo/goal";
 import { parseTimeEntries, type ParsedEntry } from "@/components/todo/nlparse";
@@ -13,13 +13,14 @@ import {
   categoryStyle,
   ruleClassify,
 } from "@/components/todo/category";
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Mic, Sparkles, Trash2, X, Check, Link2, Zap, Pencil, Copy, Undo2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Mic, Sparkles, Trash2, X, Check, Link2, Zap, Pencil, Copy, Undo2 } from "lucide-react";
 import TimePicker from "@/components/TimePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import TimerPanel from "@/components/TimerPanel";
 import MainlineBar from "@/components/MainlineBar";
 import CategoryDonut, { type DonutSlice } from "@/components/CategoryDonut";
 import GoalInvestChart from "@/components/GoalInvestChart";
+import { AppHeader, AppShell, ViewTabs, WeekDateStrip } from "@/components/ViewChrome";
 
 
 type Props = {
@@ -61,13 +62,6 @@ type SummaryRow = {
   ids: string[];
   category: EntryCategory | null;
 };
-
-const TABS: Array<{ mode: ViewMode; label: string }> = [
-  { mode: "day", label: "日视图" },
-  { mode: "week", label: "周视图" },
-  { mode: "log", label: "记录" },
-  { mode: "habit", label: "习惯" },
-];
 
 // AI 解析请求：8 秒超时 + 失败自动重试一次（应对 VPN 抽风）。返回 null 表示彻底失败（由调用方降级规则）。
 async function fetchAIParse(text: string, now: string): Promise<ParsedEntry[] | null> {
@@ -556,36 +550,15 @@ export default function TimeLogView({
   }
 
   return (
-    <div className="w-[420px] bg-[var(--color-bg-white)] flex flex-col rounded-[16px] overflow-hidden border border-[var(--color-border)]">
-      {/* Header */}
-      <div className="w-full flex items-center justify-between px-6 pt-6 pb-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-[var(--color-text-primary)] text-[28px] font-bold tracking-[-0.5px]">
-            时间记录
-          </h1>
-          <p className="text-[var(--color-text-secondary)] text-[14px] font-medium">
-            {formatCNDateTitle(selected)}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onPrevWeek}
-            className="w-9 h-9 rounded-lg border-[1.5px] border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors"
-            aria-label="上一周"
-          >
-            <ChevronLeft className="w-4 h-4 text-[var(--color-text-secondary)]" />
-          </button>
-          <button
-            type="button"
-            onClick={onNextWeek}
-            className="w-9 h-9 rounded-lg border-[1.5px] border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors"
-            aria-label="下一周"
-          >
-            <ChevronRight className="w-4 h-4 text-[var(--color-text-secondary)]" />
-          </button>
-        </div>
-      </div>
+    <AppShell>
+      <AppHeader
+        title="记录"
+        subtitle={`${selected.getMonth() + 1}月${selected.getDate()}日 · ${CN_WEEKDAY[selected.getDay()]}`}
+        onPrev={onPrevWeek}
+        onNext={onNextWeek}
+      />
+      <ViewTabs value={viewMode} onChange={onChangeViewMode} />
+      <WeekDateStrip days={days} selectedDate={selectedDate} today={today} onSelect={onSelectDate} />
 
       <MainlineBar
         today={today}
@@ -597,82 +570,8 @@ export default function TimeLogView({
         onStopTimer={onStopTimer}
       />
 
-      {/* Tabs + Date Picker */}
-      <div className="w-full flex flex-col gap-4 px-6 pt-4">
-        <div className="w-full flex gap-1 bg-[var(--color-bg-gray-light)] rounded-[10px] p-1">
-          {TABS.map((tab) => (
-            <button
-              key={tab.mode}
-              type="button"
-              onClick={() => onChangeViewMode(tab.mode)}
-              className={[
-                "flex-1 flex items-center justify-center rounded-lg px-2 py-[10px] transition-colors",
-                viewMode === tab.mode
-                  ? "bg-[var(--color-bg-white)] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
-                  : "hover:bg-white/60",
-              ].join(" ")}
-            >
-              <span
-                className={[
-                  "text-[14px]",
-                  viewMode === tab.mode
-                    ? "text-[var(--color-text-primary)] font-semibold"
-                    : "text-[var(--color-text-secondary)] font-medium",
-                ].join(" ")}
-              >
-                {tab.label}
-              </span>
-            </button>
-          ))}
-        </div>
-
-        <div className="w-full flex items-center justify-between">
-          {days.map((d) => {
-            const iso = toISODate(d);
-            const isSelected = iso === selectedDate;
-            const isToday = iso === toISODate(new Date());
-            return (
-              <button
-                key={iso}
-                type="button"
-                onClick={() => onSelectDate(iso)}
-                className={[
-                  "flex flex-col items-center gap-[6px] px-3 py-2 rounded-[12px]",
-                  isSelected ? "bg-[var(--color-primary)]" : isToday ? "bg-[var(--color-primary-light)]" : "",
-                ].join(" ")}
-              >
-                <span
-                  className={[
-                    "text-[12px] font-medium",
-                    isSelected
-                      ? "text-[var(--color-bg-white)] font-semibold"
-                      : isToday
-                        ? "text-[var(--color-primary)] font-semibold"
-                        : "text-[var(--color-text-tertiary)]",
-                  ].join(" ")}
-                >
-                  {isToday ? "今天" : CN_WEEKDAY[d.getDay()]}
-                </span>
-                <span
-                  className={[
-                    "text-[16px] font-semibold",
-                    isSelected
-                      ? "text-[var(--color-bg-white)] font-bold"
-                      : isToday
-                        ? "text-[var(--color-primary)] font-bold"
-                        : "text-[var(--color-text-secondary)]",
-                  ].join(" ")}
-                >
-                  {d.getDate()}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
       {/* Content */}
-      <div className="w-full flex flex-col gap-6 px-6 pt-4 pb-6">
+      <div className="flex w-full flex-col gap-5 px-[18px] pb-6 pt-2">
         {/* 计时器（今天可开始；有计时在跑时始终显示，保证能停止） */}
         {(selectedDate === todayISO || timer.running) && (
           <TimerPanel
@@ -1001,6 +900,6 @@ export default function TimeLogView({
         onConfirm={handleConfirmDeleteEntry}
         onCancel={() => setDeleteEntryId(null)}
       />
-    </div>
+    </AppShell>
   );
 }

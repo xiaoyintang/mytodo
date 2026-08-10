@@ -3,7 +3,7 @@
 import type { Aspiration, DayPlan, ISODate } from "@/components/todo/types";
 import { goalColor, mainlinesOf } from "@/components/todo/goal";
 import type { RunningTimer } from "@/components/todo/useTimer";
-import { ChevronRight, Square, Target } from "lucide-react";
+import { ChevronRight, Square } from "lucide-react";
 
 type Props = {
   today: ISODate;
@@ -44,9 +44,9 @@ export default function MainlineBar({
   const mains = mainlinesOf(today, dayPlans, aspirations);
 
   return (
-    <div className="w-full flex flex-col border-y border-[var(--color-border)]">
+    <div className="flex w-full flex-col gap-1.5 px-[18px] pb-2">
       {running && (
-        <div className="w-full flex items-center gap-2 px-6 py-1.5 bg-[#EFF6FF] border-b border-[var(--color-border)]">
+        <div className="flex w-full items-center gap-2 rounded-lg bg-[#EFF6FF] px-2.5 py-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] animate-pulse flex-shrink-0" />
           <span className="text-[12px] font-semibold text-[var(--color-primary)] truncate min-w-0">
             {running.title}
@@ -69,32 +69,32 @@ export default function MainlineBar({
       <button
         type="button"
         onClick={onOpenGoals}
-        className="w-full flex items-center gap-2 px-6 py-2 bg-[var(--color-bg-gray-lighter)] hover:bg-[var(--color-bg-gray-light)] transition-colors text-left"
+        className="flex min-h-8 w-full items-center gap-2 rounded-lg bg-[var(--color-bg-gray-lighter)] px-2.5 py-1.5 text-left transition-colors hover:bg-[var(--color-bg-gray-light)]"
       >
-        <Target className="w-3.5 h-3.5 text-[var(--color-primary)] flex-shrink-0" />
-        <span className="text-[11px] text-[var(--color-text-tertiary)] flex-shrink-0">今天主线</span>
+        <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[var(--color-primary)]" />
+        <span className="flex-shrink-0 text-[10px] font-medium text-[var(--color-text-tertiary)]">主线</span>
 
         {mains.length > 0 ? (
-          <span className="flex-1 flex items-center gap-2 min-w-0 flex-wrap">
+          <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
             {mains.map((a) => (
               <span key={a.id} className="flex items-center gap-1 min-w-0">
                 <span
                   className="w-2 h-2 rounded-full flex-shrink-0"
                   style={{ backgroundColor: goalColor(a, aspirations.indexOf(a)) }}
                 />
-                <span className="text-[12px] font-semibold text-[var(--color-text-primary)] truncate">
+                <span className="truncate text-[12px] font-semibold text-[var(--color-text-primary)]">
                   {a.title}
                 </span>
               </span>
             ))}
           </span>
         ) : (
-          <span className="flex-1 text-[12px] text-[var(--color-text-secondary)]">
-            还没排 · 去周视图排
+          <span className="flex-1 text-[11px] text-[var(--color-text-secondary)]">
+            还没安排，去本周选择
           </span>
         )}
 
-        <ChevronRight className="w-4 h-4 text-[var(--color-text-tertiary)] flex-shrink-0" />
+        <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-text-tertiary)]" />
       </button>
     </div>
   );

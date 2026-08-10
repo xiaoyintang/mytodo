@@ -2,14 +2,14 @@
 
 import { useState } from "react";
 import type { Aspiration, DayPlan, ISODate, Task, TimeEntry, ViewMode } from "@/components/todo/types";
-import { CN_WEEKDAY, addDays, formatCNDateTitle, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
+import { CN_WEEKDAY, addDays, parseISODate, startOfWeek } from "@/components/todo/date";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
 import { goalColor } from "@/components/todo/goal";
-import { Plus, Check, Trash2, ChevronLeft, ChevronRight, ChevronDown, ListChecks, Pencil, Timer } from "lucide-react";
+import { Check, ChevronDown, ListChecks, MoreHorizontal, Timer } from "lucide-react";
 import TaskBottomSheet from "@/components/TaskBottomSheet";
-import ConfirmDialog from "@/components/ConfirmDialog";
 import QuickAddTask from "@/components/QuickAddTask";
 import MainlineBar from "@/components/MainlineBar";
+import { AppHeader, AppShell, ViewTabs, WeekDateStrip } from "@/components/ViewChrome";
 
 type Props = {
   viewMode: ViewMode;
@@ -46,16 +46,6 @@ function timeLabel(t: Task) {
   return "";
 }
 
-// 分组规则：只要没给具体开始时间，就属于「不限时段」；
-// 有开始时间的再按 00:00-11:59 上午，12:00-17:59 下午，18:00+ 晚间。
-function sectionForTask(t: Task): "不限时段" | "上午" | "下午" | "晚间" {
-  if (!t.startTime) return "不限时段";
-  const h = Number(t.startTime.slice(0, 2));
-  if (h < 12) return "上午";
-  if (h < 18) return "下午";
-  return "晚间";
-}
-
 // 状态圆圈组件
 function StatusIndicator({ status, onClick }: { status: Task["status"]; onClick: () => void }) {
   const isDone = status === "done";
@@ -69,19 +59,20 @@ function StatusIndicator({ status, onClick }: { status: Task["status"]; onClick:
         onClick();
       }}
       className={[
-        "w-[22px] h-[22px] rounded-[6px] flex items-center justify-center flex-shrink-0 transition-colors",
+        "flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full transition-colors",
         isDone
           ? "bg-[var(--color-primary)]"
           : isInProgress
             ? "border-2 border-[var(--color-primary)] bg-white"
             : "border-[1.5px] border-[var(--color-border)] bg-white hover:border-[var(--color-text-tertiary)]",
       ].join(" ")}
+      aria-label="切换任务状态"
     >
       {isDone ? (
-        <Check className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
+        <Check className="h-3 w-3 text-white" strokeWidth={2.7} />
       ) : isInProgress ? (
         // 空心圆里有实心小圆点
-        <div className="w-2 h-2 rounded-full bg-[var(--color-primary)]" />
+        <div className="h-1.5 w-1.5 rounded-full bg-[var(--color-primary)]" />
       ) : null}
     </button>
   );
@@ -117,7 +108,6 @@ export default function TodoDayView({
 }: Props) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
-  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [offOpen, setOffOpen] = useState(false);        // 非主线任务默认折起来
   // 展开的任务（看子任务）。默认全收起——卡片列表要保持一眼扫得完
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -133,13 +123,6 @@ export default function TodoDayView({
 
   // Get the latest task data from tasks array
   const selectedTask = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) ?? null : null;
-  const deleteTarget = deleteTargetId ? tasks.find((t) => t.id === deleteTargetId) ?? null : null;
-
-  function handleDelete(e: React.MouseEvent, taskId: string) {
-    e.stopPropagation();
-    setDeleteTargetId(taskId);
-  }
-
   function handleStartEdit(e: React.MouseEvent, task: Task) {
     e.stopPropagation();
     setSelectedTaskId(task.id);
@@ -180,15 +163,11 @@ export default function TodoDayView({
   const focusTasks = dayTasks.filter((t) => !isOffMainline(t));
   const offTasks = dayTasks.filter(isOffMainline);
 
-  const groups = {
-    不限时段: focusTasks.filter((t) => sectionForTask(t) === "不限时段"),
-    上午: focusTasks.filter((t) => sectionForTask(t) === "上午"),
-    下午: focusTasks.filter((t) => sectionForTask(t) === "下午"),
-    晚间: focusTasks.filter((t) => sectionForTask(t) === "晚间"),
-  } as const;
+  const anytimeTasks = focusTasks.filter((task) => !task.startTime);
+  const scheduledTasks = focusTasks.filter((task) => !!task.startTime);
 
-  // 任务卡：简单任务直接执行；有子步骤的任务把第一条未完成步骤露成「下一步」。
-  function renderTaskCard(t: Task) {
+  // 任务行：默认只露出执行所需的信息，详情和删除收进右侧的更多入口。
+  function renderTaskCard(t: Task, showTime = true) {
     const isDone = t.status === "done";
     const isInProgress = t.status === "in_progress";
     const isHigh = t.priority === "high";
@@ -202,205 +181,138 @@ export default function TodoDayView({
     const nextSubtask = subs.find((x) => !x.done);
     const isExpanded = expanded.has(t.id);
 
-    return (
-      <div
-        key={t.id}
-        className={[
-          "relative w-full flex flex-col rounded-[10px] transition-colors bg-white",
-          isInProgress
-            ? "border-[1.5px] border-[var(--color-primary)]"
-            : "border border-[var(--color-border)]",
-        ].join(" ")}
-      >
-      <div
-        className="w-full flex items-center gap-3 px-3.5 py-3 cursor-pointer"
-        onClick={() => {
-          if (subs.length > 0) toggleTaskExpanded(t.id);
-          else onCycleTaskStatus(t.id);
-        }}
-      >
-        {/* Status Indicator */}
-        <StatusIndicator status={t.status} onClick={() => onCycleTaskStatus(t.id)} />
+    const hasMeta =
+      (showTime && !!time) ||
+      !!t.aspirationId ||
+      subs.length > 0 ||
+      isMainlineTask(t) ||
+      !!t.sourceHabitId ||
+      !!t.tag ||
+      isHigh;
 
-        {/* Task Content: 标题在上，时间+标签在下 */}
-        <div className="flex-1 flex flex-col gap-0.5 min-w-0">
-          {/* Title */}
-          <span
-            className={[
-              "text-[14px] font-medium truncate",
-              isDone ? "text-[var(--color-text-secondary)] line-through" : "text-[var(--color-text-primary)]",
-            ].join(" ")}
-          >
-            {t.title}
+    return (
+      <div key={t.id} className={isInProgress ? "bg-[#F8FBFF]" : "bg-white"}>
+        <div
+          className="group flex w-full cursor-pointer items-start gap-2.5 px-1 py-2.5"
+          onClick={() => {
+            if (subs.length > 0) toggleTaskExpanded(t.id);
+            else onCycleTaskStatus(t.id);
+          }}
+        >
+          <span className="pt-0.5">
+            <StatusIndicator status={t.status} onClick={() => onCycleTaskStatus(t.id)} />
           </span>
 
-          {/* 项目型任务的执行入口：父标题交代成果，第一条未完成步骤负责让行为发生。 */}
-          {nextSubtask && !isExpanded && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleSubtask(t.id, nextSubtask.id);
-              }}
-              className="w-full flex items-start gap-2 mt-1.5 px-2.5 py-2 rounded-lg bg-[var(--color-primary-light)] text-left hover:bg-[#DBEAFE] transition-colors"
-              aria-label={`完成下一步：${nextSubtask.title}`}
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span
+              className={[
+                "truncate text-[14px] font-medium leading-5",
+                isDone ? "text-[var(--color-text-tertiary)] line-through" : "text-[var(--color-text-primary)]",
+              ].join(" ")}
             >
-              <span className="mt-[1px] w-[15px] h-[15px] rounded-[4px] border border-[var(--color-primary)] bg-white flex items-center justify-center flex-shrink-0" />
-              <span className="flex-1 min-w-0 flex flex-col gap-0.5">
-                <span className="text-[10px] font-semibold text-[var(--color-primary)]">下一步</span>
-                <span className="text-[12px] leading-snug text-[var(--color-text-primary)] break-words">
-                  {nextSubtask.title}
-                </span>
-              </span>
-            </button>
-          )}
+              {t.title}
+            </span>
 
-          {/* 时长目标进度（柳比歇夫模式任务） */}
-          {target > 0 && (
-            <div className="flex items-center gap-2 mt-0.5">
-              <div className="flex-1 h-[6px] rounded-full bg-[var(--color-bg-gray-light)] overflow-hidden max-w-[140px]">
-  <div
-    className={[
-      "h-full rounded-full transition-all",
-      reached ? "bg-[var(--color-success)]" : "bg-[var(--color-primary)]",
-    ].join(" ")}
-    style={{ width: `${Math.min(100, Math.round((logged / target) * 100))}%` }}
-  />
-              </div>
-              <span className={[
-  "text-[11px] font-medium flex items-center gap-0.5",
-  reached ? "text-[var(--color-success)]" : "text-[var(--color-text-tertiary)]",
-              ].join(" ")}>
-  <Timer className="w-3 h-3" />
-  {formatMinutes(logged)} / {formatMinutes(target)}
-              </span>
-            </div>
-          )}
-
-          {/* 手动完成进度（非时长目标、进行中的任务） */}
-          {manualPct > 0 && !isDone && (
-            <div className="flex items-center gap-2 mt-0.5">
-              <div className="flex-1 h-[6px] rounded-full bg-[var(--color-bg-gray-light)] overflow-hidden max-w-[140px]">
-  <div
-    className="h-full rounded-full bg-[var(--color-primary)]"
-    style={{ width: `${manualPct}%` }}
-  />
-              </div>
-              <span className="text-[11px] font-medium text-[var(--color-text-tertiary)]">
-  {manualPct}%
-              </span>
-            </div>
-          )}
-
-          {/* 时间 + 标签 在第二行 */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {time && (
-              <span className={[
-  "text-[12px] font-medium",
-  isInProgress ? "text-[var(--color-primary)]" : "text-[var(--color-text-tertiary)]",
-              ].join(" ")}>
-  {time}
-              </span>
-            )}
-            {/* 所属目标：光一个色点认不出是哪个，带上名字 */}
-            {(() => {
-              const gi = aspirations.findIndex((a) => a.id === t.aspirationId);
-              if (gi < 0) return null;
-              const c = goalColor(aspirations[gi], gi);
-              return (
-                <span
-                  className="flex items-center gap-1 rounded px-1.5 py-0.5 max-w-[120px]"
-                  style={{ backgroundColor: `${c}14` }}
-                >
-                  <span
-                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: c }}
-                  />
-                  <span className="text-[10px] font-medium truncate" style={{ color: c }}>
-                    {aspirations[gi].title}
-                  </span>
-                </span>
-              );
-            })()}
-
-            {/* 子任务进度：这是展开的点击区。**必须自己一个 hit target**——
-                卡片主体点了是切状态，不能被展开抢走 */}
-            {subs.length > 0 && (
+            {nextSubtask && !isExpanded && (
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  toggleTaskExpanded(t.id);
+                  onToggleSubtask(t.id, nextSubtask.id);
                 }}
-                className="flex items-center gap-0.5 rounded px-1.5 py-0.5 bg-[var(--color-bg-gray-light)] hover:bg-[var(--color-border)] transition-colors"
+                className="mt-1 flex w-full items-start gap-1.5 rounded-md bg-[var(--color-primary-light)] px-2 py-1.5 text-left transition-colors hover:bg-[#DBEAFE]"
+                aria-label={`完成下一步：${nextSubtask.title}`}
               >
-                <ListChecks className="w-3 h-3 text-[var(--color-text-tertiary)]" />
-                <span className="text-[10px] font-medium text-[var(--color-text-secondary)] tabular-nums">
-                  {subDone}/{subs.length}
+                <span className="mt-[2px] h-3 w-3 flex-shrink-0 rounded-full border border-[var(--color-primary)] bg-white" />
+                <span className="min-w-0 flex-1 truncate text-[11px] leading-4 text-[var(--color-text-primary)]">
+                  <strong className="mr-1 font-semibold text-[var(--color-primary)]">下一步</strong>
+                  {nextSubtask.title}
                 </span>
-                <ChevronDown
-                  className={[
-                    "w-3 h-3 text-[var(--color-text-tertiary)] transition-transform",
-                    isExpanded ? "rotate-180" : "",
-                  ].join(" ")}
-                />
               </button>
             )}
 
-            {/* 标签/状态 */}
-            {isMainlineTask(t) && !isDone && (
-              <div className="rounded bg-[var(--color-primary-light)] px-1.5 py-0.5">
-                <span className="text-[10px] font-semibold text-[var(--color-primary)]">主线</span>
+            {target > 0 && (
+              <div className="mt-0.5 flex items-center gap-2">
+                <div className="h-1 flex-1 overflow-hidden rounded-full bg-[var(--color-bg-gray-light)]">
+                  <div
+                    className={[
+                      "h-full rounded-full transition-all",
+                      reached ? "bg-[var(--color-success)]" : "bg-[var(--color-primary)]",
+                    ].join(" ")}
+                    style={{ width: `${Math.min(100, Math.round((logged / target) * 100))}%` }}
+                  />
+                </div>
+                <span className={[
+                  "flex items-center gap-0.5 text-[10px] font-medium",
+                  reached ? "text-[var(--color-success)]" : "text-[var(--color-text-tertiary)]",
+                ].join(" ")}>
+                  <Timer className="h-2.5 w-2.5" />
+                  {formatMinutes(logged)} / {formatMinutes(target)}
+                </span>
               </div>
             )}
-            {t.sourceHabitId && !isDone && (
-              <div className="rounded bg-[#F5F3FF] px-1.5 py-0.5">
-                <span className="text-[10px] font-medium text-[#7C3AED]">来自习惯</span>
+
+            {manualPct > 0 && !isDone && (
+              <div className="mt-0.5 flex items-center gap-2">
+                <div className="h-1 flex-1 overflow-hidden rounded-full bg-[var(--color-bg-gray-light)]">
+                  <div className="h-full rounded-full bg-[var(--color-primary)]" style={{ width: `${manualPct}%` }} />
+                </div>
+                <span className="text-[10px] font-medium text-[var(--color-text-tertiary)]">{manualPct}%</span>
               </div>
             )}
-            {isDone ? (
-              <div className="bg-[var(--color-success-light)] rounded px-1.5 py-0.5">
-  <span className="text-[var(--color-success)] text-[10px] font-medium">已完成</span>
-              </div>
-            ) : isInProgress ? (
-              <div className="bg-[var(--color-primary)] rounded px-1.5 py-0.5">
-  <span className="text-white text-[10px] font-semibold">进行中</span>
-              </div>
-            ) : null}
-            {t.tag && !isDone && !isInProgress && (
-              <div className="bg-[#DBEAFE] rounded px-1.5 py-0.5">
-  <span className="text-[var(--color-primary)] text-[10px] font-medium">{t.tag}</span>
-              </div>
-            )}
-            {isHigh && !isDone && !isInProgress && (
-              <div className="bg-[var(--color-danger-light)] rounded px-1.5 py-0.5">
-  <span className="text-[var(--color-danger)] text-[10px] font-medium">紧急</span>
+
+            {hasMeta && (
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] leading-4">
+                {showTime && time && (
+                  <span className={isInProgress ? "font-medium text-[var(--color-primary)]" : "text-[var(--color-text-tertiary)]"}>
+                    {time}
+                  </span>
+                )}
+                {(() => {
+                  const gi = aspirations.findIndex((a) => a.id === t.aspirationId);
+                  if (gi < 0) return null;
+                  const color = goalColor(aspirations[gi], gi);
+                  return (
+                    <span className="flex max-w-[126px] items-center gap-1" style={{ color }}>
+                      <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                      <span className="truncate font-medium">{aspirations[gi].title}</span>
+                    </span>
+                  );
+                })()}
+                {subs.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleTaskExpanded(t.id);
+                    }}
+                    className="flex items-center gap-0.5 text-[var(--color-text-secondary)]"
+                  >
+                    <ListChecks className="h-3 w-3" />
+                    <span className="font-medium tabular-nums">{subDone}/{subs.length}</span>
+                    <ChevronDown className={["h-2.5 w-2.5 transition-transform", isExpanded ? "rotate-180" : ""].join(" ")} />
+                  </button>
+                )}
+                {isMainlineTask(t) && !isDone && <span className="font-semibold text-[var(--color-primary)]">主线</span>}
+                {t.sourceHabitId && !isDone && <span className="font-medium text-[#7C3AED]">习惯</span>}
+                {t.tag && !isDone && !isInProgress && <span className="text-[var(--color-text-secondary)]">{t.tag}</span>}
+                {isHigh && !isDone && <span className="font-medium text-[var(--color-danger)]">高优</span>}
               </div>
             )}
           </div>
-        </div>
 
-        {/* 编辑 + 删除按钮 - 始终显示 */}
-        <div className="flex items-center gap-2 flex-shrink-0">
           <button
             type="button"
             onClick={(e) => handleStartEdit(e, t)}
-            className="w-[18px] h-[18px] flex items-center justify-center"
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-[var(--color-text-tertiary)] opacity-50 transition-[opacity,background-color] hover:bg-[var(--color-bg-gray-light)] sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
+            aria-label={`编辑${t.title}`}
           >
-            <Pencil className="w-[18px] h-[18px] text-[#A1A1AA]" />
+            <MoreHorizontal className="h-4 w-4" />
           </button>
-          <button
-            type="button"
-            onClick={(e) => handleDelete(e, t.id)}
-            className="w-[18px] h-[18px] flex items-center justify-center"
-          >
-            <Trash2 className="w-[18px] h-[18px] text-[#A1A1AA]" />
-          </button>
-        </div>
         </div>
 
         {isExpanded && subs.length > 0 && (
-          <div className="w-full flex flex-col gap-0.5 px-3.5 pb-2.5 pt-0.5 border-t border-[var(--color-border)]">
+          <div className="ml-8 flex w-[calc(100%-2rem)] flex-col gap-0.5 border-t border-[var(--color-border)] pb-2 pt-1">
             {subs.map((st) => {
               const isNext = st.id === nextSubtask?.id;
               return (
@@ -451,47 +363,22 @@ export default function TodoDayView({
     );
   }
 
-  return (
-    <div className="w-[420px] bg-[var(--color-bg-white)] flex flex-col rounded-[16px] overflow-hidden border border-[var(--color-border)]">
-      {/* Header */}
-      <div className="w-full flex items-center justify-between px-6 pt-6 pb-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-[var(--color-text-primary)] text-[28px] font-bold tracking-[-0.5px]">
-            Todo
-          </h1>
-          <p className="text-[var(--color-text-secondary)] text-[14px] font-medium">
-            {formatCNDateTitle(selected)}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onPrevWeek}
-            className="w-9 h-9 rounded-lg border-[1.5px] border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors"
-            aria-label="上一周"
-          >
-            <ChevronLeft className="w-4 h-4 text-[var(--color-text-secondary)]" />
-          </button>
-          <button
-            type="button"
-            onClick={onNextWeek}
-            className="w-9 h-9 rounded-lg border-[1.5px] border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors"
-            aria-label="下一周"
-          >
-            <ChevronRight className="w-4 h-4 text-[var(--color-text-secondary)]" />
-          </button>
-          <button
-            onClick={onOpenAddModal}
-            className="flex items-center gap-1 bg-[var(--color-primary)] rounded-lg px-3 py-2 hover:bg-[#1d4ed8] transition-colors whitespace-nowrap"
-          >
-            <Plus className="w-4 h-4 text-white flex-shrink-0" strokeWidth={2} />
-            <span className="text-white text-[13px] font-semibold">
-              新增
-            </span>
-          </button>
-        </div>
-      </div>
+  const headerTitle = selectedDate === today ? "今天" : `${selected.getMonth() + 1}月${selected.getDate()}日`;
+  const headerSubtitle = selectedDate === today
+    ? `${selected.getMonth() + 1}月${selected.getDate()}日 · ${CN_WEEKDAY[selected.getDay()]}`
+    : `${selected.getFullYear()}年 · ${CN_WEEKDAY[selected.getDay()]}`;
 
+  return (
+    <AppShell>
+      <AppHeader
+        title={headerTitle}
+        subtitle={headerSubtitle}
+        onPrev={onPrevWeek}
+        onNext={onNextWeek}
+        onAdd={onOpenAddModal}
+      />
+      <ViewTabs value={viewMode} onChange={onChangeViewMode} />
+      <WeekDateStrip days={days} selectedDate={selectedDate} today={today} onSelect={onSelectDate} />
       <MainlineBar
         today={today}
         aspirations={aspirations}
@@ -502,120 +389,66 @@ export default function TodoDayView({
         onStopTimer={onStopTimer}
       />
 
-      {/* View Switcher Section */}
-      <div className="w-full flex flex-col gap-4 px-6 pt-4">
-        {/* Tab Container */}
-        <div className="w-full flex gap-1 bg-[var(--color-bg-gray-light)] rounded-[10px] p-1">
-          {([["day", "日视图"], ["week", "周视图"], ["log", "记录"], ["habit", "习惯"]] as Array<[ViewMode, string]>).map(([mode, label]) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => onChangeViewMode(mode)}
-              className={[
-                "flex-1 flex items-center justify-center rounded-lg px-2 py-[10px] transition-colors",
-                viewMode === mode
-                  ? "bg-[var(--color-bg-white)] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
-                  : "hover:bg-white/60",
-              ].join(" ")}
-            >
-              <span
-                className={[
-                  "text-[14px]",
-                  viewMode === mode
-                    ? "text-[var(--color-text-primary)] font-semibold"
-                    : "text-[var(--color-text-secondary)] font-medium",
-                ].join(" ")}
-              >
-                {label}
-              </span>
-            </button>
-          ))}
-        </div>
-
-        {/* Date Picker */}
-        <div className="w-full flex items-center justify-between">
-          {days.map((d) => {
-            const iso = toISODate(d);
-            const isSelected = iso === selectedDate;
-            const isToday = iso === toISODate(new Date());
-            return (
-              <button
-                key={iso}
-                type="button"
-                onClick={() => onSelectDate(iso)}
-                className={[
-                  "flex flex-col items-center gap-[6px] px-3 py-2 rounded-[12px]",
-                  isSelected ? "bg-[var(--color-primary)]" : isToday ? "bg-[var(--color-primary-light)]" : "",
-                ].join(" ")}
-              >
-                <span
-                  className={[
-                    "text-[12px] font-medium",
-                    isSelected
-                      ? "text-[var(--color-bg-white)] font-semibold"
-                      : isToday
-                        ? "text-[var(--color-primary)] font-semibold"
-                        : "text-[var(--color-text-tertiary)]",
-                  ].join(" ")}
-                >
-                  {isToday ? "今天" : CN_WEEKDAY[d.getDay()]}
-                </span>
-                <span
-                  className={[
-                    "text-[16px] font-semibold",
-                    isSelected
-                      ? "text-[var(--color-bg-white)] font-bold"
-                      : isToday
-                        ? "text-[var(--color-primary)] font-bold"
-                        : "text-[var(--color-text-secondary)]",
-                  ].join(" ")}
-                >
-                  {d.getDate()}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Content Area */}
-      <div className="w-full flex flex-col gap-6 px-6 pt-4 pb-6">
-        {/* AI 一句话建任务（直接在页面上，无需点新增） */}
+      <div className="flex w-full flex-col gap-5 px-[18px] pb-6 pt-1">
         <QuickAddTask onCreate={onCreateTask} />
 
-        {(Object.keys(groups) as Array<keyof typeof groups>).map((section) => {
-          const sectionTasks = groups[section];
-          if (sectionTasks.length === 0) return null;
-          return (
-            <div key={section} className="w-full flex flex-col gap-3">
-              <div className="w-full flex items-center justify-between">
-                <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">{section}</span>
-                <span className="text-[var(--color-text-tertiary)] text-[13px] font-medium">
-                  {sectionTasks.length} 项任务
-                </span>
-              </div>
-              <div className="w-full flex flex-col gap-2">
-                {sectionTasks.map(renderTaskCard)}
-              </div>
+        {anytimeTasks.length > 0 && (
+          <section className="w-full">
+            <div className="flex h-7 items-center justify-between border-b border-[var(--color-border)]">
+              <h2 className="text-[12px] font-semibold text-[var(--color-text-primary)]">
+                {selectedDate === today ? "今日待办" : "当天待办"}
+              </h2>
+              <span className="text-[10px] font-medium text-[var(--color-text-tertiary)]">{anytimeTasks.length} 项</span>
             </div>
-          );
-        })}
+            <div className="divide-y divide-[var(--color-border)]">{anytimeTasks.map((task) => renderTaskCard(task, false))}</div>
+          </section>
+        )}
+
+        {scheduledTasks.length > 0 && (
+          <section className="w-full">
+            <div className="flex h-7 items-center justify-between border-b border-[var(--color-border)]">
+              <h2 className="text-[12px] font-semibold text-[var(--color-text-primary)]">日程</h2>
+              <span className="text-[10px] font-medium text-[var(--color-text-tertiary)]">{scheduledTasks.length} 项</span>
+            </div>
+            <div>
+              {scheduledTasks.map((task, index) => (
+                <div key={task.id} className="flex border-b border-[var(--color-border)] last:border-b-0">
+                  <div className="w-[42px] flex-shrink-0 py-3 pr-1 text-right tabular-nums">
+                    <span className="block text-[11px] font-semibold leading-4 text-[var(--color-text-secondary)]">
+                      {task.startTime}
+                    </span>
+                    {task.endTime && (
+                      <span className="block text-[9px] leading-3 text-[var(--color-text-tertiary)]">{task.endTime}</span>
+                    )}
+                  </div>
+                  <div className="relative w-5 flex-shrink-0">
+                    {index < scheduledTasks.length - 1 && (
+                      <span className="absolute bottom-0 left-1/2 top-[17px] w-px -translate-x-1/2 bg-[var(--color-border)]" />
+                    )}
+                    <span className="absolute left-1/2 top-[15px] h-2 w-2 -translate-x-1/2 rounded-full border-2 border-white bg-[var(--color-primary)] shadow-[0_0_0_1px_var(--color-primary)]" />
+                  </div>
+                  <div className="min-w-0 flex-1">{renderTaskCard(task, false)}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* 非主线目标的任务：默认折起来，可展开，不阻止 */}
         {offTasks.length > 0 && (
-          <div className="w-full flex flex-col gap-2">
+          <div className="w-full">
             <button
               type="button"
               onClick={() => setOffOpen((v) => !v)}
-              className="w-full flex items-center gap-1.5 text-left"
+              className="flex h-8 w-full items-center gap-1.5 border-b border-[var(--color-border)] text-left"
             >
               <ChevronDown
                 className={[
-                  "w-4 h-4 text-[var(--color-text-tertiary)] transition-transform",
+                  "h-3.5 w-3.5 text-[var(--color-text-tertiary)] transition-transform",
                   offOpen ? "" : "-rotate-90",
                 ].join(" ")}
               />
-              <span className="text-[14px] font-medium text-[var(--color-text-secondary)]">
+              <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">
                 不是今天主线的 {offTasks.length} 项
               </span>
               <div className="flex-1" />
@@ -633,13 +466,13 @@ export default function TodoDayView({
                 })}
               </span>
             </button>
-            {offOpen && <div className="w-full flex flex-col gap-2">{offTasks.map(renderTaskCard)}</div>}
+            {offOpen && <div className="divide-y divide-[var(--color-border)]">{offTasks.map((task) => renderTaskCard(task))}</div>}
           </div>
         )}
 
         {dayTasks.length === 0 ? (
-          <div className="text-center text-[13px] text-[var(--color-text-tertiary)] py-10">
-            当天暂无任务
+          <div className="py-10 text-center text-[12px] text-[var(--color-text-tertiary)]">
+            今天很干净，添加一件真正想推进的事吧
           </div>
         ) : null}
       </div>
@@ -662,17 +495,6 @@ export default function TodoDayView({
         aspirations={aspirations}
       />
 
-      {/* 删除任务二次确认 */}
-      <ConfirmDialog
-        isOpen={deleteTargetId !== null}
-        title="删除这个任务？"
-        description={deleteTarget ? `「${deleteTarget.title}」删除后无法恢复` : undefined}
-        onConfirm={() => {
-          if (deleteTargetId) onDeleteTask(deleteTargetId);
-          setDeleteTargetId(null);
-        }}
-        onCancel={() => setDeleteTargetId(null)}
-      />
-    </div>
+    </AppShell>
   );
 }

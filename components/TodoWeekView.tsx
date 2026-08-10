@@ -3,12 +3,13 @@
 import { useState } from "react";
 import type { Aspiration, DayPlan, ISODate, Task, TimeEntry, ViewMode } from "@/components/todo/types";
 import { CN_WEEKDAY, addDays, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
-import { Plus, ChevronLeft, ChevronRight, Check, Flag, Timer } from "lucide-react";
+import { Check, Flag, Timer } from "lucide-react";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
 import TaskBottomSheet from "@/components/TaskBottomSheet";
 import QuickAddTask from "@/components/QuickAddTask";
 import MainlineBar from "@/components/MainlineBar";
 import MainlinePlanner from "@/components/MainlinePlanner";
+import { AppHeader, AppShell, ViewTabs } from "@/components/ViewChrome";
 
 type Props = {
   viewMode: ViewMode;
@@ -282,77 +283,22 @@ export default function TodoWeekView({
 
   return (
     <>
-      <div className="w-[420px] bg-white flex flex-col rounded-[16px] overflow-hidden border border-[var(--color-border)]">
-        {/* Header */}
-        <div className="w-full flex items-center justify-between px-6 pt-6 pb-4">
-          <div className="flex flex-col gap-1">
-            <h1 className="text-[var(--color-text-primary)] text-[28px] font-bold tracking-[-0.5px]">
-              Todo
-            </h1>
-            <p className="text-[var(--color-text-secondary)] text-[14px] font-medium">{rangeLabel}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={onPrevWeek}
-              className="w-9 h-9 rounded-lg border-[1.5px] border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors"
-              aria-label="上一周"
-            >
-              <ChevronLeft className="w-4 h-4 text-[var(--color-text-secondary)]" />
-            </button>
-            <button
-              type="button"
-              onClick={onNextWeek}
-              className="w-9 h-9 rounded-lg border-[1.5px] border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors"
-              aria-label="下一周"
-            >
-              <ChevronRight className="w-4 h-4 text-[var(--color-text-secondary)]" />
-            </button>
-          </div>
-        </div>
+      <AppShell>
+        <AppHeader title="本周" subtitle={rangeLabel} onPrev={onPrevWeek} onNext={onNextWeek} onAdd={onOpenAddModal} />
+        <ViewTabs value={viewMode} onChange={onChangeViewMode} />
 
-      <MainlineBar
-        today={today}
-        aspirations={aspirations}
-        dayPlans={dayPlans}
-        onOpenGoals={onOpenGoals}
-        running={running}
-        elapsedMs={elapsedMs}
-        onStopTimer={onStopTimer}
-      />
-
-        {/* View Switcher（和日视图/记录/习惯完全一致，切换时按钮不移位） */}
-        <div className="w-full px-6 pt-4">
-          <div className="w-full flex gap-1 bg-[var(--color-bg-gray-light)] rounded-[10px] p-1">
-            {([["day", "日视图"], ["week", "周视图"], ["log", "记录"], ["habit", "习惯"]] as Array<[ViewMode, string]>).map(([mode, label]) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => onChangeViewMode(mode)}
-                className={[
-                  "flex-1 flex items-center justify-center rounded-lg px-2 py-[10px] transition-colors",
-                  viewMode === mode
-                    ? "bg-[var(--color-bg-white)] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
-                    : "",
-                ].join(" ")}
-              >
-                <span
-                  className={[
-                    "text-[14px]",
-                    viewMode === mode
-                      ? "text-[var(--color-text-primary)] font-semibold"
-                      : "text-[var(--color-text-secondary)] font-medium",
-                  ].join(" ")}
-                >
-                  {label}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
+        <MainlineBar
+          today={today}
+          aspirations={aspirations}
+          dayPlans={dayPlans}
+          onOpenGoals={onOpenGoals}
+          running={running}
+          elapsedMs={elapsedMs}
+          onStopTimer={onStopTimer}
+        />
 
         {/* 本周完成/未完成（原来挤在 tab 右边，把 tab 挤窄了，切过来按钮就移位） */}
-        <div className="w-full flex items-center gap-3 px-6 pt-2.5 text-[12px] font-medium">
+        <div className="flex w-full items-center gap-3 px-[18px] pb-1 pt-1 text-[11px] font-medium">
           <div className="flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-[#16A34A]" />
             <span className="text-[var(--color-text-secondary)]">已完成 {doneTasks}</span>
@@ -364,7 +310,7 @@ export default function TodoWeekView({
         </div>
 
         {/* AI 一句话建任务 */}
-        <div className="px-6 pt-4 pb-4">
+        <div className="px-[18px] pb-3 pt-2">
           <QuickAddTask onCreate={onCreateTask} />
         </div>
 
@@ -394,17 +340,7 @@ export default function TodoWeekView({
           })}
         </div>
 
-        {/* Add Task Button - Fixed at bottom */}
-        <div className="px-4 py-4 border-t border-[var(--color-border)]">
-          <button
-            onClick={onOpenAddModal}
-            className="w-full flex items-center justify-center gap-2 bg-[var(--color-primary)] rounded-xl py-3 hover:bg-[#1d4ed8] transition-colors"
-          >
-            <Plus className="w-4 h-4 text-white" strokeWidth={2} />
-            <span className="text-white text-[14px] font-semibold">新增任务</span>
-          </button>
-        </div>
-      </div>
+      </AppShell>
 
       {/* Bottom Sheet */}
       <TaskBottomSheet

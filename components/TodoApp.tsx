@@ -918,7 +918,7 @@ export default function TodoApp() {
   }
 
   return (
-    <main className="h-full w-full bg-[#F5F5F5] flex items-start justify-center p-8 overflow-auto">
+    <main className="flex h-full w-full items-start justify-center overflow-auto bg-white p-0 sm:bg-[#F5F5F5] sm:p-6">
       {goalsOpen ? (
         <GoalsView
           aspirations={safeAspirations}
@@ -1076,12 +1076,12 @@ export default function TodoApp() {
         selectedDate={selectedDate}
       />
 
-      {/* 多设备同步：右上角浮动按钮 */}
+      {/* 手机避开页头新增按钮；桌面仍放在右上角。 */}
       <button
         type="button"
         onClick={() => setIsSyncOpen(true)}
         aria-label="多设备同步"
-        className="fixed top-4 right-4 z-40 w-11 h-11 rounded-full bg-white shadow-[0_2px_10px_rgba(0,0,0,0.12)] border border-[var(--color-border)] flex items-center justify-center hover:bg-[var(--color-bg-gray-light)] transition-colors"
+        className="fixed bottom-4 right-4 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-[var(--color-border)] bg-white shadow-[0_2px_10px_rgba(0,0,0,0.12)] transition-colors hover:bg-[var(--color-bg-gray-light)] sm:bottom-auto sm:top-4"
       >
         {sync.status === "syncing" ? (
           <RefreshCw className="w-5 h-5 text-[var(--color-primary)] animate-spin" />

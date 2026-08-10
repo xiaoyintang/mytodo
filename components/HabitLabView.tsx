@@ -14,6 +14,7 @@ import type {
 import { guessMeasure } from "@/components/todo/behavior";
 import HabitTracker from "@/components/HabitTracker";
 import MainlineBar from "@/components/MainlineBar";
+import { AppHeader, AppShell, ViewTabs } from "@/components/ViewChrome";
 
 type Props = {
   viewMode: ViewMode;
@@ -39,13 +40,6 @@ type Props = {
   onToggleHabitMeasure: (habitId: string) => void;
   onDeleteHabit: (habitId: string) => void;
 };
-
-const TABS: Array<[ViewMode, string]> = [
-  ["day", "日视图"],
-  ["week", "周视图"],
-  ["log", "记录"],
-  ["habit", "习惯"],
-];
 
 /**
  * 「习惯」tab。只剩打卡——「我的目标」已经搬到目标管理页（从常驻条进）。
@@ -88,15 +82,9 @@ export default function HabitLabView({
   }
 
   return (
-    <div className="w-[420px] bg-[var(--color-bg-white)] flex flex-col rounded-[16px] overflow-hidden border border-[var(--color-border)]">
-      <div className="w-full flex flex-col gap-1 px-6 pt-6 pb-4">
-        <h1 className="text-[var(--color-text-primary)] text-[28px] font-bold tracking-[-0.5px]">
-          习惯
-        </h1>
-        <p className="text-[var(--color-text-secondary)] text-[14px] font-medium">
-          靠锚点触发，每天都在，不看主线
-        </p>
-      </div>
+    <AppShell>
+      <AppHeader title="习惯" subtitle="靠锚点触发，让重复自然发生" />
+      <ViewTabs value={viewMode} onChange={onChangeViewMode} />
 
       <MainlineBar
         today={today}
@@ -108,36 +96,7 @@ export default function HabitLabView({
         onStopTimer={onStopTimer}
       />
 
-      <div className="w-full px-6 pt-4">
-        <div className="w-full flex gap-1 bg-[var(--color-bg-gray-light)] rounded-[10px] p-1">
-          {TABS.map(([mode, label]) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => onChangeViewMode(mode)}
-              className={[
-                "flex-1 flex items-center justify-center rounded-lg px-2 py-[10px] transition-colors",
-                viewMode === mode
-                  ? "bg-[var(--color-bg-white)] shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
-                  : "hover:bg-white/60",
-              ].join(" ")}
-            >
-              <span
-                className={[
-                  "text-[14px]",
-                  viewMode === mode
-                    ? "text-[var(--color-text-primary)] font-semibold"
-                    : "text-[var(--color-text-secondary)] font-medium",
-                ].join(" ")}
-              >
-                {label}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="w-full flex flex-col gap-4 px-6 pt-5 pb-6">
+      <div className="flex w-full flex-col gap-4 px-[18px] pb-6 pt-2">
         <div className="w-full flex items-center gap-2">
           <input
             type="text"
@@ -204,6 +163,6 @@ export default function HabitLabView({
           </div>
         )}
       </div>
-    </div>
+    </AppShell>
   );
 }

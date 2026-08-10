@@ -101,7 +101,7 @@ export default function QuickAddTask({ onCreate }: { onCreate: (task: Omit<Task,
 
   return (
     <div className="w-full flex flex-col gap-2">
-      <div className="flex gap-2">
+      <div className="flex gap-1.5">
         <input
           type="text"
           value={input}
@@ -112,22 +112,22 @@ export default function QuickAddTask({ onCreate }: { onCreate: (task: Omit<Task,
           onKeyDown={(e) => {
             if (e.key === "Enter") handleParse();
           }}
-          placeholder="一句话建任务：明天下午3点开会，高优"
-          className="flex-1 px-3 py-2.5 rounded-[10px] border border-[var(--color-border)] text-[14px] bg-white placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)]"
+          placeholder="添加任务，时间也可以直接写在这里"
+          className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-white px-3 text-[13px] placeholder:text-[var(--color-text-tertiary)] focus:border-[var(--color-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
         />
         <button
           type="button"
           onClick={handleParse}
           disabled={!input.trim() || parsing}
           className={[
-            "flex items-center gap-1 px-3.5 rounded-[10px] text-[14px] font-semibold transition-colors whitespace-nowrap",
+            "flex h-9 items-center gap-1 rounded-lg px-2.5 text-[12px] font-semibold transition-colors whitespace-nowrap",
             input.trim() && !parsing
               ? "bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8]"
               : "bg-[var(--color-bg-gray-light)] text-[var(--color-text-tertiary)] cursor-not-allowed",
           ].join(" ")}
         >
-          <Sparkles className="w-4 h-4" />
-          {parsing ? "解析中" : "AI 建"}
+          <Sparkles className="h-3.5 w-3.5" />
+          {parsing ? "解析中" : "AI"}
         </button>
       </div>
 
@@ -147,7 +147,7 @@ export default function QuickAddTask({ onCreate }: { onCreate: (task: Omit<Task,
                   {t.targetMinutes ? (
                     <span className="flex items-center gap-0.5 text-[11px] font-medium text-[var(--color-primary)]">
                       <Timer className="w-3 h-3" />
-                      不限时段 · {formatMinutes(t.targetMinutes)}
+                      当天待办 · {formatMinutes(t.targetMinutes)}
                     </span>
                   ) : t.startTime ? (
                     <span className="text-[11px] text-[var(--color-text-tertiary)]">
@@ -155,7 +155,7 @@ export default function QuickAddTask({ onCreate }: { onCreate: (task: Omit<Task,
                       {t.endTime ? ` - ${t.endTime}` : ""}
                     </span>
                   ) : (
-                    <span className="text-[11px] font-medium text-[var(--color-primary)]">不限时段</span>
+                    <span className="text-[11px] font-medium text-[var(--color-primary)]">当天待办</span>
                   )}
                   {t.priority === "high" && (
                     <span className="flex items-center gap-0.5 text-[10px] font-medium text-[var(--color-danger)]">
