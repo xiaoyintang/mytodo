@@ -135,6 +135,7 @@ export default function TodoApp() {
 
   const [viewMode, setViewMode] = useState<ViewMode>("day");
   const [goalsOpen, setGoalsOpen] = useState(false); // 从常驻条进的目标管理页
+  const [goalEntryId, setGoalEntryId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<ISODate>(todayIso);
 
   // 跨零点时，**只有当你正停在"昨天的今天"上**才跟着跳到新的今天。
@@ -921,6 +922,7 @@ export default function TodoApp() {
     <main className="flex h-full w-full items-start justify-center overflow-auto bg-white p-0 sm:bg-[#F5F5F5] sm:p-6">
       {goalsOpen ? (
         <GoalsView
+          initialOpenId={goalEntryId}
           aspirations={safeAspirations}
           goalResults={safeGoalResults}
           behaviors={safeBehaviors}
@@ -932,7 +934,10 @@ export default function TodoApp() {
           weekDates={Array.from({ length: 7 }).map(
             (_, i) => toISODate(addDays(startOfWeek(parseISODate(todayIso), true), i)) as ISODate,
           )}
-          onBack={() => setGoalsOpen(false)}
+          onBack={() => {
+            setGoalsOpen(false);
+            setGoalEntryId(null);
+          }}
           onCreateAspiration={createAspiration}
           onDeleteAspiration={deleteAspiration}
           onCreateGoalResult={createGoalResult}
@@ -1025,6 +1030,10 @@ export default function TodoApp() {
           goalResults={safeGoalResults}
           dayPlans={safeDayPlans}
           onOpenGoals={() => setGoalsOpen(true)}
+          onOpenGoal={(aspirationId) => {
+            setGoalEntryId(aspirationId);
+            setGoalsOpen(true);
+          }}
           running={timer.running}
           elapsedMs={timer.elapsedMs}
           onStopTimer={timer.stop}

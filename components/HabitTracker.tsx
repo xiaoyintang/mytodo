@@ -19,6 +19,8 @@ import {
   Check,
   CalendarCheck2,
   CalendarPlus,
+  ChevronDown,
+  ChevronRight,
   Clock,
   Plus,
   Sparkles,
@@ -27,11 +29,13 @@ import {
   X,
 } from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { useLocalStorageState } from "@/components/todo/storage";
 
 type Props = {
   aspirations: Aspiration[];
   behaviors: BehaviorCard[];
   goalResults: GoalResult[];
+  onOpenGoal: (aspirationId: string) => void;
   habits: Habit[];
   logs: HabitLog[];
   entries: TimeEntry[];
@@ -49,6 +53,7 @@ type Props = {
 
 const POSITIVE_IMPACTS = ["更轻松", "更清醒", "更有能量", "更踏实"];
 const MILESTONES = new Set([3, 7, 10, 25, 50, 100, 200, 365]);
+const EMPTY_COLLAPSED: string[] = [];
 
 type Celebration = {
   habitId: string;
@@ -147,6 +152,7 @@ export default function HabitTracker({
   aspirations,
   behaviors,
   goalResults,
+  onOpenGoal,
   habits,
   logs,
   entries,
@@ -161,6 +167,10 @@ export default function HabitTracker({
   onDeleteHabit,
   hasLogs,
 }: Props) {
+  const { value: collapsed, setValue: setCollapsed } = useLocalStorageState<string[]>(
+    "mytodo.habitgroups.collapsed.v1",
+    EMPTY_COLLAPSED,
+  );
   const [editAnchor, setEditAnchor] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [justTapped, setJustTapped] = useState<string | null>(null);
@@ -201,8 +211,31 @@ export default function HabitTracker({
     return bScore - aScore || a.createdAt - b.createdAt;
   }
 
-  // 不再按目标分组：跨组会破坏真正的综合分顺序。目标和关键结果改为显示在每条习惯上。
-  const rankedHabits = live.slice().sort(compareByFocusScore);
+  // 习惯必须保留目标归属；组内按焦点分排序，目标组按组内最高分排序。
+  const groups: Array<{
+    key: string;
+    title: string;
+    aspiration?: Aspiration;
+    items: Habit[];
+  }> = aspirations
+    .map((aspiration) => ({
+      key: aspiration.id,
+      title: aspiration.title,
+      aspiration,
+      items: live.filter((habit) => habit.aspirationId === aspiration.id).sort(compareByFocusScore),
+    }))
+    .filter((group) => group.items.length > 0)
+    .sort((a, b) => (scoreOf(b.items[0]) ?? -1) - (scoreOf(a.items[0]) ?? -1));
+
+  const orphans = live
+    .filter(
+      (habit) =>
+        !habit.aspirationId || !aspirations.some((aspiration) => aspiration.id === habit.aspirationId),
+    )
+    .sort(compareByFocusScore);
+  if (orphans.length > 0) {
+    groups.push({ key: "__none__", title: "未归属目标", items: orphans });
+  }
 
   const todayActiveHabits = live.filter((h) => {
     if (h.measure === "duration") return fromLedger(h, entries, logs, today).count > 0;
@@ -259,6 +292,21 @@ export default function HabitTracker({
     dismissCelebration(1800);
   }
 
+  function toggleGroup(key: string) {
+    setCollapsed((current) =>
+      current.includes(key) ? current.filter((item) => item !== key) : [...current, key],
+    );
+  }
+
+  function groupTodayCount(items: Habit[]) {
+    return items.reduce((total, habit) => {
+      if (habit.measure === "duration") {
+        return total + fromLedger(habit, entries, logs, today).count;
+      }
+      return total + logs.filter((log) => log.habitId === habit.id && log.date === today).length;
+    }, 0);
+  }
+
   function saveAnchor(id: string) {
     onSetAnchor(id, draft.trim());
     setEditAnchor(null);
@@ -272,7 +320,7 @@ export default function HabitTracker({
           className="text-[var(--color-text-tertiary)] text-[10px]"
           title="综合分 = 影响力 × 60% + 能做到 × 40%"
         >
-          焦点分优先 · 影响 6 / 能做 4
+          按目标分组 · 组内焦点分排序
         </span>
       </div>
 
@@ -302,8 +350,66 @@ export default function HabitTracker({
         </div>
       )}
 
-      <div className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[11px] border border-[var(--color-border)] bg-white">
-        {rankedHabits.map((h) => {
+      {groups.map((group) => {
+        const shut = collapsed.includes(group.key);
+        const done = groupTodayCount(group.items);
+        const aspirationIndex = group.aspiration
+          ? aspirations.findIndex((item) => item.id === group.aspiration?.id)
+          : 0;
+
+        return (
+          <section key={group.key} className="flex w-full flex-col gap-1">
+            <div className="flex h-7 w-full items-center gap-1 px-0.5">
+              <button
+                type="button"
+                onClick={() => toggleGroup(group.key)}
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-bg-gray-lighter)]"
+                aria-label={`${shut ? "展开" : "收起"}「${group.title}」的习惯`}
+                aria-expanded={!shut}
+              >
+                {shut ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </button>
+
+              {group.aspiration ? (
+                <button
+                  type="button"
+                  onClick={() => onOpenGoal(group.aspiration!.id)}
+                  className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-1 text-left transition-colors hover:bg-[var(--color-bg-gray-lighter)]"
+                  title={`进入「${group.title}」的焦点地图`}
+                >
+                  <span
+                    className="h-2 w-2 flex-shrink-0 rounded-full"
+                    style={{ backgroundColor: goalColor(group.aspiration, aspirationIndex) }}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-[var(--color-text-secondary)]">
+                    {group.title}
+                  </span>
+                  <span className="flex-shrink-0 text-[9px] text-[var(--color-text-tertiary)]">
+                    {group.items.length}
+                  </span>
+                  <span className="flex-shrink-0 text-[9px] font-medium text-[var(--color-primary)]">
+                    焦点地图
+                  </span>
+                  <ChevronRight className="h-3 w-3 flex-shrink-0 text-[var(--color-primary)]" />
+                </button>
+              ) : (
+                <div className="flex min-w-0 flex-1 items-center gap-1.5 px-1">
+                  <span className="h-2 w-2 flex-shrink-0 rounded-full bg-[var(--color-text-tertiary)]" />
+                  <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-[var(--color-text-secondary)]">
+                    {group.title}
+                  </span>
+                  <span className="text-[9px] text-[var(--color-text-tertiary)]">{group.items.length}</span>
+                </div>
+              )}
+
+              {shut && done > 0 && (
+                <span className="flex-shrink-0 text-[9px] font-medium text-[#15803D]">今天 {done}</span>
+              )}
+            </div>
+
+            {!shut && (
+              <div className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[10px] border border-[var(--color-border)] bg-white">
+                {group.items.map((h) => {
                 const isDuration = h.measure === "duration";
                 const ledger = isDuration ? fromLedger(h, entries, logs, today) : null;
                 const count = isDuration
@@ -320,10 +426,6 @@ export default function HabitTracker({
                 const stats = habitStats(h, logs, entries, today);
                 const behavior = behaviorOf(h);
                 const focusScore = scoreOf(h);
-                const aspiration = aspirations.find((item) => item.id === h.aspirationId);
-                const aspirationIndex = aspiration
-                  ? aspirations.findIndex((item) => item.id === aspiration.id)
-                  : 0;
                 const result = behavior?.resultId
                   ? goalResults.find(
                       (item) => item.id === behavior.resultId && item.aspirationId === h.aspirationId,
@@ -343,7 +445,7 @@ export default function HabitTracker({
                   <div
                     key={h.id}
                     className={[
-                      "flex min-h-[78px] w-full items-center gap-2 px-2.5 py-2 transition-colors duration-300",
+                      "flex min-h-[64px] w-full items-center gap-1.5 px-2 py-1.5 transition-colors duration-300",
                       flash ? "animate-habit-glow bg-[#F0FDF4]" : count > 0 ? "bg-[#FCFFFD]" : "bg-white",
                     ].join(" ")}
                   >
@@ -358,7 +460,7 @@ export default function HabitTracker({
                           type="button"
                           onClick={() => onToggleMeasure(h.id)}
                           className={[
-                            "flex h-9 w-9 items-center justify-center rounded-full border transition-colors",
+                            "flex h-8 w-8 items-center justify-center rounded-full border transition-colors",
                             count > 0
                               ? "border-[#16A34A] bg-[#16A34A] text-white"
                               : "border-[var(--color-border)] bg-[var(--color-bg-gray-lighter)] text-[var(--color-text-secondary)]",
@@ -366,14 +468,14 @@ export default function HabitTracker({
                           title="按时长记，成绩来自「记录」。点击切换为计次"
                           aria-label={`「${h.title}」按时长记录，点击切换为计次`}
                         >
-                          <Clock className="h-4 w-4" />
+                          <Clock className="h-3.5 w-3.5" />
                         </button>
                       ) : (
                         <button
                           type="button"
                           onClick={() => tap(h)}
                           className={[
-                            "flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200 active:scale-90",
+                            "flex h-8 w-8 items-center justify-center rounded-full border transition-all duration-200 active:scale-90",
                             count > 0 || flash
                               ? "border-[#16A34A] bg-[#16A34A] text-white shadow-[0_3px_10px_rgba(22,163,74,0.2)]"
                               : "border-[var(--color-primary)] bg-white text-[var(--color-primary)] hover:bg-[var(--color-primary-light)]",
@@ -382,14 +484,14 @@ export default function HabitTracker({
                           title={count > 0 ? "再记一次" : "我做了"}
                         >
                           {count > 0 || flash ? (
-                            <Check className="h-4 w-4" strokeWidth={3} />
+                            <Check className="h-3.5 w-3.5" strokeWidth={3} />
                           ) : (
-                            <Plus className="h-4 w-4" strokeWidth={3} />
+                            <Plus className="h-3.5 w-3.5" strokeWidth={3} />
                           )}
                         </button>
                       )}
                       {!isDuration && count > 1 && (
-                        <span className="absolute -right-1.5 -top-1 flex min-w-[16px] h-4 items-center justify-center rounded-full border border-white bg-[#15803D] px-1 text-[8px] font-bold text-white">
+                        <span className="absolute -right-1.5 -top-1 flex h-3.5 min-w-[14px] items-center justify-center rounded-full border border-white bg-[#15803D] px-1 text-[8px] font-bold text-white">
                           {count}
                         </span>
                       )}
@@ -418,14 +520,14 @@ export default function HabitTracker({
                         <>
                           <div className="flex min-w-0 items-center gap-1.5">
                             <span
-                              className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-snug text-[var(--color-text-primary)]"
+                              className="min-w-0 flex-1 truncate text-[12px] font-semibold leading-4 text-[var(--color-text-primary)]"
                               title={h.title}
                             >
                               {h.title}
                             </span>
                             <span
                               className={[
-                                "flex-shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium tabular-nums",
+                                "flex-shrink-0 rounded-full px-1.5 py-0.5 text-[8px] font-medium tabular-nums",
                                 focusScore == null
                                   ? "bg-[var(--color-bg-gray-lighter)] text-[var(--color-text-tertiary)]"
                                   : "bg-[var(--color-primary-light)] text-[var(--color-primary)]",
@@ -441,22 +543,18 @@ export default function HabitTracker({
                               {focusScore == null ? (behavior ? "未评分" : "直接添加") : `综合 ${Math.round(focusScore)}`}
                             </span>
                           </div>
-                          <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[9px] leading-4 text-[var(--color-text-tertiary)]">
-                            <span
-                              className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
-                              style={{
-                                backgroundColor: aspiration
-                                  ? goalColor(aspiration, aspirationIndex)
-                                  : "var(--color-text-tertiary)",
-                              }}
-                            />
-                            <span className="max-w-[35%] flex-shrink-0 truncate text-[var(--color-text-secondary)]">
-                              {aspiration?.title ?? "未归属目标"}
-                            </span>
-                            <span className="flex-shrink-0">›</span>
-                            <span className="min-w-0 truncate">
-                              {result ? `结果 · ${result.title}` : behavior ? "直接服务目标" : "未经过焦点地图"}
-                            </span>
+                          <div className="flex min-w-0 items-center gap-1 text-[9px] leading-3.5 text-[var(--color-text-tertiary)]">
+                            {result ? (
+                              <>
+                                <span className="flex-shrink-0 font-medium text-[var(--color-primary)]">结果</span>
+                                <span className="flex-shrink-0">·</span>
+                                <span className="min-w-0 truncate">{result.title}</span>
+                              </>
+                            ) : (
+                              <span className="min-w-0 truncate">
+                                {behavior ? "直接服务目标" : "未经过焦点地图"}
+                              </span>
+                            )}
                           </div>
                           <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[9px] tabular-nums text-[var(--color-text-tertiary)]">
                             {h.anchor ? (
@@ -521,7 +619,7 @@ export default function HabitTracker({
                         }}
                         disabled={Boolean(todayTask)}
                         className={[
-                          "flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
+                          "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
                           todayTask?.status === "done"
                             ? "bg-[#F0FDF4] text-[#15803D]"
                             : todayTask
@@ -538,9 +636,9 @@ export default function HabitTracker({
                         title={todayTask ? "已排到今天" : "排到今天"}
                       >
                         {todayTask ? (
-                          <CalendarCheck2 className="h-3.5 w-3.5" />
+                          <CalendarCheck2 className="h-3 w-3" />
                         ) : (
-                          <CalendarPlus className="h-3.5 w-3.5" />
+                          <CalendarPlus className="h-3 w-3" />
                         )}
                       </button>
                       {canUndoManual && !isDuration && (
@@ -550,17 +648,17 @@ export default function HabitTracker({
                             onUndoLog(h.id);
                             if (celebration?.habitId === h.id) dismissCelebration();
                           }}
-                          className="flex h-8 w-7 items-center justify-center rounded-lg hover:bg-[var(--color-bg-gray-light)]"
+                          className="flex h-7 w-6 items-center justify-center rounded-md hover:bg-[var(--color-bg-gray-light)]"
                           aria-label="点错了，撤掉一次"
                           title="撤掉最近一次"
                         >
-                          <Undo2 className="h-3.5 w-3.5 text-[#A1A1AA]" />
+                          <Undo2 className="h-3 w-3 text-[#A1A1AA]" />
                         </button>
                       )}
                       <button
                         type="button"
                         onClick={() => setConfirmRemove(h)}
-                        className="flex h-8 w-7 items-center justify-center rounded-lg hover:bg-[var(--color-bg-gray-light)]"
+                        className="flex h-7 w-6 items-center justify-center rounded-md hover:bg-[var(--color-bg-gray-light)]"
                         aria-label="移出习惯表"
                         title="移出习惯表（行为仍保留在焦点地图）"
                       >
@@ -569,8 +667,12 @@ export default function HabitTracker({
                     </div>
                   </div>
                 );
-        })}
-      </div>
+                })}
+              </div>
+            )}
+          </section>
+        );
+      })}
 
       {celebration && (
         <div

@@ -29,6 +29,7 @@ type Judgement = {
 };
 
 type Props = {
+  initialOpenId?: string | null;
   aspirations: Aspiration[];
   goalResults: GoalResult[];
   behaviors: BehaviorCard[];
@@ -71,6 +72,7 @@ type Props = {
 const KIND_LABEL: Record<AspirationKind, string> = { aspiration: "愿望", outcome: "结果" };
 
 export default function GoalsView({
+  initialOpenId = null,
   aspirations,
   goalResults,
   behaviors,
@@ -102,7 +104,7 @@ export default function GoalsView({
   onUndo,
   canUndo,
 }: Props) {
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(initialOpenId);
   const [activeResultId, setActiveResultId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -255,10 +257,12 @@ export default function GoalsView({
           type="button"
           onClick={
             open
-              ? () => {
-                  setOpenId(null);
-                  setActiveResultId(null);
-                }
+              ? initialOpenId
+                ? onBack
+                : () => {
+                    setOpenId(null);
+                    setActiveResultId(null);
+                  }
               : onBack
           }
           className="w-9 h-9 rounded-lg border-[1.5px] border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors flex-shrink-0"
