@@ -363,47 +363,45 @@ export default function HabitTracker({
               <button
                 type="button"
                 onClick={() => toggleGroup(group.key)}
-                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-bg-gray-lighter)]"
+                className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 text-left transition-colors hover:bg-[var(--color-bg-gray-lighter)]"
                 aria-label={`${shut ? "展开" : "收起"}「${group.title}」的习惯`}
                 aria-expanded={!shut}
               >
-                {shut ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                {shut ? (
+                  <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-text-tertiary)]" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-text-tertiary)]" />
+                )}
+                <span
+                  className="h-2 w-2 flex-shrink-0 rounded-full"
+                  style={{
+                    backgroundColor: group.aspiration
+                      ? goalColor(group.aspiration, aspirationIndex)
+                      : "var(--color-text-tertiary)",
+                  }}
+                />
+                <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-[var(--color-text-secondary)]">
+                  {group.title}
+                </span>
+                <span className="flex-shrink-0 text-[9px] text-[var(--color-text-tertiary)]">
+                  {group.items.length}
+                </span>
+                {shut && done > 0 && (
+                  <span className="flex-shrink-0 text-[9px] font-medium text-[#15803D]">今天 {done}</span>
+                )}
               </button>
 
-              {group.aspiration ? (
+              {group.aspiration && (
                 <button
                   type="button"
                   onClick={() => onOpenGoal(group.aspiration!.id)}
-                  className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-1 text-left transition-colors hover:bg-[var(--color-bg-gray-lighter)]"
+                  className="flex h-6 flex-shrink-0 items-center gap-0.5 rounded-md px-1.5 text-[9px] font-medium text-[var(--color-primary)] transition-colors hover:bg-[var(--color-primary-light)]"
                   title={`进入「${group.title}」的焦点地图`}
+                  aria-label={`进入「${group.title}」的焦点地图`}
                 >
-                  <span
-                    className="h-2 w-2 flex-shrink-0 rounded-full"
-                    style={{ backgroundColor: goalColor(group.aspiration, aspirationIndex) }}
-                  />
-                  <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-[var(--color-text-secondary)]">
-                    {group.title}
-                  </span>
-                  <span className="flex-shrink-0 text-[9px] text-[var(--color-text-tertiary)]">
-                    {group.items.length}
-                  </span>
-                  <span className="flex-shrink-0 text-[9px] font-medium text-[var(--color-primary)]">
-                    焦点地图
-                  </span>
+                  焦点地图
                   <ChevronRight className="h-3 w-3 flex-shrink-0 text-[var(--color-primary)]" />
                 </button>
-              ) : (
-                <div className="flex min-w-0 flex-1 items-center gap-1.5 px-1">
-                  <span className="h-2 w-2 flex-shrink-0 rounded-full bg-[var(--color-text-tertiary)]" />
-                  <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-[var(--color-text-secondary)]">
-                    {group.title}
-                  </span>
-                  <span className="text-[9px] text-[var(--color-text-tertiary)]">{group.items.length}</span>
-                </div>
-              )}
-
-              {shut && done > 0 && (
-                <span className="flex-shrink-0 text-[9px] font-medium text-[#15803D]">今天 {done}</span>
               )}
             </div>
 
