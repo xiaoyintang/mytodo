@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import type { Aspiration, BehaviorCard, BehaviorType, ISODate, Task } from "@/components/todo/types";
+import type {
+  Aspiration,
+  BehaviorCard,
+  BehaviorType,
+  GoalResult,
+  ISODate,
+  Task,
+} from "@/components/todo/types";
 import { callBehaviorAPI, toPendingItems, type PendingItem } from "@/components/todo/behaviorApi";
 import { TYPE_LABEL, TYPE_STYLE, goldenScore, isGolden, isRepeatable, needsBreakdown } from "@/components/todo/behavior";
 import { CN_WEEKDAY, addDays, toISODate } from "@/components/todo/date";
@@ -22,6 +29,9 @@ type BehaviorReview = {
 
 type Props = {
   aspiration: Aspiration;
+  /** 有关键结果时，用它作为当前焦点地图和 AI 的直接目标。 */
+  focusTitle?: string;
+  resultOptions?: GoalResult[];
   /** 可重复行为 + 一次性任务，都上图 */
   cards: BehaviorCard[];
   tasks: Task[];
@@ -38,6 +48,7 @@ type Props = {
   onAdd: (text: string) => void;
   onEditText: (id: string, text: string) => void;
   onSetType: (id: string, type: BehaviorType) => void;
+  onAssignResult?: (behaviorId: string, resultId?: string) => void;
   /** 魔法棒发散出来的候选，勾选后收进集群 */
   onCollect: (items: Array<{ text: string; type?: BehaviorType }>) => void;
   habitBehaviorIds: Set<string>;
@@ -76,6 +87,8 @@ function cnDate(iso: string): string {
 
 export default function FocusMapView({
   aspiration,
+  focusTitle,
+  resultOptions = [],
   cards,
   tasks,
   onSetAxis,
@@ -90,6 +103,7 @@ export default function FocusMapView({
   onAdd,
   onEditText,
   onSetType,
+  onAssignResult,
   onCollect,
   habitBehaviorIds,
   judgingIds,
@@ -98,6 +112,7 @@ export default function FocusMapView({
   rejudgeProgress,
   rejudgeTotal,
 }: Props) {
+  const goalContext = focusTitle?.trim() || aspiration.title;
   const [confirmReset, setConfirmReset] = useState(false);
   const [sort, setSort] = useState<SortMode>("default");
   // 排序是一个动作不是实时绑定——否则拖滑块时行会在手底下乱跳。
@@ -225,7 +240,7 @@ export default function FocusMapView({
     setWandNote(null);
     const res = await callBehaviorAPI({
       mode: "wand",
-      aspiration: seed ? seed.text : aspiration.title,
+      aspiration: seed ? seed.text : goalContext,
       context: aspiration.title,
       existing: cards.map((c) => c.text),
     });
@@ -325,7 +340,7 @@ export default function FocusMapView({
     setShrinkingId(card.id);
     setShrink(null);
     setShrinkNote(null);
-    const res = await callBehaviorAPI({ mode, text: card.text, goal: aspiration.title });
+    const res = await callBehaviorAPI({ mode, text: card.text, goal: goalContext });
     setShrinkingId(null);
     if (!res.ok) {
       setShrinkNote(res.noKey ? "没配 AI，改小得回集群页点文字自己改" : "AI 没连上，稍后再试");
@@ -346,7 +361,7 @@ export default function FocusMapView({
     const res = await callBehaviorAPI({
       mode: "clarify-behavior",
       text: card.text,
-      goal: aspiration.title,
+      goal: goalContext,
       behaviorType: card.type,
     });
     setReviewingId(null);
@@ -946,6 +961,27 @@ export default function FocusMapView({
                   {renderSlider(b, "impact")}
                   {renderSlider(b, "feasibility")}
                 </>
+              )}
+
+              {resultOptions.length > 0 && onAssignResult && (
+                <label className="mt-0.5 flex w-full items-center gap-2 rounded-md bg-[var(--color-bg-gray-lighter)] px-2 py-1.5">
+                  <span className="flex-shrink-0 text-[10px] text-[var(--color-text-tertiary)]">
+                    归属结果
+                  </span>
+                  <select
+                    value={b.resultId ?? ""}
+                    onChange={(event) => onAssignResult(b.id, event.target.value || undefined)}
+                    className="min-w-0 flex-1 bg-transparent text-[10px] font-medium text-[var(--color-text-secondary)] outline-none"
+                    aria-label={`${b.text} 归属的关键结果`}
+                  >
+                    <option value="">未归属</option>
+                    {resultOptions.map((result) => (
+                      <option key={result.id} value={result.id}>
+                        {result.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               )}
 
               {/* 已经通过自动分类和边界检查的，才提供可选的二次表达检查。

@@ -7,15 +7,17 @@ import type {
   AspirationKind,
   BehaviorCard,
   BehaviorType,
+  GoalResult,
   Habit,
   ISODate,
   Task,
 } from "@/components/todo/types";
-import { guessMeasure, isActionable, isGolden, pendingJudgement } from "@/components/todo/behavior";
+import { guessMeasure, pendingJudgement } from "@/components/todo/behavior";
 import { callBehaviorAPI } from "@/components/todo/behaviorApi";
 import { goalColor } from "@/components/todo/goal";
 import { formatMinutes } from "@/components/todo/time";
 import FocusMapView from "@/components/FocusMapView";
+import GoalResultsPanel, { UNASSIGNED_RESULT_ID } from "@/components/GoalResultsPanel";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { ArrowLeft, ChevronRight, Plus, Search, Target, Trash2, Undo2, X } from "lucide-react";
 
@@ -28,6 +30,7 @@ type Judgement = {
 
 type Props = {
   aspirations: Aspiration[];
+  goalResults: GoalResult[];
   behaviors: BehaviorCard[];
   tasks: Task[];
   habits: Habit[];
@@ -36,7 +39,19 @@ type Props = {
   onBack: () => void;
   onCreateAspiration: (title: string, kind: AspirationKind) => void;
   onDeleteAspiration: (id: string) => void;
-  onAddBehaviors: (aspirationId: string, items: Array<{ text: string; type?: BehaviorType }>) => void;
+  onCreateGoalResult: (aspirationId: string, title: string, evidence?: string) => string;
+  onUpdateGoalResult: (id: string, patch: { title?: string; evidence?: string }) => void;
+  onDeleteGoalResult: (id: string) => void;
+  onAssignBehaviorResult: (behaviorId: string, resultId?: string) => void;
+  onApplyGoalResultStructure: (
+    aspirationId: string,
+    groups: Array<{ title: string; evidence?: string; behaviorIds: string[] }>,
+  ) => string[];
+  onAddBehaviors: (
+    aspirationId: string,
+    items: Array<{ text: string; type?: BehaviorType }>,
+    resultId?: string,
+  ) => void;
   onApplyJudgements: (results: Judgement[]) => void;
   onSetBehaviorType: (id: string, type: BehaviorType) => void;
   onShrinkBehavior: (id: string, text: string) => void;
@@ -44,7 +59,7 @@ type Props = {
   onScheduleBehavior: (cardId: string, title: string, date: ISODate) => void;
   onUnscheduleBehavior: (cardId: string) => void;
   onSetBehaviorAxis: (id: string, patch: { impact?: number; feasibility?: number }) => void;
-  onResetBehaviorAxes: (aspirationId: string) => void;
+  onResetBehaviorAxes: (behaviorIds: string[]) => void;
   onSetWeeklyLimit: (aspirationId: string, limit: number | null) => void;
   onDeleteBehavior: (id: string) => void;
   onAddHabit: (input: Omit<Habit, "id" | "createdAt">) => void;
@@ -57,6 +72,7 @@ const KIND_LABEL: Record<AspirationKind, string> = { aspiration: "愿望", outco
 
 export default function GoalsView({
   aspirations,
+  goalResults,
   behaviors,
   tasks,
   habits,
@@ -65,6 +81,11 @@ export default function GoalsView({
   onBack,
   onCreateAspiration,
   onDeleteAspiration,
+  onCreateGoalResult,
+  onUpdateGoalResult,
+  onDeleteGoalResult,
+  onAssignBehaviorResult,
+  onApplyGoalResultStructure,
   onAddBehaviors,
   onApplyJudgements,
   onSetBehaviorType,
@@ -82,6 +103,7 @@ export default function GoalsView({
   canUndo,
 }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const [activeResultId, setActiveResultId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newKind, setNewKind] = useState<AspirationKind>("aspiration");
@@ -92,6 +114,24 @@ export default function GoalsView({
 
   const open = openId ? aspirations.find((a) => a.id === openId) ?? null : null;
   const openCards = open ? behaviors.filter((b) => b.aspirationId === open.id) : [];
+  const openResults = open ? goalResults.filter((result) => result.aspirationId === open.id) : [];
+  const resultIds = new Set(openResults.map((result) => result.id));
+  const unassignedCards = openCards.filter(
+    (card) => !card.resultId || !resultIds.has(card.resultId),
+  );
+  const resolvedResultId =
+    activeResultId === UNASSIGNED_RESULT_ID && unassignedCards.length > 0
+      ? UNASSIGNED_RESULT_ID
+      : openResults.some((result) => result.id === activeResultId)
+        ? activeResultId
+        : openResults[0]?.id ?? null;
+  const selectedResult = openResults.find((result) => result.id === resolvedResultId) ?? null;
+  const focusCards =
+    openResults.length === 0
+      ? openCards
+      : resolvedResultId === UNASSIGNED_RESULT_ID
+        ? unassignedCards
+        : openCards.filter((card) => card.resultId === resolvedResultId);
   const habitBehaviorIds = new Set(
     habits.filter((h) => !h.archived && h.behaviorId).map((h) => h.behaviorId!),
   );
@@ -146,7 +186,7 @@ export default function GoalsView({
    */
   async function handleRejudge() {
     if (!open || rejudging) return;
-    const all = behaviors.filter((b) => b.aspirationId === open.id);
+    const all = focusCards;
     if (all.length === 0) return;
     setRejudging(true);
     setRejudgeDone(0);
@@ -161,7 +201,7 @@ export default function GoalsView({
       const res = await callBehaviorAPI({
         mode: "sort",
         think: true,
-        goal: open.title,
+        goal: selectedResult?.title ?? open.title,
         items: batch.map((b) => ({ id: b.id, text: b.text })),
       });
       if (res.ok) {
@@ -213,14 +253,25 @@ export default function GoalsView({
       <div className="w-full flex items-center gap-2 px-6 pt-6 pb-4">
         <button
           type="button"
-          onClick={open ? () => setOpenId(null) : onBack}
+          onClick={
+            open
+              ? () => {
+                  setOpenId(null);
+                  setActiveResultId(null);
+                }
+              : onBack
+          }
           className="w-9 h-9 rounded-lg border-[1.5px] border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors flex-shrink-0"
           aria-label="返回"
         >
           <ArrowLeft className="w-4 h-4 text-[var(--color-text-secondary)]" />
         </button>
         <div className="flex-1 flex flex-col gap-0.5 min-w-0">
-          <h1 className="text-[var(--color-text-primary)] text-[22px] font-bold tracking-[-0.5px] truncate">
+          <h1
+            className={`text-[22px] font-bold leading-tight tracking-[-0.5px] text-[var(--color-text-primary)] ${
+              open ? "line-clamp-2" : "truncate"
+            }`}
+          >
             {open ? open.title : "我的目标"}
           </h1>
           <p className="text-[var(--color-text-secondary)] text-[12px]">
@@ -278,29 +329,68 @@ export default function GoalsView({
               </span>
             </div>
 
+            <GoalResultsPanel
+              key={open.id}
+              aspiration={open}
+              results={openResults}
+              cards={openCards}
+              activeResultId={resolvedResultId}
+              onSelect={setActiveResultId}
+              onCreate={(title, evidence) => onCreateGoalResult(open.id, title, evidence)}
+              onUpdate={onUpdateGoalResult}
+              onDelete={onDeleteGoalResult}
+              onApplyStructure={(groups) => onApplyGoalResultStructure(open.id, groups)}
+            />
+
+            <div
+              className={`rounded-[10px] border px-3 py-2 ${
+                resolvedResultId === UNASSIGNED_RESULT_ID
+                  ? "border-[#FDBA74] bg-[#FFF7ED]"
+                  : "border-[#BFDBFE] bg-[#F8FAFF]"
+              }`}
+            >
+              <p className="text-[11px] font-semibold text-[var(--color-text-primary)]">
+                {openResults.length === 0
+                  ? "直接行为模式 · 所有行为共用一张图"
+                  : selectedResult
+                    ? `正在比较：${selectedResult.title}`
+                    : "未归属行为 · 先决定它们服务于哪个结果"}
+              </p>
+              <p className="mt-0.5 text-[10px] leading-relaxed text-[var(--color-text-tertiary)]">
+                {selectedResult?.evidence ||
+                  (openResults.length === 0
+                    ? "目标变复杂时，再添加关键结果也来得及。"
+                    : "这张焦点地图只比较同一条结果下的行为。")}
+              </p>
+            </div>
+
             <FocusMapView
-            aspiration={open}
-            cards={openCards}
-            tasks={tasks}
-            onSetAxis={onSetBehaviorAxis}
-            onResetAxes={() => onResetBehaviorAxes(open.id)}
-            onDelete={onDeleteBehavior}
-            onReplaceText={onShrinkBehavior}
-            onAddExtra={(items) => onAddBehaviors(open.id, items)}
-            onAdd={(text) => onAddBehaviors(open.id, [{ text }])}
-            onEditText={onEditBehaviorText}
-            onSetType={onSetBehaviorType}
-            onCollect={(items) => onAddBehaviors(open.id, items)}
-            onSchedule={onScheduleBehavior}
-            onUnschedule={onUnscheduleBehavior}
-            onAddHabit={handleAddHabit}
-            onRemoveHabit={onRemoveHabitByBehavior}
-            habitBehaviorIds={habitBehaviorIds}
+              key={resolvedResultId ?? "direct"}
+              aspiration={open}
+              focusTitle={selectedResult?.title ?? open.title}
+              resultOptions={openResults}
+              cards={focusCards}
+              tasks={tasks}
+              onSetAxis={onSetBehaviorAxis}
+              onResetAxes={() => onResetBehaviorAxes(focusCards.map((card) => card.id))}
+              onDelete={onDeleteBehavior}
+              onReplaceText={onShrinkBehavior}
+              onAddExtra={(items) => onAddBehaviors(open.id, items, selectedResult?.id)}
+              onAdd={(text) => onAddBehaviors(open.id, [{ text }], selectedResult?.id)}
+              onEditText={onEditBehaviorText}
+              onSetType={onSetBehaviorType}
+              onCollect={(items) => onAddBehaviors(open.id, items, selectedResult?.id)}
+              onAssignResult={onAssignBehaviorResult}
+              onSchedule={onScheduleBehavior}
+              onUnschedule={onUnscheduleBehavior}
+              onAddHabit={handleAddHabit}
+              onRemoveHabit={onRemoveHabitByBehavior}
+              habitBehaviorIds={habitBehaviorIds}
               judgingIds={judging}
               onRejudgeAll={handleRejudge}
               rejudging={rejudging}
               rejudgeProgress={rejudgeDone}
-              rejudgeTotal={behaviors.filter((b) => b.aspirationId === open.id).length}
+              rejudgeTotal={focusCards.length}
             />
           </>
         ) : (
@@ -424,10 +514,10 @@ export default function GoalsView({
                   这些都不是行为——你没法执行一句"想早点睡"，所以要先生成一些可能的行为方案。
                   <br />
                   <br />
-                  <strong>2. 点进去，把能想到的做法都写进去</strong>
+                  <strong>2. 目标复杂时，先分关键结果</strong>
                   <br />
-                  一条一句话，回车一条，别管好坏、别管做不做得到，先写出来再说。
-                  想不出来就点「魔法棒」，AI 一次给你十条。
+                  简单目标直接写行为；如果行为一多就混乱，先说明哪几种变化算推进，再分别找行为。
+                  已经写了一堆行为，也可以让 AI 先提议分组，确认后才会修改。
                   <br />
                   <br />
                   <strong>3. 每条拖两根滑块</strong>
@@ -467,6 +557,7 @@ export default function GoalsView({
                     (t) => t.aspirationId === a.id && t.status !== "done",
                   ).length;
                   const habitLeg = habits.filter((h) => h.aspirationId === a.id && !h.archived).length;
+                  const resultCount = goalResults.filter((result) => result.aspirationId === a.id).length;
                   const invested = entries
                     .filter((e) => e.aspirationId === a.id && weekDates.includes(e.date))
                     .reduce((s, e) => s + e.minutes, 0);
@@ -487,7 +578,10 @@ export default function GoalsView({
                       <div className="relative flex w-full items-center gap-2 py-3 pl-3.5 pr-3">
                         <button
                           type="button"
-                          onClick={() => setOpenId(a.id)}
+                          onClick={() => {
+                            setOpenId(a.id);
+                            setActiveResultId(null);
+                          }}
                           className="flex-1 flex items-center gap-2.5 min-w-0 text-left"
                         >
                           <span
@@ -503,6 +597,11 @@ export default function GoalsView({
                               </span>
                             </span>
                             <span className="flex items-center gap-1.5 text-[10px]">
+                              {resultCount > 0 && (
+                                <span className="rounded-md bg-[var(--color-primary-light)] px-1.5 py-0.5 text-[var(--color-primary)]">
+                                  结果 {resultCount}
+                                </span>
+                              )}
                               <span
                                 className={`rounded-md px-1.5 py-0.5 ${taskLeg === 0 ? "bg-[#FFF7ED] text-[#C27720]" : "bg-[var(--color-bg-gray-lighter)] text-[var(--color-text-secondary)]"}`}
                               >

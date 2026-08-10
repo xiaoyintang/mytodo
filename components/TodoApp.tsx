@@ -14,6 +14,7 @@ import type {
   BehaviorCard,
   BehaviorType,
   DayPlan,
+  GoalResult,
   Habit,
   HabitLog,
   EntryCategory,
@@ -35,12 +36,14 @@ const STORAGE_KEY = "mytodo.tasks.v1";
 const ENTRIES_KEY = "mytodo.entries.v1";
 // 习惯实验室（一期只存本地，暂不进云同步）
 const ASPIRATIONS_KEY = "mytodo.aspirations.v1";
+const GOAL_RESULTS_KEY = "mytodo.goal-results.v1";
 const BEHAVIORS_KEY = "mytodo.behaviors.v1";
 const HABITS_KEY = "mytodo.habits.v1";
 const HABIT_LOGS_KEY = "mytodo.habitlogs.v1";
 const DAY_PLANS_KEY = "mytodo.dayplans.v1";
 const EMPTY_ENTRIES: TimeEntry[] = [];
 const EMPTY_ASPIRATIONS: Aspiration[] = [];
+const EMPTY_GOAL_RESULTS: GoalResult[] = [];
 const EMPTY_BEHAVIORS: BehaviorCard[] = [];
 const EMPTY_HABITS: Habit[] = [];
 const EMPTY_HABIT_LOGS: HabitLog[] = [];
@@ -116,6 +119,8 @@ export default function TodoApp() {
 
   const { value: aspirations, setValue: setAspirations, hydrated: aspHydrated } =
     useLocalStorageState<Aspiration[]>(ASPIRATIONS_KEY, EMPTY_ASPIRATIONS);
+  const { value: goalResults, setValue: setGoalResults, hydrated: resultsHydrated } =
+    useLocalStorageState<GoalResult[]>(GOAL_RESULTS_KEY, EMPTY_GOAL_RESULTS);
   const { value: behaviorCards, setValue: setBehaviorCards, hydrated: behHydrated } =
     useLocalStorageState<BehaviorCard[]>(BEHAVIORS_KEY, EMPTY_BEHAVIORS);
 
@@ -146,12 +151,18 @@ export default function TodoApp() {
   const [entriesHistory, setEntriesHistory] = useState<TimeEntry[][]>([]);
   // 习惯实验室的撤回栈（愿望 + 行为一起快照）
   const [labHistory, setLabHistory] = useState<
-    Array<{ aspirations: Aspiration[]; behaviors: BehaviorCard[]; restoreTasks?: Task[] }>
+    Array<{
+      aspirations: Aspiration[];
+      goalResults: GoalResult[];
+      behaviors: BehaviorCard[];
+      restoreTasks?: Task[];
+    }>
   >([]);
 
   const safeTasks = hydrated ? tasks : seedTasks(todayIso);
   const safeEntries = entriesHydrated ? entries : EMPTY_ENTRIES;
   const safeAspirations = aspHydrated ? aspirations : EMPTY_ASPIRATIONS;
+  const safeGoalResults = resultsHydrated ? goalResults : EMPTY_GOAL_RESULTS;
   const safeBehaviors = behHydrated ? behaviorCards : EMPTY_BEHAVIORS;
   const safeHabits = habitsHydrated ? habits : EMPTY_HABITS;
   const safeHabitLogs = logsHydrated ? habitLogs : EMPTY_HABIT_LOGS;
@@ -161,10 +172,11 @@ export default function TodoApp() {
   // 计时器提到这一层，才能进云同步（手机上开始，电脑上看得到还在跑）
   const timer = useTimer((entry) => addEntries([entry]));
 
-  const labHydrated = aspHydrated && behHydrated && habitsHydrated && logsHydrated && plansHydrated;
+  const labHydrated =
+    aspHydrated && resultsHydrated && behHydrated && habitsHydrated && logsHydrated && plansHydrated;
   const lab = useMemo(
-    () => ({ aspirations, behaviors: behaviorCards, habits, habitLogs, dayPlans }),
-    [aspirations, behaviorCards, habits, habitLogs, dayPlans],
+    () => ({ aspirations, goalResults, behaviors: behaviorCards, habits, habitLogs, dayPlans }),
+    [aspirations, goalResults, behaviorCards, habits, habitLogs, dayPlans],
   );
 
   const sync = useCloudSync({
@@ -178,6 +190,7 @@ export default function TodoApp() {
     setEntries,
     setLab: (patch) => {
       if (patch.aspirations) setAspirations(patch.aspirations);
+      if (patch.goalResults) setGoalResults(patch.goalResults);
       if (patch.behaviors) setBehaviorCards(patch.behaviors);
       if (patch.habits) setHabits(patch.habits);
       if (patch.habitLogs) setHabitLogs(patch.habitLogs);
@@ -461,7 +474,7 @@ export default function TodoApp() {
   function snapshotLab(restoreTasks?: Task[]) {
     setLabHistory((h) => [
       ...h.slice(-29),
-      { aspirations, behaviors: behaviorCards, restoreTasks },
+      { aspirations, goalResults, behaviors: behaviorCards, restoreTasks },
     ]);
   }
 
@@ -469,6 +482,7 @@ export default function TodoApp() {
     if (labHistory.length === 0) return;
     const prev = labHistory[labHistory.length - 1];
     setAspirations(prev.aspirations);
+    setGoalResults(prev.goalResults);
     setBehaviorCards(prev.behaviors);
     // 只把当时被连带删掉的任务加回来，不整包覆盖 tasks——
     // 否则会把用户在日视图里的其他改动一起回滚
@@ -493,6 +507,105 @@ export default function TodoApp() {
     setAspirations((prev) => [...prev, a]);
   }
 
+  /** 给复杂目标增加可选的结果层；简单目标可以完全不用。 */
+  function createGoalResult(aspirationId: string, title: string, evidence?: string): string {
+    snapshotLab();
+    const id = `gr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const result: GoalResult = {
+      id,
+      aspirationId,
+      title: title.trim(),
+      evidence: evidence?.trim() || undefined,
+      createdAt: Date.now(),
+    };
+    setGoalResults((prev) => [...prev, result]);
+    return id;
+  }
+
+  function updateGoalResult(id: string, patch: { title?: string; evidence?: string }) {
+    snapshotLab();
+    setGoalResults((prev) =>
+      prev.map((result) =>
+        result.id === id
+          ? {
+              ...result,
+              ...(patch.title !== undefined ? { title: patch.title.trim() } : {}),
+              ...(patch.evidence !== undefined
+                ? { evidence: patch.evidence.trim() || undefined }
+                : {}),
+            }
+          : result,
+      ),
+    );
+  }
+
+  /** 删除结果只解除分组；行为是用户已经想过的，不跟着丢。 */
+  function deleteGoalResult(id: string) {
+    snapshotLab();
+    setGoalResults((prev) => prev.filter((result) => result.id !== id));
+    setBehaviorCards((prev) =>
+      prev.map((behavior) =>
+        behavior.resultId === id ? { ...behavior, resultId: undefined } : behavior,
+      ),
+    );
+  }
+
+  function assignBehaviorResult(behaviorId: string, resultId?: string) {
+    snapshotLab();
+    setBehaviorCards((prev) =>
+      prev.map((behavior) =>
+        behavior.id === behaviorId ? { ...behavior, resultId: resultId || undefined } : behavior,
+      ),
+    );
+  }
+
+  /** AI 只提议结构；用户确认后才一次性建结果并给现有行为归组。 */
+  function applyGoalResultStructure(
+    aspirationId: string,
+    groups: Array<{ title: string; evidence?: string; behaviorIds: string[] }>,
+  ): string[] {
+    snapshotLab();
+    const now = Date.now();
+    const created = groups
+      .map((group, index) => ({
+        id: `gr-${now}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+        aspirationId,
+        title: group.title.trim(),
+        evidence: group.evidence?.trim() || undefined,
+        createdAt: now + index,
+        behaviorIds: group.behaviorIds,
+      }))
+      .filter((group) => group.title);
+    const validBehaviorIds = new Set(
+      behaviorCards.filter((behavior) => behavior.aspirationId === aspirationId).map((behavior) => behavior.id),
+    );
+    const resultByBehavior = new Map<string, string>();
+    for (const group of created) {
+      for (const behaviorId of group.behaviorIds) {
+        if (validBehaviorIds.has(behaviorId) && !resultByBehavior.has(behaviorId)) {
+          resultByBehavior.set(behaviorId, group.id);
+        }
+      }
+    }
+    setGoalResults((prev) => [
+      ...prev,
+      ...created.map((group) => ({
+        id: group.id,
+        aspirationId: group.aspirationId,
+        title: group.title,
+        evidence: group.evidence,
+        createdAt: group.createdAt,
+      })),
+    ]);
+    setBehaviorCards((prev) =>
+      prev.map((behavior) => {
+        const resultId = resultByBehavior.get(behavior.id);
+        return resultId ? { ...behavior, resultId } : behavior;
+      }),
+    );
+    return created.map((group) => group.id);
+  }
+
   // 删愿望连它下面的行为一起删，不留孤儿卡片
   function deleteAspiration(id: string) {
     const taskIds = new Set(
@@ -505,16 +618,22 @@ export default function TodoApp() {
       setTasks((prev) => prev.filter((t) => !ids.has(t.id)));
     }
     setAspirations((prev) => prev.filter((a) => a.id !== id));
+    setGoalResults((prev) => prev.filter((result) => result.aspirationId !== id));
     setBehaviorCards((prev) => prev.filter((b) => b.aspirationId !== id));
   }
 
   // 收集口回车即存：不带 type → 未判定；魔法棒收进来的自带 type
-  function addBehaviors(aspirationId: string, items: Array<{ text: string; type?: BehaviorType }>) {
+  function addBehaviors(
+    aspirationId: string,
+    items: Array<{ text: string; type?: BehaviorType }>,
+    resultId?: string,
+  ) {
     snapshotLab();
     const now = Date.now();
     const cards: BehaviorCard[] = items.map((it, i) => ({
       id: `b-${now}-${i}-${Math.random().toString(36).slice(2, 7)}`,
       aspirationId,
+      resultId,
       text: it.text,
       type: it.type ?? "unsorted",
       typeSource: it.type ? "ai" : undefined,
@@ -740,12 +859,13 @@ export default function TodoApp() {
     setBehaviorCards((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
   }
 
-  // 重排：清掉这个愿望下所有可重复行为的两轴
-  function resetBehaviorAxes(aspirationId: string) {
+  // 重排只清当前结果路径里正在看的行为，不能误伤同一目标下的其他焦点地图。
+  function resetBehaviorAxes(behaviorIds: string[]) {
     snapshotLab();
+    const ids = new Set(behaviorIds);
     setBehaviorCards((prev) =>
       prev.map((b) =>
-        b.aspirationId === aspirationId ? { ...b, impact: undefined, feasibility: undefined } : b,
+        ids.has(b.id) ? { ...b, impact: undefined, feasibility: undefined } : b,
       ),
     );
   }
@@ -802,6 +922,7 @@ export default function TodoApp() {
       {goalsOpen ? (
         <GoalsView
           aspirations={safeAspirations}
+          goalResults={safeGoalResults}
           behaviors={safeBehaviors}
           tasks={safeTasks}
           habits={safeHabits}
@@ -814,6 +935,11 @@ export default function TodoApp() {
           onBack={() => setGoalsOpen(false)}
           onCreateAspiration={createAspiration}
           onDeleteAspiration={deleteAspiration}
+          onCreateGoalResult={createGoalResult}
+          onUpdateGoalResult={updateGoalResult}
+          onDeleteGoalResult={deleteGoalResult}
+          onAssignBehaviorResult={assignBehaviorResult}
+          onApplyGoalResultStructure={applyGoalResultStructure}
           onAddBehaviors={addBehaviors}
           onApplyJudgements={applyJudgements}
           onSetBehaviorType={setBehaviorType}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Aspiration, BehaviorCard, DayPlan, Habit, HabitLog, Task, TimeEntry } from "./types";
+import type { Aspiration, BehaviorCard, DayPlan, GoalResult, Habit, HabitLog, Task, TimeEntry } from "./types";
 import type { TimerState } from "./useTimer";
 
 export type SyncStatus = "off" | "syncing" | "synced" | "error" | "not_configured";
@@ -21,6 +21,7 @@ function mergeById<T extends { id: string }>(cloud: T[], local: T[]): T[] {
 /** 除了 tasks/entries，习惯实验室那几张表也要同步——否则手机上看不到目标和习惯 */
 export type LabData = {
   aspirations: Aspiration[];
+  goalResults: GoalResult[];
   behaviors: BehaviorCard[];
   habits: Habit[];
   habitLogs: HabitLog[];
@@ -209,6 +210,7 @@ export function useCloudSync({
         // 云端没有这几个 key（老版本传上去的 payload）→ 一律按 null 处理，
         // 下面只在非 null 时才写本地。绝不能把"云端没有"当成"云端是空的"，那会删掉本地数据。
         const cloudAsp = Array.isArray(data?.aspirations) ? (data.aspirations as Aspiration[]) : null;
+        const cloudResults = Array.isArray(data?.goalResults) ? (data.goalResults as GoalResult[]) : null;
         const cloudBeh = Array.isArray(data?.behaviors) ? (data.behaviors as BehaviorCard[]) : null;
         const cloudHabits = Array.isArray(data?.habits) ? (data.habits as Habit[]) : null;
         const cloudLogs = Array.isArray(data?.habitLogs) ? (data.habitLogs as HabitLog[]) : null;
@@ -221,7 +223,7 @@ export function useCloudSync({
         const cloudTimer = data?.timer as TimerState | undefined;
         if (cloudTimer && typeof cloudTimer.updatedAt === "number") adoptTimer(cloudTimer);
 
-        if (!cloudTasks && !cloudEntries && !cloudAsp && !cloudBeh) return "empty";
+        if (!cloudTasks && !cloudEntries && !cloudAsp && !cloudResults && !cloudBeh) return "empty";
 
         // 本地有未上传的改动（含拉取期间刚新增的）→ 合并而不是覆盖，
         // 保证本地记录一条都不丢，合并后再把完整数据推上云。
@@ -235,6 +237,7 @@ export function useCloudSync({
           const mergedEntries = mergeById(cloudEntries ?? [], entriesRef.current);
           const mergedLab: LabData = {
             aspirations: mergeById(cloudAsp ?? [], labRef.current.aspirations),
+            goalResults: mergeById(cloudResults ?? [], labRef.current.goalResults),
             behaviors: mergeById(cloudBeh ?? [], labRef.current.behaviors),
             habits: mergeById(cloudHabits ?? [], labRef.current.habits),
             habitLogs: mergeById(cloudLogs ?? [], labRef.current.habitLogs),
@@ -255,6 +258,7 @@ export function useCloudSync({
         setEntries(cloudEntries ?? []);
         setLab({
           ...(cloudAsp ? { aspirations: cloudAsp } : {}),
+          ...(cloudResults ? { goalResults: cloudResults } : {}),
           ...(cloudBeh ? { behaviors: cloudBeh } : {}),
           ...(cloudHabits ? { habits: cloudHabits } : {}),
           ...(cloudLogs ? { habitLogs: cloudLogs } : {}),

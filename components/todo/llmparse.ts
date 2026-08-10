@@ -186,6 +186,27 @@ ${BEHAVIOR_TYPES}
 blocker 只能是 "endpoint" 或 null。
 输入几条就输出几条，一条都不能少，id 必须原样返回。`;
 
+const STRUCTURE_RESULTS_PROMPT = `你是个人目标的“结果结构教练”。用户会给你一个较大的目标，以及已经想出的候选行为。
+
+你的任务不是继续拆行为，而是找回这些行为共同服务的中间结果，把扁平行为整理成 2-5 条“关键结果/结果路径”。
+
+【结果路径的定义】
+- 回答“什么变化发生了，才说明我更接近目标”
+- 它不是一个当天能做完的动作，也不是“学习、准备、提升、优化”这种活动名称
+- 同一结果下面的行为应该可以在同一张焦点地图里比较影响力
+- evidence 是可验证的达成证据；没有基线时不要编造“从 X 提升到 Y”，可用次数、质量标准、外部反馈或可观察状态
+
+【分组规则】
+1. 按行为的因果目的分组，不要只按动词或表面关键词分组
+2. 每个行为最多归属一个主要结果；拿不准或明显无关的可以不分组，留在未归属
+3. 相互重叠的结果要合并，最终通常 3-5 条；目标简单时可以只有 2 条
+4. title 不超过 20 个字，写结果而不是行动
+5. evidence 不超过 45 个字，写“怎样算有进展/达成”
+6. behaviorIds 只能使用输入中真实存在的 id，不要改写 id
+
+【输出】必须是合法 JSON，不要输出其他内容：
+{"results":[{"title":"获得更多匹配的面试机会","evidence":"连续四周获得稳定的目标岗位面试邀请","behaviorIds":["b-1","b-2"]}]}`;
+
 const WAND_PROMPT = `你是福格行为设计（BJ Fogg, Tiny Habits）的教练。用户会给出一个愿望或成果。
 用"魔法棒"发散：假设有根魔法棒，他毫不费力就能做到任何事，列出能实现它的具体行为。
 
@@ -397,6 +418,11 @@ const VALID_BLOCKER = new Set<string>(["endpoint"]);
 const WAND_TYPE = new Set<string>(["onetime", "habit", "stop"]);
 
 export type LLMBehavior = { text: string; type: BehaviorType };
+export type LLMGoalResult = {
+  title: string;
+  evidence?: string;
+  behaviorIds: string[];
+};
 export type BehaviorBlocker = "timing" | "decision" | "endpoint";
 export type NextActionClarification = {
   ready: boolean;
@@ -415,6 +441,40 @@ export type LLMJudgement = {
   reason: string;
   blocker?: BehaviorBlocker;
 };
+
+/** 从一个大目标和现有行为中提议结果层；只返回建议，不在服务端改任何数据。 */
+export async function structureGoalResultsWithLLM(
+  goal: string,
+  items: Array<{ id: string; text: string }>,
+): Promise<LLMGoalResult[] | null> {
+  const parsed = await callLLMJson(
+    STRUCTURE_RESULTS_PROMPT,
+    JSON.stringify({ goal, behaviors: items }),
+    { think: true, temperature: 0.3 },
+  );
+  if (parsed === null) return null;
+  const raw = (parsed as { results?: unknown })?.results;
+  if (!Array.isArray(raw)) return null;
+
+  const knownIds = new Set(items.map((item) => item.id));
+  const usedIds = new Set<string>();
+  return raw
+    .map((entry): LLMGoalResult | null => {
+      const result = entry as Record<string, unknown>;
+      const title = String(result.title ?? "").trim().slice(0, 40);
+      if (!title) return null;
+      const evidence = String(result.evidence ?? "").trim().slice(0, 90);
+      const behaviorIds = Array.isArray(result.behaviorIds)
+        ? result.behaviorIds
+            .map((id) => String(id ?? "").trim())
+            .filter((id) => knownIds.has(id) && !usedIds.has(id))
+        : [];
+      behaviorIds.forEach((id) => usedIds.add(id));
+      return { title, evidence: evidence || undefined, behaviorIds };
+    })
+    .filter((result): result is LLMGoalResult => result !== null)
+    .slice(0, 5);
+}
 
 // 从模型输出里挑出合法的行为条目（魔法棒用，只收可执行的三类）
 function pickBehaviors(raw: unknown): LLMBehavior[] {

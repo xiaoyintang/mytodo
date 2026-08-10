@@ -61,6 +61,20 @@ export interface Aspiration {
 }
 
 /**
+ * 大目标下面可选的“结果层”。它不是待办，也不直接进入日视图；
+ * 它只回答：什么变化发生了，才说明这个目标真的被推进。
+ * 简单目标可以一条都没有，继续直接从愿望拆行为。
+ */
+export interface GoalResult {
+  id: string;
+  aspirationId: string;
+  title: string;
+  /** 可验证的达成证据；允许先留空，避免把个人目标做成填表负担。 */
+  evidence?: string;
+  createdAt: number;
+}
+
+/**
  * 某一天的安排。**不是新实体**——"主线"就是"这天主推哪几个目标"，
  * 底层只是 Aspiration id + 日期的关联，不建 MainLine 表。
  */
@@ -89,6 +103,8 @@ export type BehaviorType =
 export interface BehaviorCard {
   id: string;
   aspirationId: string;
+  /** 属于哪条关键结果/结果路径；没有就是仍在“未归属行为”里。 */
+  resultId?: string;
   text: string;
   type: BehaviorType;
   createdAt: number;

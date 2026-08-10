@@ -8,6 +8,7 @@ import {
   magicWandWithLLM,
   shrinkWithLLM,
   sortBehaviorsWithLLM,
+  structureGoalResultsWithLLM,
 } from "@/components/todo/llmparse";
 
 // 习惯实验室 · 行为集群的 AI 接口，两种用法：
@@ -16,6 +17,7 @@ import {
 //   { mode: "breakdown", text, goal? } → 把一个任务拆成子步骤（穷尽，不筛选）
 //   { mode: "clarify-next", text, parentTask } → 检查当前下一步，只给一个问题和一个改写
 //   { mode: "clarify-behavior", text, goal, behaviorType? } → 检查焦点地图候选行为的表达
+//   { mode: "structure-results", goal, items } → 从现有行为提议 2-5 条结果路径
 // 未配 LLM_API_KEY 一律返回 501，前端各自降级。
 
 const MAX_ITEMS = 40;
@@ -35,6 +37,27 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
   const mode = String(body.mode ?? "sort");
+
+  if (mode === "structure-results") {
+    const goal = String(body.goal ?? "").trim().slice(0, 160);
+    if (!goal) return NextResponse.json({ error: "empty_goal" }, { status: 400 });
+    const items = Array.isArray(body.items)
+      ? (body.items as unknown[])
+          .map((item) => {
+            const value = item as Record<string, unknown>;
+            return {
+              id: String(value.id ?? "").trim(),
+              text: String(value.text ?? "").trim().slice(0, 200),
+            };
+          })
+          .filter((item) => item.id && item.text)
+          .slice(0, MAX_ITEMS)
+      : [];
+    if (items.length === 0) return NextResponse.json({ error: "empty_items" }, { status: 400 });
+    const results = await structureGoalResultsWithLLM(goal, items);
+    if (results === null) return NextResponse.json({ error: "llm_error" }, { status: 502 });
+    return NextResponse.json({ results });
+  }
 
   if (mode === "wand") {
     const aspiration = String(body.aspiration ?? "").trim().slice(0, 120);
