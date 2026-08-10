@@ -1,28 +1,37 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Aspiration, Habit, HabitLog, ISODate, Task, TimeEntry } from "@/components/todo/types";
+import type {
+  Aspiration,
+  BehaviorCard,
+  GoalResult,
+  Habit,
+  HabitLog,
+  ISODate,
+  Task,
+  TimeEntry,
+} from "@/components/todo/types";
+import { goldenScore } from "@/components/todo/behavior";
+import { goalColor } from "@/components/todo/goal";
 import { formatMinutes } from "@/components/todo/time";
 import { toISODate } from "@/components/todo/date";
 import {
   Check,
   CalendarCheck2,
   CalendarPlus,
-  ChevronDown,
-  ChevronRight,
   Clock,
   Plus,
   Sparkles,
-  Target,
   Trash2,
   Undo2,
   X,
 } from "lucide-react";
-import { useLocalStorageState } from "@/components/todo/storage";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
 type Props = {
   aspirations: Aspiration[];
+  behaviors: BehaviorCard[];
+  goalResults: GoalResult[];
   habits: Habit[];
   logs: HabitLog[];
   entries: TimeEntry[];
@@ -38,7 +47,6 @@ type Props = {
   hasLogs: (habitId: string) => boolean;
 };
 
-const EMPTY_COLLAPSED: string[] = [];
 const POSITIVE_IMPACTS = ["更轻松", "更清醒", "更有能量", "更踏实"];
 const MILESTONES = new Set([3, 7, 10, 25, 50, 100, 200, 365]);
 
@@ -137,6 +145,8 @@ function fromLedger(habit: Habit, entries: TimeEntry[], logs: HabitLog[], today:
 
 export default function HabitTracker({
   aspirations,
+  behaviors,
+  goalResults,
   habits,
   logs,
   entries,
@@ -151,11 +161,6 @@ export default function HabitTracker({
   onDeleteHabit,
   hasLogs,
 }: Props) {
-  // 收起哪些目标分组（记在本地，刷新后还是你上次那样）
-  const { value: collapsed, setValue: setCollapsed } = useLocalStorageState<string[]>(
-    "mytodo.habitgroups.collapsed.v1",
-    EMPTY_COLLAPSED,
-  );
   const [editAnchor, setEditAnchor] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [justTapped, setJustTapped] = useState<string | null>(null);
@@ -172,14 +177,32 @@ export default function HabitTracker({
   const live = habits.filter((h) => !h.archived);
   if (live.length === 0) return null;
 
-  // 按目标分组：习惯多了以后得知道每条是为哪个愿望服务的
-  const groups: Array<{ key: string; title: string | null; items: Habit[] }> = [];
-  for (const a of aspirations) {
-    const items = live.filter((h) => h.aspirationId === a.id);
-    if (items.length > 0) groups.push({ key: a.id, title: a.title, items });
+  function behaviorOf(habit: Habit) {
+    return habit.behaviorId ? behaviors.find((behavior) => behavior.id === habit.behaviorId) : undefined;
   }
-  const orphans = live.filter((h) => !h.aspirationId || !aspirations.some((a) => a.id === h.aspirationId));
-  if (orphans.length > 0) groups.push({ key: "__none__", title: null, items: orphans });
+
+  function scoreOf(habit: Habit): number | null {
+    const behavior = behaviorOf(habit);
+    if (!behavior || behavior.impact == null || behavior.feasibility == null) return null;
+    return goldenScore(behavior);
+  }
+
+  function compareByFocusScore(a: Habit, b: Habit) {
+    const aScore = scoreOf(a);
+    const bScore = scoreOf(b);
+    if (aScore == null && bScore == null) {
+      const aMapped = Boolean(behaviorOf(a));
+      const bMapped = Boolean(behaviorOf(b));
+      if (aMapped !== bMapped) return aMapped ? -1 : 1;
+      return a.createdAt - b.createdAt;
+    }
+    if (aScore == null) return 1;
+    if (bScore == null) return -1;
+    return bScore - aScore || a.createdAt - b.createdAt;
+  }
+
+  // 不再按目标分组：跨组会破坏真正的综合分顺序。目标和关键结果改为显示在每条习惯上。
+  const rankedHabits = live.slice().sort(compareByFocusScore);
 
   const todayActiveHabits = live.filter((h) => {
     if (h.measure === "duration") return fromLedger(h, entries, logs, today).count > 0;
@@ -236,22 +259,6 @@ export default function HabitTracker({
     dismissCelebration(1800);
   }
 
-  function isShut(key: string): boolean {
-    return collapsed.includes(key);
-  }
-
-  function toggleGroup(key: string) {
-    setCollapsed((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
-  }
-
-  /** 这一组今天一共记了多少次（时长型的从台账算） */
-  function groupDone(items: Habit[]): number {
-    return items.reduce((sum, h) => {
-      if (h.measure === "duration") return sum + fromLedger(h, entries, logs, today).count;
-      return sum + logs.filter((l) => l.habitId === h.id && l.date === today).length;
-    }, 0);
-  }
-
   function saveAnchor(id: string) {
     onSetAnchor(id, draft.trim());
     setEditAnchor(null);
@@ -261,8 +268,11 @@ export default function HabitTracker({
     <div className="w-full flex flex-col gap-3">
       <div className="w-full flex items-center justify-between">
         <span className="text-[var(--color-text-primary)] text-[15px] font-semibold">今天</span>
-        <span className="text-[var(--color-text-tertiary)] text-[11px]">
-          只积累，不因中断清零
+        <span
+          className="text-[var(--color-text-tertiary)] text-[10px]"
+          title="综合分 = 影响力 × 60% + 能做到 × 40%"
+        >
+          焦点分优先 · 影响 6 / 能做 4
         </span>
       </div>
 
@@ -292,37 +302,8 @@ export default function HabitTracker({
         </div>
       )}
 
-      {groups.map((g) => (
-        <div key={g.key} className="w-full flex flex-col gap-1.5">
-          <button
-            type="button"
-            onClick={() => toggleGroup(g.key)}
-            className="w-full flex items-center gap-1.5 text-left"
-          >
-            {isShut(g.key) ? (
-              <ChevronRight className="w-3 h-3 text-[var(--color-text-tertiary)] flex-shrink-0" />
-            ) : (
-              <ChevronDown className="w-3 h-3 text-[var(--color-text-tertiary)] flex-shrink-0" />
-            )}
-            <Target className="w-3 h-3 text-[var(--color-primary)] flex-shrink-0" />
-            <span className="text-[11px] font-semibold text-[var(--color-text-secondary)] truncate">
-              {g.title ?? "没有归属的目标"}
-            </span>
-            <span className="text-[10px] text-[var(--color-text-tertiary)] flex-shrink-0">
-              {g.items.length}
-            </span>
-            <div className="flex-1" />
-            {/* 收起来也得知道今天动没动过 */}
-            {isShut(g.key) && (
-              <span className="text-[10px] text-[var(--color-text-tertiary)] flex-shrink-0">
-                {groupDone(g.items) > 0 ? `今天 ${groupDone(g.items)} 次` : "今天还没做"}
-              </span>
-            )}
-          </button>
-
-          {!isShut(g.key) && (
-            <div className="overflow-hidden rounded-[11px] border border-[var(--color-border)] bg-white divide-y divide-[var(--color-border)]">
-              {g.items.map((h) => {
+      <div className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[11px] border border-[var(--color-border)] bg-white">
+        {rankedHabits.map((h) => {
                 const isDuration = h.measure === "duration";
                 const ledger = isDuration ? fromLedger(h, entries, logs, today) : null;
                 const count = isDuration
@@ -337,6 +318,17 @@ export default function HabitTracker({
                 const flash = justTapped === h.id;
                 const editing = editAnchor === h.id;
                 const stats = habitStats(h, logs, entries, today);
+                const behavior = behaviorOf(h);
+                const focusScore = scoreOf(h);
+                const aspiration = aspirations.find((item) => item.id === h.aspirationId);
+                const aspirationIndex = aspiration
+                  ? aspirations.findIndex((item) => item.id === aspiration.id)
+                  : 0;
+                const result = behavior?.resultId
+                  ? goalResults.find(
+                      (item) => item.id === behavior.resultId && item.aspirationId === h.aspirationId,
+                    )
+                  : undefined;
                 const statusText = isDuration
                   ? count > 0
                     ? (ledger?.minutes ?? 0) > 0
@@ -351,7 +343,7 @@ export default function HabitTracker({
                   <div
                     key={h.id}
                     className={[
-                      "flex min-h-[66px] w-full items-center gap-2 px-2.5 py-2 transition-colors duration-300",
+                      "flex min-h-[78px] w-full items-center gap-2 px-2.5 py-2 transition-colors duration-300",
                       flash ? "animate-habit-glow bg-[#F0FDF4]" : count > 0 ? "bg-[#FCFFFD]" : "bg-white",
                     ].join(" ")}
                   >
@@ -424,13 +416,49 @@ export default function HabitTracker({
                         </div>
                       ) : (
                         <>
-                          <span
-                            className="line-clamp-2 text-[13px] font-semibold leading-snug text-[var(--color-text-primary)]"
-                            title={h.title}
-                          >
-                            {h.title}
-                          </span>
-                          <div className="mt-1 flex min-w-0 items-center gap-1 text-[9px] tabular-nums text-[var(--color-text-tertiary)]">
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <span
+                              className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-snug text-[var(--color-text-primary)]"
+                              title={h.title}
+                            >
+                              {h.title}
+                            </span>
+                            <span
+                              className={[
+                                "flex-shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium tabular-nums",
+                                focusScore == null
+                                  ? "bg-[var(--color-bg-gray-lighter)] text-[var(--color-text-tertiary)]"
+                                  : "bg-[var(--color-primary-light)] text-[var(--color-primary)]",
+                              ].join(" ")}
+                              title={
+                                focusScore == null
+                                  ? behavior
+                                    ? "焦点地图还没有完成两轴评分"
+                                    : "这条习惯没有经过焦点地图"
+                                  : `综合 ${Math.round(focusScore)}（影响 ${behavior?.impact} × 60% + 能做 ${behavior?.feasibility} × 40%）`
+                              }
+                            >
+                              {focusScore == null ? (behavior ? "未评分" : "直接添加") : `综合 ${Math.round(focusScore)}`}
+                            </span>
+                          </div>
+                          <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[9px] leading-4 text-[var(--color-text-tertiary)]">
+                            <span
+                              className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
+                              style={{
+                                backgroundColor: aspiration
+                                  ? goalColor(aspiration, aspirationIndex)
+                                  : "var(--color-text-tertiary)",
+                              }}
+                            />
+                            <span className="max-w-[35%] flex-shrink-0 truncate text-[var(--color-text-secondary)]">
+                              {aspiration?.title ?? "未归属目标"}
+                            </span>
+                            <span className="flex-shrink-0">›</span>
+                            <span className="min-w-0 truncate">
+                              {result ? `结果 · ${result.title}` : behavior ? "直接服务目标" : "未经过焦点地图"}
+                            </span>
+                          </div>
+                          <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[9px] tabular-nums text-[var(--color-text-tertiary)]">
                             {h.anchor ? (
                               <button
                                 type="button"
@@ -541,11 +569,8 @@ export default function HabitTracker({
                     </div>
                   </div>
                 );
-              })}
-            </div>
-          )}
-        </div>
-      ))}
+        })}
+      </div>
 
       {celebration && (
         <div

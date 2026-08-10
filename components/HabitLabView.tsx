@@ -3,7 +3,9 @@
 import { useState } from "react";
 import type {
   Aspiration,
+  BehaviorCard,
   DayPlan,
+  GoalResult,
   Habit,
   HabitLog,
   ISODate,
@@ -21,6 +23,8 @@ type Props = {
   onChangeViewMode: (mode: ViewMode) => void;
   today: ISODate;
   aspirations: Aspiration[];
+  behaviors: BehaviorCard[];
+  goalResults: GoalResult[];
   dayPlans: Record<string, DayPlan>;
   onOpenGoals: () => void;
   running: { title: string; startedAt: number } | null;
@@ -52,6 +56,8 @@ export default function HabitLabView({
   onChangeViewMode,
   today,
   aspirations,
+  behaviors,
+  goalResults,
   dayPlans,
   onOpenGoals,
   running,
@@ -127,6 +133,8 @@ export default function HabitLabView({
         {liveHabits.length > 0 ? (
           <HabitTracker
             aspirations={aspirations}
+            behaviors={behaviors}
+            goalResults={goalResults}
             habits={habits}
             logs={habitLogs}
             entries={entries}

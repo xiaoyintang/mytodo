@@ -1021,6 +1021,8 @@ export default function TodoApp() {
           onChangeViewMode={setViewMode}
           today={todayIso}
           aspirations={safeAspirations}
+          behaviors={safeBehaviors}
+          goalResults={safeGoalResults}
           dayPlans={safeDayPlans}
           onOpenGoals={() => setGoalsOpen(true)}
           running={timer.running}
