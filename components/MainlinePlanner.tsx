@@ -164,7 +164,10 @@ export default function MainlinePlanner({ days, today, aspirations, dayPlans, on
                 className="w-2 h-2 rounded-full flex-shrink-0"
                 style={{ backgroundColor: goalColor(a, i) }}
               />
-              <span className="flex-1 text-[11px] text-[var(--color-text-secondary)] truncate">
+              <span
+                className="flex-1 truncate text-[11px] text-[var(--color-text-secondary)]"
+                title={a.title}
+              >
                 {a.title}
               </span>
               <span

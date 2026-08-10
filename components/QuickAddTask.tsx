@@ -141,7 +141,12 @@ export default function QuickAddTask({ onCreate }: { onCreate: (task: Omit<Task,
           {preview.map((t, i) => (
             <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-[var(--color-border)]">
               <div className="flex-1 flex flex-col min-w-0">
-                <span className="text-[13px] font-medium text-[var(--color-text-primary)] truncate">{t.title}</span>
+                <span
+                  className="truncate text-[13px] font-medium text-[var(--color-text-primary)]"
+                  title={t.title}
+                >
+                  {t.title}
+                </span>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-[11px] text-[var(--color-text-tertiary)]">{dateLabel(t.date)}</span>
                   {t.targetMinutes ? (

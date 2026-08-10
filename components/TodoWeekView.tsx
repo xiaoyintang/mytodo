@@ -98,6 +98,7 @@ function WeekTaskRow({
               ? "text-[#2563EB]"
               : "text-[var(--color-text-primary)]",
         ].join(" ")}
+        title={task.title}
       >
         {task.title}
       </span>

@@ -52,7 +52,11 @@ export default function TimerPanel({ running, elapsedMs, onStart, onStop }: Prop
           style={{ backgroundColor: style.bg, borderColor: style.solid }}
         >
           <div className="flex flex-col gap-0.5 min-w-0">
-            <span className="text-[13px] font-semibold truncate" style={{ color: style.text }}>
+            <span
+              className="truncate text-[13px] font-semibold"
+              style={{ color: style.text }}
+              title={`${running.title} 进行中`}
+            >
               {running.title} 进行中
             </span>
             <span className="text-[11px] text-[var(--color-text-tertiary)]">

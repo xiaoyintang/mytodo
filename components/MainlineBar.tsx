@@ -48,7 +48,10 @@ export default function MainlineBar({
       {running && (
         <div className="flex w-full items-center gap-2 rounded-lg bg-[#EFF6FF] px-2.5 py-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] animate-pulse flex-shrink-0" />
-          <span className="text-[12px] font-semibold text-[var(--color-primary)] truncate min-w-0">
+          <span
+            className="min-w-0 truncate text-[12px] font-semibold text-[var(--color-primary)]"
+            title={running.title}
+          >
             {running.title}
           </span>
           <span className="text-[13px] font-bold tabular-nums text-[var(--color-primary)] flex-shrink-0">
@@ -82,7 +85,10 @@ export default function MainlineBar({
                   className="w-2 h-2 rounded-full flex-shrink-0"
                   style={{ backgroundColor: goalColor(a, aspirations.indexOf(a)) }}
                 />
-                <span className="truncate text-[12px] font-semibold text-[var(--color-text-primary)]">
+                <span
+                  className="truncate text-[12px] font-semibold text-[var(--color-text-primary)]"
+                  title={a.title}
+                >
                   {a.title}
                 </span>
               </span>

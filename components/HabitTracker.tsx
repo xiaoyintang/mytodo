@@ -336,7 +336,14 @@ export default function HabitTracker({
             <p className="truncate text-[12px] font-semibold text-[var(--color-text-primary)]">
               今天已有 <strong className="tabular-nums text-[#15803D]">{todayActionCount}</strong> 次行动发生
             </p>
-            <p className="mt-0.5 truncate text-[10px] text-[var(--color-text-tertiary)]">
+            <p
+              className="mt-0.5 truncate text-[10px] text-[var(--color-text-tertiary)]"
+              title={
+                todayTargetTitles.length > 0
+                  ? `正在推动「${todayTargetTitles.slice(0, 2).join("」「")}」`
+                  : `${todayActiveHabits.length} 个习惯已经从“想做”变成“做过”`
+              }
+            >
               {todayTargetTitles.length > 0
                 ? `正在推动「${todayTargetTitles.slice(0, 2).join("」「")}」`
                 : `${todayActiveHabits.length} 个习惯已经从“想做”变成“做过”`}
@@ -381,7 +388,10 @@ export default function HabitTracker({
                       : "var(--color-text-tertiary)",
                   }}
                 />
-                <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-[var(--color-text-secondary)]">
+                <span
+                  className="min-w-0 flex-1 truncate text-[11px] font-semibold text-[var(--color-text-secondary)]"
+                  title={group.title}
+                >
                   {group.title}
                 </span>
                 <span className="flex-shrink-0 text-[9px] text-[var(--color-text-tertiary)]">
@@ -547,7 +557,9 @@ export default function HabitTracker({
                               <>
                                 <span className="flex-shrink-0 font-medium text-[var(--color-primary)]">结果</span>
                                 <span className="flex-shrink-0">·</span>
-                                <span className="min-w-0 truncate">{result.title}</span>
+                                <span className="min-w-0 truncate" title={result.title}>
+                                  {result.title}
+                                </span>
                               </>
                             ) : (
                               <span className="min-w-0 truncate">
@@ -695,7 +707,9 @@ export default function HabitTracker({
               <span className="absolute -bottom-0.5 -left-1 h-1 w-1 rounded-full bg-[#F59E0B]" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[10px] font-medium text-[#4F6F5B]">{celebration.title}</p>
+              <p className="truncate text-[10px] font-medium text-[#4F6F5B]" title={celebration.title}>
+                {celebration.title}
+              </p>
               <p className="mt-0.5 text-[13px] font-bold text-[#166534]">{celebration.headline}</p>
               <p className="mt-0.5 text-[11px] leading-relaxed text-[#3F6650]">
                 {celebration.detail}

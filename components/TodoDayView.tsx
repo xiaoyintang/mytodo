@@ -209,6 +209,7 @@ export default function TodoDayView({
                 "truncate text-[14px] font-medium leading-5",
                 isDone ? "text-[var(--color-text-tertiary)] line-through" : "text-[var(--color-text-primary)]",
               ].join(" ")}
+              title={t.title}
             >
               {t.title}
             </span>
@@ -224,7 +225,10 @@ export default function TodoDayView({
                 aria-label={`完成下一步：${nextSubtask.title}`}
               >
                 <span className="mt-[2px] h-3 w-3 flex-shrink-0 rounded-full border border-[var(--color-primary)] bg-white" />
-                <span className="min-w-0 flex-1 truncate text-[11px] leading-4 text-[var(--color-text-primary)]">
+                <span
+                  className="min-w-0 flex-1 truncate text-[11px] leading-4 text-[var(--color-text-primary)]"
+                  title={nextSubtask.title}
+                >
                   <strong className="mr-1 font-semibold text-[var(--color-primary)]">下一步</strong>
                   {nextSubtask.title}
                 </span>
@@ -275,7 +279,9 @@ export default function TodoDayView({
                   return (
                     <span className="flex max-w-[126px] items-center gap-1" style={{ color }}>
                       <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ backgroundColor: color }} />
-                      <span className="truncate font-medium">{aspirations[gi].title}</span>
+                      <span className="truncate font-medium" title={aspirations[gi].title}>
+                        {aspirations[gi].title}
+                      </span>
                     </span>
                   );
                 })()}

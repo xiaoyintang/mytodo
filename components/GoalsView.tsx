@@ -275,6 +275,7 @@ export default function GoalsView({
             className={`text-[22px] font-bold leading-tight tracking-[-0.5px] text-[var(--color-text-primary)] ${
               open ? "line-clamp-2" : "truncate"
             }`}
+            title={open ? open.title : "我的目标"}
           >
             {open ? open.title : "我的目标"}
           </h1>
@@ -589,7 +590,10 @@ export default function GoalsView({
                           className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
                         >
                           <div className="flex min-w-0 flex-1 flex-col gap-1">
-                            <span className="truncate text-[14px] font-semibold leading-[18px] text-[var(--color-text-primary)]">
+                            <span
+                              className="truncate text-[14px] font-semibold leading-[18px] text-[var(--color-text-primary)]"
+                              title={a.title}
+                            >
                               {a.title}
                             </span>
                             <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-[10px] leading-[14px]">

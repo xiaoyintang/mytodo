@@ -32,11 +32,17 @@ export function AppHeader({ title, subtitle, onPrev, onNext, onAdd }: HeaderProp
   return (
     <header className="flex w-full items-center justify-between gap-3 px-[18px] pb-3 pt-4 sm:pt-[18px]">
       <div className="min-w-0">
-        <h1 className="truncate text-[22px] font-bold leading-7 tracking-[-0.35px] text-[var(--color-text-primary)]">
+        <h1
+          className="truncate text-[22px] font-bold leading-7 tracking-[-0.35px] text-[var(--color-text-primary)]"
+          title={title}
+        >
           {title}
         </h1>
         {subtitle && (
-          <p className="mt-0.5 truncate text-[12px] font-medium leading-4 text-[var(--color-text-tertiary)]">
+          <p
+            className="mt-0.5 truncate text-[12px] font-medium leading-4 text-[var(--color-text-tertiary)]"
+            title={subtitle}
+          >
             {subtitle}
           </p>
         )}

@@ -292,7 +292,13 @@ export default function GoalResultsPanel({
                 </span>
               </div>
               {suggestion.behaviorIds.length > 0 && (
-                <p className="pl-6 text-[9px] leading-relaxed text-[var(--color-text-tertiary)] line-clamp-2">
+                <p
+                  className="line-clamp-2 pl-6 text-[9px] leading-relaxed text-[var(--color-text-tertiary)]"
+                  title={suggestion.behaviorIds
+                    .map((id) => cardById.get(id)?.text)
+                    .filter(Boolean)
+                    .join("、")}
+                >
                   {suggestion.behaviorIds
                     .map((id) => cardById.get(id)?.text)
                     .filter(Boolean)
@@ -351,10 +357,16 @@ export default function GoalResultsPanel({
                     {index + 1}
                   </span>
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="truncate text-[12px] font-semibold text-[var(--color-text-primary)]">
+                    <span
+                      className="truncate text-[12px] font-semibold text-[var(--color-text-primary)]"
+                      title={result.title}
+                    >
                       {result.title}
                     </span>
-                    <span className="truncate text-[9px] text-[var(--color-text-tertiary)]">
+                    <span
+                      className="truncate text-[9px] text-[var(--color-text-tertiary)]"
+                      title={result.evidence || "还没写怎样算达成"}
+                    >
                       {result.evidence || "还没写怎样算达成"}
                     </span>
                   </span>

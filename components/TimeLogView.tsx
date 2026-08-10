@@ -488,7 +488,12 @@ export default function TimeLogView({
     return (
       <div key={row.name} className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
-          <span className="text-[13px] font-medium text-[var(--color-text-primary)] truncate">{row.name}</span>
+          <span
+            className="truncate text-[13px] font-medium text-[var(--color-text-primary)]"
+            title={row.name}
+          >
+            {row.name}
+          </span>
           <button
             type="button"
             onClick={() => setCatEditing(open ? null : editKey)}
@@ -621,7 +626,12 @@ export default function TimeLogView({
                 return (
                   <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-[var(--color-border)]">
                     <div className="flex-1 flex flex-col min-w-0">
-                      <span className="text-[13px] font-medium text-[var(--color-text-primary)] truncate">{p.title}</span>
+                      <span
+                        className="truncate text-[13px] font-medium text-[var(--color-text-primary)]"
+                        title={p.title}
+                      >
+                        {p.title}
+                      </span>
                       <div className="flex items-center gap-2">
                         <span className="text-[11px] text-[var(--color-text-tertiary)]">{entryTimeLabel(p)}</span>
                         <span className="text-[11px] font-medium text-[var(--color-primary)]">{formatMinutes(p.minutes)}</span>
@@ -735,7 +745,10 @@ export default function TimeLogView({
                         {entryTimeLabel(e)}
                       </span>
                       <div className="flex-1 flex flex-col gap-0.5 min-w-0">
-                        <span className="text-[14px] font-medium text-[var(--color-text-primary)] truncate">
+                        <span
+                          className="truncate text-[14px] font-medium text-[var(--color-text-primary)]"
+                          title={e.title}
+                        >
                           {e.title}
                         </span>
                         <span className="flex items-center gap-2 flex-wrap">
@@ -812,6 +825,7 @@ export default function TimeLogView({
                                 setGoalEditing(null);
                               }}
                               className="px-2 py-[3px] rounded-md border text-[10px] font-medium max-w-full truncate"
+                              title={a.title}
                               style={{
                                 backgroundColor: on ? c : "#fff",
                                 borderColor: c,

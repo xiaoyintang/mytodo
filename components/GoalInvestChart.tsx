@@ -61,7 +61,10 @@ export default function GoalInvestChart({ weekDates, entries, aspirations, dayPl
                 className="w-2 h-2 rounded-full flex-shrink-0"
                 style={{ backgroundColor: r.color }}
               />
-              <span className="flex-1 text-[13px] text-[var(--color-text-primary)] truncate">
+              <span
+                className="flex-1 truncate text-[13px] text-[var(--color-text-primary)]"
+                title={r.a.title}
+              >
                 {r.a.title}
               </span>
               <span className="text-[11px] text-[var(--color-text-tertiary)] flex-shrink-0 tabular-nums">
@@ -90,7 +93,10 @@ export default function GoalInvestChart({ weekDates, entries, aspirations, dayPl
                       <span className="text-[var(--color-text-tertiary)] w-[38px] flex-shrink-0 tabular-nums">
                         {e.date.slice(5).replace("-", "/")}
                       </span>
-                      <span className="flex-1 text-[var(--color-text-secondary)] truncate">
+                      <span
+                        className="flex-1 truncate text-[var(--color-text-secondary)]"
+                        title={e.title}
+                      >
                         {e.title}
                       </span>
                       <span className="text-[var(--color-text-tertiary)] tabular-nums flex-shrink-0">
