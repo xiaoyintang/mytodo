@@ -63,12 +63,13 @@ export function isActionable(type: BehaviorType): boolean {
 const AXIS_MID = 50;
 
 /**
- * 黄金行为之间的优先级。用乘积而不是求和：
- * 求和的话「影响力100+做不到55」会排在「85+85」前面，但前者根本做不下去。
- * 乘积会惩罚任何一轴的短板，逼出两边都强的那个。
+ * 黄金行为之间的优先级：影响力稍重要一些，但“能做到”仍占很大比重。
+ * 两轴按 60/40 加权；两根滑块都评完才参与综合排序，避免半成品分数误排到前面。
+ * “黄金行为”本身仍要求两轴都过 50，权重只影响右上象限内部的先后。
  */
 export function goldenScore(b: BehaviorCard): number {
-  return ((b.impact ?? 0) * (b.feasibility ?? 0)) / 100;
+  if (b.impact == null || b.feasibility == null) return 0;
+  return b.impact * 0.6 + b.feasibility * 0.4;
 }
 
 /** 黄金行为 = 影响力高 且 你真能做到（右上象限）。派生值，不单独存 */
