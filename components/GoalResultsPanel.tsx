@@ -19,10 +19,22 @@ import {
 export const UNASSIGNED_RESULT_ID = "__unassigned__";
 
 type SuggestedResult = {
+  operation: "add" | "replace";
+  replaceId?: string;
   title: string;
   evidence: string;
+  reason: string;
   behaviorIds: string[];
   checked: boolean;
+  duplicate: boolean;
+};
+
+type SuggestMode = "ideate" | "review" | "structure";
+type DraftReview = {
+  kind: "ready" | "rewrite";
+  issue?: string;
+  suggestionTitle?: string;
+  suggestionEvidence?: string;
 };
 
 type Props = {
@@ -39,9 +51,18 @@ type Props = {
   ) => string[];
 };
 
-function parseSuggestions(raw: unknown, cards: BehaviorCard[]): SuggestedResult[] {
+function normalized(value: string) {
+  return value.toLowerCase().replace(/[\s，。！？、,.!?;；:：'"“”‘’（）()_-]+/g, "");
+}
+
+function parseSuggestions(
+  raw: unknown,
+  cards: BehaviorCard[],
+  results: GoalResult[],
+): SuggestedResult[] {
   if (!Array.isArray(raw)) return [];
   const knownIds = new Set(cards.map((card) => card.id));
+  const knownResultIds = new Set(results.map((result) => result.id));
   const usedIds = new Set<string>();
   return raw
     .map((entry): SuggestedResult | null => {
@@ -49,13 +70,30 @@ function parseSuggestions(raw: unknown, cards: BehaviorCard[]): SuggestedResult[
       const title = String(result.title ?? "").trim().slice(0, 40);
       if (!title) return null;
       const evidence = String(result.evidence ?? "").trim().slice(0, 90);
+      const reason = String(result.reason ?? "").trim().slice(0, 60);
+      const requestedOperation = String(result.operation ?? "add");
+      const replaceId = String(result.replaceId ?? "").trim();
+      const operation = requestedOperation === "replace" ? "replace" : "add";
+      const validReplacement = operation === "replace" && knownResultIds.has(replaceId);
+      const duplicate = operation === "add" && results.some(
+        (existing) => normalized(existing.title) === normalized(title),
+      );
       const behaviorIds = Array.isArray(result.behaviorIds)
         ? result.behaviorIds
             .map((id) => String(id ?? "").trim())
             .filter((id) => knownIds.has(id) && !usedIds.has(id))
         : [];
       behaviorIds.forEach((id) => usedIds.add(id));
-      return { title, evidence, behaviorIds, checked: true };
+      return {
+        operation,
+        ...(validReplacement ? { replaceId } : {}),
+        title,
+        evidence,
+        reason,
+        behaviorIds,
+        checked: !duplicate && (operation === "add" || validReplacement),
+        duplicate,
+      };
     })
     .filter((result): result is SuggestedResult => result !== null)
     .slice(0, 5);
@@ -76,8 +114,12 @@ export default function GoalResultsPanel({
   const [title, setTitle] = useState("");
   const [evidence, setEvidence] = useState("");
   const [suggesting, setSuggesting] = useState(false);
+  const [suggestMode, setSuggestMode] = useState<SuggestMode | null>(null);
   const [suggestions, setSuggestions] = useState<SuggestedResult[] | null>(null);
+  const [suggestionSummary, setSuggestionSummary] = useState<string | null>(null);
   const [suggestionNote, setSuggestionNote] = useState<string | null>(null);
+  const [clarifying, setClarifying] = useState(false);
+  const [draftReview, setDraftReview] = useState<DraftReview | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const resultIds = new Set(results.map((result) => result.id));
@@ -88,18 +130,21 @@ export default function GoalResultsPanel({
     setEditingId("new");
     setTitle("");
     setEvidence("");
+    setDraftReview(null);
   }
 
   function beginEdit(result: GoalResult) {
     setEditingId(result.id);
     setTitle(result.title);
     setEvidence(result.evidence ?? "");
+    setDraftReview(null);
   }
 
   function cancelEdit() {
     setEditingId(null);
     setTitle("");
     setEvidence("");
+    setDraftReview(null);
   }
 
   function saveResult() {
@@ -115,47 +160,136 @@ export default function GoalResultsPanel({
     cancelEdit();
   }
 
-  async function suggestStructure() {
-    if (suggesting || cards.length === 0) return;
+  async function requestSuggestions(mode: SuggestMode) {
+    if (suggesting || (mode === "structure" && cards.length === 0)) return;
     setSuggesting(true);
+    setSuggestMode(mode);
     setSuggestions(null);
+    setSuggestionSummary(null);
     setSuggestionNote(null);
-    const response = await callBehaviorAPI({
-      mode: "structure-results",
-      goal: aspiration.title,
-      items: cards.map((card) => ({ id: card.id, text: card.text })),
-    });
+    const response = await callBehaviorAPI(
+      mode === "structure"
+        ? {
+            mode: "structure-results",
+            goal: aspiration.title,
+            items: cards.map((card) => ({ id: card.id, text: card.text })),
+          }
+        : {
+            mode: mode === "ideate" ? "suggest-results" : "review-results",
+            goal: aspiration.title,
+            results: results.map((result) => ({
+              id: result.id,
+              title: result.title,
+              evidence: result.evidence,
+            })),
+          },
+    );
     setSuggesting(false);
     if (!response.ok) {
       setSuggestionNote(
         response.noKey
-          ? "还没有配置 AI，可以先手动建结果，再给行为选择归属"
-          : "AI 暂时没响应，原有行为没有变化",
+          ? "还没有配置 AI，可以先手动添加关键结果"
+          : "AI 暂时没响应，已有内容没有变化",
       );
       return;
     }
-    const parsed = parseSuggestions(response.data.results, cards);
+    const summary = String(response.data.summary ?? "").trim();
+    const parsed = parseSuggestions(response.data.results, cards, results);
     if (parsed.length === 0) {
-      setSuggestionNote("这次没有整理出可靠结构，可以重试或手动添加");
+      setSuggestionNote(
+        summary || (mode === "review"
+          ? "暂时没有发现必须调整的关键结果"
+          : "这次没有生成可靠建议，可以重试或手动添加"),
+      );
       return;
     }
+    setSuggestionSummary(summary || null);
     setSuggestions(parsed);
+  }
+
+  function updateSuggestion(index: number, patch: Partial<SuggestedResult>) {
+    setSuggestions((current) =>
+      current?.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, ...patch } : item,
+      ) ?? null,
+    );
+  }
+
+  function closeSuggestions() {
+    setSuggestions(null);
+    setSuggestionSummary(null);
+  }
+
+  function suggestionReady(suggestion: SuggestedResult) {
+    return Boolean(
+      suggestion.checked &&
+      suggestion.title.trim() &&
+      (suggestion.operation === "add" || suggestion.replaceId),
+    );
+  }
+
+  async function clarifyDraft() {
+    if (clarifying || !title.trim()) return;
+    setClarifying(true);
+    setDraftReview(null);
+    const response = await callBehaviorAPI({
+      mode: "clarify-result",
+      goal: aspiration.title,
+      title: title.trim(),
+      evidence: evidence.trim(),
+    });
+    setClarifying(false);
+    if (!response.ok) {
+      setDraftReview({
+        kind: "rewrite",
+        issue: response.noKey ? "还没有配置 AI" : "AI 暂时没响应",
+      });
+      return;
+    }
+    setDraftReview({
+      kind: response.data.kind === "ready" ? "ready" : "rewrite",
+      issue: String(response.data.issue ?? "").trim() || undefined,
+      suggestionTitle: String(response.data.suggestionTitle ?? "").trim() || undefined,
+      suggestionEvidence: String(response.data.suggestionEvidence ?? "").trim() || undefined,
+    });
   }
 
   function applySuggestions() {
     if (!suggestions) return;
-    const chosen = suggestions
-      .filter((suggestion) => suggestion.checked && suggestion.title.trim())
+    const chosen = suggestions.filter(
+      (suggestion) =>
+        suggestion.checked &&
+        suggestion.title.trim() &&
+        (suggestion.operation === "add" || suggestion.replaceId),
+    );
+    const additions = chosen
+      .filter((suggestion) => suggestion.operation === "add")
       .map((suggestion) => ({
         title: suggestion.title.trim(),
         evidence: suggestion.evidence.trim() || undefined,
         behaviorIds: suggestion.behaviorIds,
       }));
     if (chosen.length === 0) return;
-    const ids = onApplyStructure(chosen);
-    if (ids[0]) onSelect(ids[0]);
+    const replacements = chosen.filter(
+      (suggestion): suggestion is SuggestedResult & { replaceId: string } =>
+        suggestion.operation === "replace" && Boolean(suggestion.replaceId),
+    );
+    replacements.forEach((suggestion) =>
+      onUpdate(suggestion.replaceId, {
+        title: suggestion.title.trim(),
+        evidence: suggestion.evidence.trim(),
+      }),
+    );
+    const ids = additions.length > 0 ? onApplyStructure(additions) : [];
+    if (replacements[0]?.replaceId) onSelect(replacements[0].replaceId);
+    else if (ids[0]) onSelect(ids[0]);
     setSuggestions(null);
-    setSuggestionNote(null);
+    setSuggestionSummary(null);
+    setSuggestionNote(
+      `已${additions.length > 0 ? `新增 ${additions.length} 条` : ""}${
+        additions.length > 0 && replacements.length > 0 ? "、" : ""
+      }${replacements.length > 0 ? `替换 ${replacements.length} 条` : ""}`,
+    );
   }
 
   return (
@@ -177,17 +311,17 @@ export default function GoalResultsPanel({
             先说明什么变化算推进，再在每条结果下面比较行为
           </p>
         </div>
-        {results.length === 0 && cards.length > 0 && (
-          <button
-            type="button"
-            onClick={suggestStructure}
-            disabled={suggesting}
-            className="flex flex-shrink-0 items-center gap-1 rounded-lg border border-[var(--color-primary)] bg-white px-2 py-1.5 text-[11px] font-medium text-[var(--color-primary)] disabled:opacity-50"
-          >
-            <Sparkles className={`h-3.5 w-3.5 ${suggesting ? "animate-pulse" : ""}`} />
-            {suggesting ? "梳理中" : "AI 梳理"}
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => requestSuggestions(results.length === 0 ? "ideate" : "review")}
+          disabled={suggesting}
+          className="flex flex-shrink-0 items-center gap-1 rounded-lg border border-[var(--color-primary)] bg-white px-2 py-1.5 text-[11px] font-medium text-[var(--color-primary)] disabled:opacity-50"
+        >
+          <Sparkles className={`h-3.5 w-3.5 ${suggesting && suggestMode !== "structure" ? "animate-pulse" : ""}`} />
+          {suggesting && suggestMode !== "structure"
+            ? results.length === 0 ? "思考中" : "检查中"
+            : results.length === 0 ? "AI 一起想" : "AI 检查"}
+        </button>
         <button
           type="button"
           onClick={beginCreate}
@@ -205,13 +339,24 @@ export default function GoalResultsPanel({
           </p>
           <p className="mt-0.5 text-[10px] leading-relaxed text-[var(--color-text-tertiary)]">
             {cards.length > 0
-              ? `${cards.length} 条行为共用一张焦点地图。目标复杂时，可以让 AI 先按结果分组。`
+              ? `${cards.length} 条行为暂时共用一张焦点地图。可以先从目标想结果，也可以把已有行为反向整理。`
               : "简单目标可以保持这样；目标变复杂时再增加结果层。"}
           </p>
+          {cards.length > 0 && (
+            <button
+              type="button"
+              onClick={() => requestSuggestions("structure")}
+              disabled={suggesting}
+              className="mt-2 flex items-center gap-1 text-[10px] font-medium text-[var(--color-primary)] disabled:opacity-50"
+            >
+              <FolderTree className="h-3 w-3" />
+              {suggesting && suggestMode === "structure" ? "整理中…" : "按现有行为整理"}
+            </button>
+          )}
         </div>
       )}
 
-      {suggestionNote && (
+      {suggestionNote && !(suggestMode === "review" && results.length === 0) && (
         <p className="rounded-lg bg-white px-2.5 py-2 text-[11px] text-[var(--color-text-secondary)]">
           {suggestionNote}
         </p>
@@ -222,13 +367,13 @@ export default function GoalResultsPanel({
           <div className="flex items-center gap-2">
             <div className="flex-1">
               <p className="text-[12px] font-semibold text-[var(--color-text-primary)]">
-                AI 提议了 {suggestions.length} 条结果路径
+                AI 提议了 {suggestions.length} 条结果变更
               </p>
               <p className="text-[10px] text-[var(--color-text-tertiary)]">
-                先检查标题、达成证据和行为归属，确认后才会修改
+                {suggestionSummary || "检查标题、达成证据和变更方式，确认后才会修改"}
               </p>
             </div>
-            <button type="button" onClick={() => setSuggestions(null)} aria-label="关闭建议">
+            <button type="button" onClick={closeSuggestions} aria-label="关闭建议">
               <X className="h-4 w-4 text-[var(--color-text-tertiary)]" />
             </button>
           </div>
@@ -261,36 +406,77 @@ export default function GoalResultsPanel({
                   {suggestion.checked && <Check className="h-3 w-3 text-white" />}
                 </button>
                 <div className="min-w-0 flex-1">
+                  <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                    <select
+                      value={suggestion.operation}
+                      onChange={(event) => {
+                        const operation = event.target.value as SuggestedResult["operation"];
+                        updateSuggestion(index, {
+                          operation,
+                          replaceId: operation === "replace" ? suggestion.replaceId : undefined,
+                          checked: operation === "add" ? !suggestion.duplicate : Boolean(suggestion.replaceId),
+                        });
+                      }}
+                      className="rounded-md bg-[var(--color-primary-light)] px-1.5 py-1 text-[9px] font-semibold text-[var(--color-primary)] outline-none"
+                      aria-label={`第 ${index + 1} 条结果的变更方式`}
+                    >
+                      <option value="add">新增</option>
+                      <option value="replace">替换</option>
+                    </select>
+                    {suggestion.operation === "replace" && (
+                      <select
+                        value={suggestion.replaceId ?? ""}
+                        onChange={(event) =>
+                          updateSuggestion(index, {
+                            replaceId: event.target.value || undefined,
+                            checked: Boolean(event.target.value),
+                          })
+                        }
+                        className="min-w-0 max-w-full flex-1 rounded-md bg-[#FFF7ED] px-1.5 py-1 text-[9px] font-medium text-[#C2410C] outline-none"
+                        aria-label={`第 ${index + 1} 条建议要替换的关键结果`}
+                      >
+                        <option value="">选择要替换的关键结果…</option>
+                        {results.map((result) => (
+                          <option key={result.id} value={result.id}>{result.title}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
                   <input
                     value={suggestion.title}
-                    onChange={(event) =>
-                      setSuggestions((current) =>
-                        current?.map((item, itemIndex) =>
-                          itemIndex === index ? { ...item, title: event.target.value } : item,
-                        ) ?? null,
-                      )
-                    }
+                    onChange={(event) => updateSuggestion(index, { title: event.target.value })}
                     className="w-full bg-transparent text-[12px] font-semibold text-[var(--color-text-primary)] outline-none"
                     aria-label={`第 ${index + 1} 条结果标题`}
                   />
                   <input
                     value={suggestion.evidence}
-                    onChange={(event) =>
-                      setSuggestions((current) =>
-                        current?.map((item, itemIndex) =>
-                          itemIndex === index ? { ...item, evidence: event.target.value } : item,
-                        ) ?? null,
-                      )
-                    }
+                    onChange={(event) => updateSuggestion(index, { evidence: event.target.value })}
                     placeholder="怎样算有进展或达成"
                     className="mt-0.5 w-full bg-transparent text-[10px] text-[var(--color-text-secondary)] outline-none placeholder:text-[var(--color-text-tertiary)]"
                     aria-label={`第 ${index + 1} 条结果的达成证据`}
                   />
                 </div>
-                <span className="flex-shrink-0 text-[10px] text-[var(--color-text-tertiary)]">
-                  {suggestion.behaviorIds.length} 条行为
-                </span>
+                {suggestion.behaviorIds.length > 0 && (
+                  <span className="flex-shrink-0 text-[10px] text-[var(--color-text-tertiary)]">
+                    {suggestion.behaviorIds.length} 条行为
+                  </span>
+                )}
               </div>
+              {suggestion.reason && (
+                <p className="pl-6 text-[9px] leading-relaxed text-[var(--color-primary)]">
+                  {suggestion.reason}
+                </p>
+              )}
+              {suggestion.duplicate && (
+                <p className="pl-6 text-[9px] leading-relaxed text-[#C2410C]">
+                  已有同名关键结果，默认不选
+                </p>
+              )}
+              {suggestion.operation === "replace" && !suggestion.replaceId && (
+                <p className="pl-6 text-[9px] leading-relaxed text-[#C2410C]">
+                  请选择要替换的原关键结果
+                </p>
+              )}
               {suggestion.behaviorIds.length > 0 && (
                 <p
                   className="line-clamp-2 pl-6 text-[9px] leading-relaxed text-[var(--color-text-tertiary)]"
@@ -310,7 +496,7 @@ export default function GoalResultsPanel({
           <div className="flex justify-end gap-2">
             <button
               type="button"
-              onClick={() => setSuggestions(null)}
+              onClick={closeSuggestions}
               className="px-3 py-1.5 text-[11px] text-[var(--color-text-secondary)]"
             >
               取消
@@ -318,10 +504,10 @@ export default function GoalResultsPanel({
             <button
               type="button"
               onClick={applySuggestions}
-              disabled={!suggestions.some((suggestion) => suggestion.checked && suggestion.title.trim())}
+              disabled={!suggestions.some(suggestionReady)}
               className="rounded-lg bg-[var(--color-primary)] px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-40"
             >
-              确认采用
+              应用 {suggestions.filter(suggestionReady).length} 条
             </button>
           </div>
         </div>
@@ -416,7 +602,10 @@ export default function GoalResultsPanel({
         <div className="flex flex-col gap-2 rounded-[10px] border border-[var(--color-primary)] bg-white p-2.5">
           <input
             value={title}
-            onChange={(event) => setTitle(event.target.value)}
+            onChange={(event) => {
+              setTitle(event.target.value);
+              setDraftReview(null);
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.nativeEvent.isComposing) saveResult();
             }}
@@ -426,29 +615,81 @@ export default function GoalResultsPanel({
           />
           <input
             value={evidence}
-            onChange={(event) => setEvidence(event.target.value)}
+            onChange={(event) => {
+              setEvidence(event.target.value);
+              setDraftReview(null);
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.nativeEvent.isComposing) saveResult();
             }}
             placeholder="达成证据（可选）：怎样算有进展？"
             className="w-full rounded-lg border border-[var(--color-border)] px-2.5 py-2 text-[12px] outline-none focus:border-[var(--color-primary)]"
           />
-          <div className="flex justify-end gap-2">
+          {draftReview && (
+            <div
+              className={`rounded-lg px-2.5 py-2 text-[10px] leading-relaxed ${
+                draftReview.kind === "ready"
+                  ? "bg-[#F0FDF4] text-[#15803D]"
+                  : "bg-[#FFF7ED] text-[#C2410C]"
+              }`}
+            >
+              <p className="font-medium">
+                {draftReview.issue || (draftReview.kind === "ready" ? "这是一条可观察的结果" : "建议再说清楚")}
+              </p>
+              {draftReview.kind === "rewrite" && draftReview.suggestionTitle && (
+                <div className="mt-1.5 flex items-start gap-2 rounded-md bg-white/80 p-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-[var(--color-text-primary)]">
+                      {draftReview.suggestionTitle}
+                    </p>
+                    {draftReview.suggestionEvidence && (
+                      <p className="mt-0.5 text-[var(--color-text-secondary)]">
+                        {draftReview.suggestionEvidence}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTitle(draftReview.suggestionTitle ?? title);
+                      setEvidence(draftReview.suggestionEvidence ?? evidence);
+                      setDraftReview(null);
+                    }}
+                    className="flex-shrink-0 rounded-md border border-[#FDBA74] bg-white px-2 py-1 font-medium text-[#C2410C]"
+                  >
+                    采用改写
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-2">
             <button
               type="button"
-              onClick={cancelEdit}
-              className="px-3 py-1.5 text-[11px] text-[var(--color-text-secondary)]"
+              onClick={clarifyDraft}
+              disabled={!title.trim() || clarifying}
+              className="flex items-center gap-1 rounded-md border border-[#BFDBFE] bg-[var(--color-primary-light)] px-2 py-1.5 text-[10px] font-medium text-[var(--color-primary)] disabled:opacity-40"
             >
-              取消
+              <Sparkles className={`h-3 w-3 ${clarifying ? "animate-pulse" : ""}`} />
+              {clarifying ? "检查中…" : "帮我说清楚"}
             </button>
-            <button
-              type="button"
-              onClick={saveResult}
-              disabled={!title.trim()}
-              className="rounded-lg bg-[var(--color-primary)] px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-40"
-            >
-              {editingId === "new" ? "添加结果" : "保存"}
-            </button>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={cancelEdit}
+                className="px-3 py-1.5 text-[11px] text-[var(--color-text-secondary)]"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={saveResult}
+                disabled={!title.trim()}
+                className="rounded-lg bg-[var(--color-primary)] px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-40"
+              >
+                {editingId === "new" ? "添加结果" : "保存"}
+              </button>
+            </div>
           </div>
         </div>
       )}

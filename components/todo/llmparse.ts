@@ -207,6 +207,48 @@ const STRUCTURE_RESULTS_PROMPT = `你是个人目标的“结果结构教练”�
 【输出】必须是合法 JSON，不要输出其他内容：
 {"results":[{"title":"获得更多匹配的面试机会","evidence":"连续四周获得稳定的目标岗位面试邀请","behaviorIds":["b-1","b-2"]}]}`;
 
+const COACH_GOAL_RESULTS_PROMPT = `你是个人目标的“关键结果教练”。关键结果位于目标和行为之间，必须先把“什么变化算推进”说对，后面才值得拆行为。
+
+用户会给出 goal、mode 和 existingResults。mode 有两种：
+- ideate：还没有关键结果，请从目标出发提出 2-5 条互不重叠的结果路径
+- review：审查已有关键结果，只提出真正必要的新增或替换；没有必要改就返回空数组
+
+【好关键结果的标准】
+1. 是可观察的状态、能力、质量、外部反馈或阶段成果，不是“学习、准备、优化、完善、练习”等活动
+2. 与目标存在清楚的因果关系；达成后确实更接近目标
+3. 同组结果粒度相近、尽量不重叠，并覆盖目标的主要成功条件
+4. evidence 写怎样确认有进展。没有基线时不虚构“从 X 到 Y”，可以使用次数、质量标准、外部反馈或可观察状态
+5. title 不超过 24 个字，evidence 不超过 50 个字
+
+【绝对禁止替用户发明标准】
+- 如果输入里没有用户亲自给出的数字、期限或量表，title 和 evidence 里也不许出现你自行添加的分钟、小时、天数、周数、次数、百分比、分数或医学阈值
+- 不要引入焦虑量表、模拟压力测试、睡眠障碍诊断等用户没有提到的专业测量
+- 对主观目标，用“多数时候能观察到什么变化”“来自本人或他人的什么反馈”表达证据，不替用户武断定义达标线
+
+【变更规则】
+- 新增使用 operation="add"
+- 改写已有结果使用 operation="replace"，replaceId 必须原样引用 existingResults 中真实存在的 id
+- 不直接删除结果；发现重复时在 summary 里指出，变更建议优先改写其中一条
+- reason 用一句话说明为什么建议这项变更，不超过 30 个字
+
+【输出】必须是合法 JSON，不要输出其他内容：
+{"summary":"对整组结果的一句判断","results":[{"operation":"add","title":"获得更多匹配岗位的面试机会","evidence":"目标岗位的面试邀请持续出现","reason":"覆盖求职漏斗入口"},{"operation":"replace","replaceId":"gr-1","title":"项目挑战点能够被证据支撑","evidence":"能用数据、决策依据和复盘回应追问","reason":"原结果写成了准备活动"}]}`;
+
+const CLARIFY_GOAL_RESULT_PROMPT = `你是个人目标的“关键结果编辑”。用户会给出 goal、title 和 evidence。
+
+请检查这条内容是不是“发生什么变化，才说明目标被推进”，而不是任务、行为、愿望复述或空泛能力词。
+
+规则：
+- 与目标直接相关、已经是可观察结果且 evidence 足够清楚 → kind="ready"
+- 仍是活动/行为、过于抽象或达成证据不清楚 → kind="rewrite"
+- 改写要保留用户原意，不虚构数字和基线
+- suggestionTitle 不超过 24 个字，suggestionEvidence 不超过 50 个字
+- issue 只说最关键的问题，不超过 24 个字
+
+输出只能是以下合法 JSON 之一：
+{"kind":"ready","issue":"这是一条可观察的结果"}
+{"kind":"rewrite","issue":"现在写的是准备活动，不是结果","suggestionTitle":"项目挑战点能够被证据支撑","suggestionEvidence":"能用数据、决策依据和复盘回应追问"}`;
+
 const WAND_PROMPT = `你是福格行为设计（BJ Fogg, Tiny Habits）的教练。用户会给出一个愿望或成果。
 用"魔法棒"发散：假设有根魔法棒，他毫不费力就能做到任何事，列出能实现它的具体行为。
 
@@ -423,6 +465,19 @@ export type LLMGoalResult = {
   evidence?: string;
   behaviorIds: string[];
 };
+export type LLMGoalResultChange = {
+  operation: "add" | "replace";
+  replaceId?: string;
+  title: string;
+  evidence?: string;
+  reason?: string;
+};
+export type GoalResultClarification = {
+  kind: "ready" | "rewrite";
+  issue?: string;
+  suggestionTitle?: string;
+  suggestionEvidence?: string;
+};
 export type BehaviorBlocker = "timing" | "decision" | "endpoint";
 export type NextActionClarification = {
   ready: boolean;
@@ -474,6 +529,70 @@ export async function structureGoalResultsWithLLM(
     })
     .filter((result): result is LLMGoalResult => result !== null)
     .slice(0, 5);
+}
+
+/** 从目标直接发散关键结果，或检查已有结果；只返回待确认的新增/替换建议。 */
+export async function coachGoalResultsWithLLM(
+  goal: string,
+  existingResults: Array<{ id: string; title: string; evidence?: string }>,
+  mode: "ideate" | "review",
+): Promise<{ summary?: string; results: LLMGoalResultChange[] } | null> {
+  const parsed = await callLLMJson(
+    COACH_GOAL_RESULTS_PROMPT,
+    JSON.stringify({ goal, mode, existingResults }),
+    { think: true, temperature: 0.1 },
+  );
+  if (parsed === null) return null;
+  const raw = (parsed as { results?: unknown })?.results;
+  if (!Array.isArray(raw)) return null;
+  const knownIds = new Set(existingResults.map((result) => result.id));
+  const results = raw
+    .map((entry): LLMGoalResultChange | null => {
+      const item = entry as Record<string, unknown>;
+      const operation = String(item.operation ?? "add") === "replace" ? "replace" : "add";
+      const replaceId = String(item.replaceId ?? "").trim();
+      if (operation === "replace" && !knownIds.has(replaceId)) return null;
+      const title = String(item.title ?? "").trim().slice(0, 48);
+      if (!title) return null;
+      const evidence = String(item.evidence ?? "").trim().slice(0, 100);
+      const reason = String(item.reason ?? "").trim().slice(0, 60);
+      return {
+        operation,
+        ...(operation === "replace" ? { replaceId } : {}),
+        title,
+        ...(evidence ? { evidence } : {}),
+        ...(reason ? { reason } : {}),
+      };
+    })
+    .filter((result): result is LLMGoalResultChange => result !== null)
+    .slice(0, 6);
+  const summary = String((parsed as { summary?: unknown }).summary ?? "").trim().slice(0, 120);
+  return { ...(summary ? { summary } : {}), results };
+}
+
+/** 检查单条关键结果，必要时给一个结果式改写。 */
+export async function clarifyGoalResultWithLLM(
+  goal: string,
+  title: string,
+  evidence?: string,
+): Promise<GoalResultClarification | null> {
+  const parsed = await callLLMJson(
+    CLARIFY_GOAL_RESULT_PROMPT,
+    JSON.stringify({ goal, title, evidence: evidence ?? "" }),
+    { think: true, temperature: 0.2 },
+  );
+  if (parsed === null) return null;
+  const item = parsed as Record<string, unknown>;
+  const kind = item.kind === "ready" ? "ready" : "rewrite";
+  const issue = String(item.issue ?? "").trim().slice(0, 60);
+  const suggestionTitle = String(item.suggestionTitle ?? "").trim().slice(0, 48);
+  const suggestionEvidence = String(item.suggestionEvidence ?? "").trim().slice(0, 100);
+  return {
+    kind,
+    ...(issue ? { issue } : {}),
+    ...(suggestionTitle ? { suggestionTitle } : {}),
+    ...(suggestionEvidence ? { suggestionEvidence } : {}),
+  };
 }
 
 // 从模型输出里挑出合法的行为条目（魔法棒用，只收可执行的三类）

@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import {
   breakdownTaskWithLLM,
+  clarifyGoalResultWithLLM,
   clarifyBehaviorWithLLM,
   clarifyNextActionWithLLM,
+  coachGoalResultsWithLLM,
   concreteWithLLM,
   hasLLM,
   magicWandWithLLM,
@@ -18,6 +20,8 @@ import {
 //   { mode: "clarify-next", text, parentTask } → 检查当前下一步，只给一个问题和一个改写
 //   { mode: "clarify-behavior", text, goal, behaviorType? } → 检查焦点地图候选行为的表达
 //   { mode: "structure-results", goal, items } → 从现有行为提议 2-5 条结果路径
+//   { mode: "suggest-results" | "review-results", goal, results } → 从目标生成/检查关键结果
+//   { mode: "clarify-result", goal, title, evidence? } → 检查单条关键结果表达
 // 未配 LLM_API_KEY 一律返回 501，前端各自降级。
 
 const MAX_ITEMS = 40;
@@ -37,6 +41,41 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
   const mode = String(body.mode ?? "sort");
+
+  if (mode === "suggest-results" || mode === "review-results") {
+    const goal = String(body.goal ?? "").trim().slice(0, 160);
+    if (!goal) return NextResponse.json({ error: "empty_goal" }, { status: 400 });
+    const existingResults = Array.isArray(body.results)
+      ? (body.results as unknown[])
+          .map((entry) => {
+            const item = entry as Record<string, unknown>;
+            return {
+              id: String(item.id ?? "").trim(),
+              title: String(item.title ?? "").trim().slice(0, 120),
+              evidence: String(item.evidence ?? "").trim().slice(0, 200) || undefined,
+            };
+          })
+          .filter((item) => item.id && item.title)
+          .slice(0, 12)
+      : [];
+    const coached = await coachGoalResultsWithLLM(
+      goal,
+      existingResults,
+      mode === "suggest-results" ? "ideate" : "review",
+    );
+    if (coached === null) return NextResponse.json({ error: "llm_error" }, { status: 502 });
+    return NextResponse.json(coached);
+  }
+
+  if (mode === "clarify-result") {
+    const goal = String(body.goal ?? "").trim().slice(0, 160);
+    const title = String(body.title ?? "").trim().slice(0, 160);
+    const evidence = String(body.evidence ?? "").trim().slice(0, 240);
+    if (!goal || !title) return NextResponse.json({ error: "empty_input" }, { status: 400 });
+    const result = await clarifyGoalResultWithLLM(goal, title, evidence || undefined);
+    if (result === null) return NextResponse.json({ error: "llm_error" }, { status: 502 });
+    return NextResponse.json(result);
+  }
 
   if (mode === "structure-results") {
     const goal = String(body.goal ?? "").trim().slice(0, 160);
