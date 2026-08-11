@@ -150,6 +150,17 @@ export function parseAIBehaviorImport(raw: string): AIImportDraft[] {
       continue;
     }
 
+    // 聊天模型经常省略 Markdown 项目符号，直接逐行输出「[新增] / [替换]」。
+    // 这种显式变更标签已经足够可靠，即使用户粘贴了很长的完整对话也应该识别。
+    const taggedChange = line.match(
+      /^(?:[-*•]\s+|\d+[.)、]\s+)?([【[]\s*(?:新增|替换|add|replace)\s*[\]】]\s*.+)$/i,
+    );
+    if (taggedChange) {
+      const item = stripInlineMetadata(taggedChange[1], inheritedResult);
+      if (item) parsed.push(item);
+      continue;
+    }
+
     const bullet = line.match(/^(?:[-*•]\s+|\d+[.)、]\s+)(.+)$/);
     if (!bullet) continue;
     const item = stripInlineMetadata(bullet[1], inheritedResult);
