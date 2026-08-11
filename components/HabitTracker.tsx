@@ -12,7 +12,7 @@ import type {
   TimeEntry,
 } from "@/components/todo/types";
 import { goldenScore } from "@/components/todo/behavior";
-import { goalColor } from "@/components/todo/goal";
+import { goalColor, UNASSIGNED_RESULT_ID } from "@/components/todo/goal";
 import { formatMinutes } from "@/components/todo/time";
 import { toISODate } from "@/components/todo/date";
 import {
@@ -35,7 +35,7 @@ type Props = {
   aspirations: Aspiration[];
   behaviors: BehaviorCard[];
   goalResults: GoalResult[];
-  onOpenGoal: (aspirationId: string) => void;
+  onOpenGoal: (aspirationId: string, resultId?: string) => void;
   habits: Habit[];
   logs: HabitLog[];
   entries: TimeEntry[];
@@ -62,6 +62,14 @@ type Celebration = {
   headline: string;
   detail: string;
   impact?: string;
+};
+
+type HabitResultGroup = {
+  key: string;
+  title: string;
+  result?: GoalResult;
+  items: Habit[];
+  hideHeader?: boolean;
 };
 
 function celebrationCopy(total: number, todayCount: number, aspirationTitle?: string) {
@@ -211,19 +219,61 @@ export default function HabitTracker({
     return bScore - aScore || a.createdAt - b.createdAt;
   }
 
-  // 习惯必须保留目标归属；组内按焦点分排序，目标组按组内最高分排序。
+  function resultGroupsFor(aspiration: Aspiration | undefined, items: Habit[]): HabitResultGroup[] {
+    if (!aspiration) {
+      return [{ key: "__direct__", title: "", items, hideHeader: true }];
+    }
+
+    const results = goalResults.filter((result) => result.aspirationId === aspiration.id);
+    // 简单目标没有关键结果时，不凭空增加一层“直接服务目标”。
+    if (results.length === 0) {
+      return [{ key: "__direct__", title: "", items, hideHeader: true }];
+    }
+
+    const resultIds = new Set(results.map((result) => result.id));
+    const grouped: HabitResultGroup[] = results
+      .map((result) => ({
+        key: result.id,
+        title: result.title,
+        result,
+        items: items
+          .filter((habit) => behaviorOf(habit)?.resultId === result.id)
+          .sort(compareByFocusScore),
+      }))
+      .filter((group) => group.items.length > 0);
+    const direct = items
+      .filter((habit) => {
+        const resultId = behaviorOf(habit)?.resultId;
+        return !resultId || !resultIds.has(resultId);
+      })
+      .sort(compareByFocusScore);
+
+    if (direct.length > 0) {
+      grouped.push({ key: "__direct__", title: "直接服务目标", items: direct });
+    }
+    return grouped;
+  }
+
+  // 目标是一级、关键结果是二级；每个关键结果内部仍按焦点分排序。
   const groups: Array<{
     key: string;
     title: string;
     aspiration?: Aspiration;
     items: Habit[];
+    resultGroups: HabitResultGroup[];
   }> = aspirations
-    .map((aspiration) => ({
-      key: aspiration.id,
-      title: aspiration.title,
-      aspiration,
-      items: live.filter((habit) => habit.aspirationId === aspiration.id).sort(compareByFocusScore),
-    }))
+    .map((aspiration) => {
+      const items = live
+        .filter((habit) => habit.aspirationId === aspiration.id)
+        .sort(compareByFocusScore);
+      return {
+        key: aspiration.id,
+        title: aspiration.title,
+        aspiration,
+        items,
+        resultGroups: resultGroupsFor(aspiration, items),
+      };
+    })
     .filter((group) => group.items.length > 0)
     .sort((a, b) => (scoreOf(b.items[0]) ?? -1) - (scoreOf(a.items[0]) ?? -1));
 
@@ -234,7 +284,12 @@ export default function HabitTracker({
     )
     .sort(compareByFocusScore);
   if (orphans.length > 0) {
-    groups.push({ key: "__none__", title: "未归属目标", items: orphans });
+    groups.push({
+      key: "__none__",
+      title: "未归属目标",
+      items: orphans,
+      resultGroups: resultGroupsFor(undefined, orphans),
+    });
   }
 
   const todayActiveHabits = live.filter((h) => {
@@ -320,7 +375,7 @@ export default function HabitTracker({
           className="text-[var(--color-text-tertiary)] text-[10px]"
           title="综合分 = 影响力 × 60% + 能做到 × 40%"
         >
-          按目标分组 · 组内焦点分排序
+          按目标 / 关键结果分组 · 组内焦点分排序
         </span>
       </div>
 
@@ -417,8 +472,84 @@ export default function HabitTracker({
             </div>
 
             {!shut && (
-              <div className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[10px] border border-[var(--color-border)] bg-white">
-                {group.items.map((h) => {
+              <div className="flex flex-col gap-2">
+                {group.resultGroups.map((resultGroup) => {
+                  const resultCollapseKey = `result:${group.key}:${resultGroup.key}`;
+                  const resultShut = !resultGroup.hideHeader && collapsed.includes(resultCollapseKey);
+                  const resultDone = groupTodayCount(resultGroup.items);
+                  const isDirect = !resultGroup.result;
+
+                  return (
+                    <div key={resultGroup.key} className="flex flex-col gap-1">
+                      {!resultGroup.hideHeader && (
+                        <div
+                          className={[
+                            "flex h-8 w-full items-center gap-1 rounded-[8px] border px-1",
+                            isDirect
+                              ? "border-[var(--color-border)] bg-[var(--color-bg-gray-lighter)]"
+                              : "border-[#DBEAFE] bg-[#F8FAFF]",
+                          ].join(" ")}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => toggleGroup(resultCollapseKey)}
+                            className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 text-left transition-colors hover:bg-white/70"
+                            aria-label={`${resultShut ? "展开" : "收起"}「${resultGroup.title}」的习惯`}
+                            aria-expanded={!resultShut}
+                          >
+                            {resultShut ? (
+                              <ChevronRight className="h-3 w-3 flex-shrink-0 text-[var(--color-text-tertiary)]" />
+                            ) : (
+                              <ChevronDown className="h-3 w-3 flex-shrink-0 text-[var(--color-text-tertiary)]" />
+                            )}
+                            <span
+                              className={[
+                                "flex-shrink-0 rounded px-1 py-0.5 text-[8px] font-semibold",
+                                isDirect
+                                  ? "bg-white text-[var(--color-text-tertiary)]"
+                                  : "bg-[#EAF2FF] text-[var(--color-primary)]",
+                              ].join(" ")}
+                            >
+                              {isDirect ? "目标直属" : "关键结果"}
+                            </span>
+                            <span
+                              className="min-w-0 flex-1 truncate text-[10px] font-semibold text-[var(--color-text-secondary)]"
+                              data-full-text={resultGroup.title}
+                            >
+                              {resultGroup.title}
+                            </span>
+                            <span className="flex-shrink-0 text-[8px] text-[var(--color-text-tertiary)]">
+                              {resultGroup.items.length}
+                            </span>
+                            {resultShut && resultDone > 0 && (
+                              <span className="flex-shrink-0 text-[8px] font-medium text-[#15803D]">
+                                今天 {resultDone}
+                              </span>
+                            )}
+                          </button>
+
+                          {group.aspiration && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onOpenGoal(
+                                  group.aspiration!.id,
+                                  resultGroup.result?.id ?? UNASSIGNED_RESULT_ID,
+                                )
+                              }
+                              className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-[var(--color-primary)] transition-colors hover:bg-white"
+                              title={`进入「${resultGroup.title}」的焦点地图`}
+                              aria-label={`进入「${resultGroup.title}」的焦点地图`}
+                            >
+                              <ChevronRight className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {!resultShut && (
+                        <div className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[10px] border border-[var(--color-border)] bg-white">
+                          {resultGroup.items.map((h) => {
                 const isDuration = h.measure === "duration";
                 const ledger = isDuration ? fromLedger(h, entries, logs, today) : null;
                 const count = isDuration
@@ -435,11 +566,6 @@ export default function HabitTracker({
                 const stats = habitStats(h, logs, entries, today);
                 const behavior = behaviorOf(h);
                 const focusScore = scoreOf(h);
-                const result = behavior?.resultId
-                  ? goalResults.find(
-                      (item) => item.id === behavior.resultId && item.aspirationId === h.aspirationId,
-                    )
-                  : undefined;
                 const statusText = isDuration
                   ? count > 0
                     ? (ledger?.minutes ?? 0) > 0
@@ -552,21 +678,6 @@ export default function HabitTracker({
                               {focusScore == null ? (behavior ? "未评分" : "直接添加") : `综合 ${Math.round(focusScore)}`}
                             </span>
                           </div>
-                          <div className="flex min-w-0 items-center gap-1 text-[9px] leading-3.5 text-[var(--color-text-tertiary)]">
-                            {result ? (
-                              <>
-                                <span className="flex-shrink-0 font-medium text-[var(--color-primary)]">结果</span>
-                                <span className="flex-shrink-0">·</span>
-                                <span className="min-w-0 truncate" data-full-text={result.title}>
-                                  {result.title}
-                                </span>
-                              </>
-                            ) : (
-                              <span className="min-w-0 truncate">
-                                {behavior ? "直接服务目标" : "未经过焦点地图"}
-                              </span>
-                            )}
-                          </div>
                           <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[9px] tabular-nums text-[var(--color-text-tertiary)]">
                             {h.anchor ? (
                               <button
@@ -678,6 +789,11 @@ export default function HabitTracker({
                     </div>
                   </div>
                 );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
                 })}
               </div>
             )}

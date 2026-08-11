@@ -3,6 +3,9 @@
 
 import type { Aspiration, DayPlan, ISODate } from "./types";
 
+/** 有关键结果时，焦点地图中“仍直接服务目标”的行为分组。 */
+export const UNASSIGNED_RESULT_ID = "__unassigned__";
+
 /** 目标色板。旧数据没存 color 时按序号兜底，不用做数据迁移 */
 export const GOAL_COLORS = [
   "#2563EB", // 蓝

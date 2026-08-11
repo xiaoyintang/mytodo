@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Aspiration, BehaviorCard, GoalResult } from "@/components/todo/types";
 import { isGolden } from "@/components/todo/behavior";
+import { UNASSIGNED_RESULT_ID } from "@/components/todo/goal";
 import { callBehaviorAPI } from "@/components/todo/behaviorApi";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import {
@@ -15,8 +16,6 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-
-export const UNASSIGNED_RESULT_ID = "__unassigned__";
 
 type SuggestedResult = {
   operation: "add" | "replace";

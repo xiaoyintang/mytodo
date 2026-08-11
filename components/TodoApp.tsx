@@ -164,6 +164,7 @@ export default function TodoApp() {
   const [viewMode, setViewMode] = useState<ViewMode>("day");
   const [goalsOpen, setGoalsOpen] = useState(false); // 从常驻条进的目标管理页
   const [goalEntryId, setGoalEntryId] = useState<string | null>(null);
+  const [goalEntryResultId, setGoalEntryResultId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<ISODate>(todayIso);
 
   // 跨零点时，**只有当你正停在"昨天的今天"上**才跟着跳到新的今天。
@@ -1147,6 +1148,7 @@ export default function TodoApp() {
       {goalsOpen ? (
         <GoalsView
           initialOpenId={goalEntryId}
+          initialOpenResultId={goalEntryResultId}
           aspirations={safeAspirations}
           goalResults={safeGoalResults}
           behaviors={safeBehaviors}
@@ -1161,6 +1163,7 @@ export default function TodoApp() {
           onBack={() => {
             setGoalsOpen(false);
             setGoalEntryId(null);
+            setGoalEntryResultId(null);
           }}
           onCreateAspiration={createAspiration}
           onDeleteAspiration={deleteAspiration}
@@ -1256,8 +1259,9 @@ export default function TodoApp() {
           goalResults={safeGoalResults}
           dayPlans={safeDayPlans}
           onOpenGoals={() => setGoalsOpen(true)}
-          onOpenGoal={(aspirationId) => {
+          onOpenGoal={(aspirationId, resultId) => {
             setGoalEntryId(aspirationId);
+            setGoalEntryResultId(resultId ?? null);
             setGoalsOpen(true);
           }}
           running={timer.running}

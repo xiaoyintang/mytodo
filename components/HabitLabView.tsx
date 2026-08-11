@@ -27,7 +27,7 @@ type Props = {
   goalResults: GoalResult[];
   dayPlans: Record<string, DayPlan>;
   onOpenGoals: () => void;
-  onOpenGoal: (aspirationId: string) => void;
+  onOpenGoal: (aspirationId: string, resultId?: string) => void;
   running: { title: string; startedAt: number } | null;
   elapsedMs: number;
   onStopTimer: () => void;

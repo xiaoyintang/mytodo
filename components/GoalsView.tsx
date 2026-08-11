@@ -19,10 +19,10 @@ import type {
   AIBehaviorImportApply,
   AIResultImportApply,
 } from "@/components/todo/aiBridge";
-import { goalColor } from "@/components/todo/goal";
+import { goalColor, UNASSIGNED_RESULT_ID } from "@/components/todo/goal";
 import { formatMinutes } from "@/components/todo/time";
 import FocusMapView from "@/components/FocusMapView";
-import GoalResultsPanel, { UNASSIGNED_RESULT_ID } from "@/components/GoalResultsPanel";
+import GoalResultsPanel from "@/components/GoalResultsPanel";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { ArrowLeft, ChevronRight, Plus, Search, Trash2, Undo2, X } from "lucide-react";
 
@@ -35,6 +35,7 @@ type Judgement = {
 
 type Props = {
   initialOpenId?: string | null;
+  initialOpenResultId?: string | null;
   aspirations: Aspiration[];
   goalResults: GoalResult[];
   behaviors: BehaviorCard[];
@@ -84,6 +85,7 @@ const KIND_LABEL: Record<AspirationKind, string> = { aspiration: "愿望", outco
 
 export default function GoalsView({
   initialOpenId = null,
+  initialOpenResultId = null,
   aspirations,
   goalResults,
   behaviors,
@@ -118,7 +120,7 @@ export default function GoalsView({
   canUndo,
 }: Props) {
   const [openId, setOpenId] = useState<string | null>(initialOpenId);
-  const [activeResultId, setActiveResultId] = useState<string | null>(null);
+  const [activeResultId, setActiveResultId] = useState<string | null>(initialOpenResultId);
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newKind, setNewKind] = useState<AspirationKind>("aspiration");
