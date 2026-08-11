@@ -99,6 +99,15 @@ export type BehaviorType =
   | "habit"
   | "stop";
 
+/**
+ * 一条行为内部固定的执行流程。它是可复用的“做法模板”，不是拿来互相比较的候选行为，
+ * 所以没有影响力/可行性，也没有完成状态。真正排成 Task 时才复制成可勾选的 SubTask。
+ */
+export interface BehaviorStep {
+  id: string;
+  title: string;
+}
+
 /** 行为集群里的一张卡 */
 export interface BehaviorCard {
   id: string;
@@ -126,6 +135,8 @@ export interface BehaviorCard {
   /** 焦点地图两轴（二期填）：影响力 / 我能不能做到 */
   impact?: number;
   feasibility?: number;
+  /** 这个行为有固定做法时的有序步骤；整体评分，步骤本身不单独评分。 */
+  steps?: BehaviorStep[];
   /** 一次性任务排进日视图之后，关联的那个 Task 的 id */
   taskId?: string;
 }

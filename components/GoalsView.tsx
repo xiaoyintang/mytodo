@@ -6,6 +6,7 @@ import type {
   TimeEntry,
   AspirationKind,
   BehaviorCard,
+  BehaviorStep,
   BehaviorType,
   GoalResult,
   Habit,
@@ -69,6 +70,7 @@ type Props = {
   onScheduleBehavior: (cardId: string, title: string, date: ISODate) => void;
   onUnscheduleBehavior: (cardId: string) => void;
   onSetBehaviorAxis: (id: string, patch: { impact?: number; feasibility?: number }) => void;
+  onSetBehaviorSteps: (id: string, steps: BehaviorStep[]) => void;
   onResetBehaviorAxes: (behaviorIds: string[]) => void;
   onSetWeeklyLimit: (aspirationId: string, limit: number | null) => void;
   onDeleteBehavior: (id: string) => void;
@@ -106,6 +108,7 @@ export default function GoalsView({
   onScheduleBehavior,
   onUnscheduleBehavior,
   onSetBehaviorAxis,
+  onSetBehaviorSteps,
   onResetBehaviorAxes,
   onSetWeeklyLimit,
   onDeleteBehavior,
@@ -389,6 +392,7 @@ export default function GoalsView({
               cards={focusCards}
               tasks={tasks}
               onSetAxis={onSetBehaviorAxis}
+              onSetSteps={onSetBehaviorSteps}
               onResetAxes={() => onResetBehaviorAxes(focusCards.map((card) => card.id))}
               onDelete={onDeleteBehavior}
               onReplaceText={onShrinkBehavior}

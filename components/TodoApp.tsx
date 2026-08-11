@@ -13,6 +13,7 @@ import type {
   Aspiration,
   AspirationKind,
   BehaviorCard,
+  BehaviorStep,
   BehaviorType,
   DayPlan,
   GoalResult,
@@ -100,6 +101,17 @@ function seedTasks(today: ISODate): Task[] {
     { id: "t-19", title: "周五复盘", date: friday, startTime: "09:00", endTime: "10:00", status: "done" },
     { id: "t-20", title: "下周计划", date: friday, startTime: "15:00", endTime: "16:00", status: "done" },
   ];
+}
+
+/** 把焦点地图里的固定流程模板，实例化成这一次任务自己的可勾选步骤。 */
+function instantiateBehaviorSteps(card?: BehaviorCard): SubTask[] | undefined {
+  if (!card?.steps?.length) return undefined;
+  const stamp = Date.now();
+  return card.steps.map((step, index) => ({
+    id: `st-${stamp}-${index}-${Math.random().toString(36).slice(2, 6)}`,
+    title: step.title,
+    done: false,
+  }));
 }
 
 // Status cycle: todo → in_progress → done → todo
@@ -838,10 +850,18 @@ export default function TodoApp() {
   function scheduleBehavior(cardId: string, title: string, date: ISODate) {
     const taskId = `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     // 继承那条行为所属的目标——这样它才会被"今天主线"认出来
-    const aspirationId = behaviorCards.find((b) => b.id === cardId)?.aspirationId;
+    const card = behaviorCards.find((b) => b.id === cardId);
+    const aspirationId = card?.aspirationId;
     setTasks((prev) => [
       ...prev,
-      { id: taskId, title, date, status: "todo" as TaskStatus, aspirationId },
+      {
+        id: taskId,
+        title,
+        date,
+        status: "todo" as TaskStatus,
+        aspirationId,
+        subtasks: instantiateBehaviorSteps(card),
+      },
     ]);
     snapshotLab();
     setBehaviorCards((prev) => prev.map((b) => (b.id === cardId ? { ...b, taskId } : b)));
@@ -923,12 +943,16 @@ export default function TodoApp() {
     const habit = habits.find((item) => item.id === habitId && !item.archived);
     if (!habit) return;
     if (tasks.some((task) => task.sourceHabitId === habitId && task.date === todayIso)) return;
+    const sourceBehavior = habit.behaviorId
+      ? behaviorCards.find((behavior) => behavior.id === habit.behaviorId)
+      : undefined;
     createTask({
       title: habit.title,
       date: todayIso,
       status: "todo",
       aspirationId: habit.aspirationId,
       sourceHabitId: habit.id,
+      subtasks: instantiateBehaviorSteps(sourceBehavior),
     });
   }
 
@@ -1005,6 +1029,19 @@ export default function TodoApp() {
   // 焦点地图两轴（0-100，现在只落 25/75 两档）
   function setBehaviorAxis(id: string, patch: { impact?: number; feasibility?: number }) {
     setBehaviorCards((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+  }
+
+  /**
+   * 固定流程属于行为模板：焦点地图里只维护这一份；排进 Todo 时才复制成执行实例。
+   * 因此修改模板不会回头篡改已经排出去的任务，但习惯下次排 Todo 会读到最新版。
+   */
+  function setBehaviorSteps(id: string, steps: BehaviorStep[]) {
+    snapshotLab();
+    setBehaviorCards((prev) =>
+      prev.map((behavior) =>
+        behavior.id === id ? { ...behavior, steps: steps.length > 0 ? steps : undefined } : behavior,
+      ),
+    );
   }
 
   // 重排只清当前结果路径里正在看的行为，不能误伤同一目标下的其他焦点地图。
@@ -1102,6 +1139,7 @@ export default function TodoApp() {
           onScheduleBehavior={scheduleBehavior}
           onUnscheduleBehavior={unscheduleBehavior}
           onSetBehaviorAxis={setBehaviorAxis}
+          onSetBehaviorSteps={setBehaviorSteps}
           onResetBehaviorAxes={resetBehaviorAxes}
           onSetWeeklyLimit={setWeeklyLimit}
           onDeleteBehavior={deleteBehavior}

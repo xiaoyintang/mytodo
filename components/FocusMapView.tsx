@@ -4,6 +4,7 @@ import { useState } from "react";
 import type {
   Aspiration,
   BehaviorCard,
+  BehaviorStep,
   BehaviorType,
   GoalResult,
   ISODate,
@@ -43,6 +44,7 @@ import {
   X,
 } from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import BehaviorStepsEditor from "@/components/BehaviorStepsEditor";
 
 type AxisPatch = { impact?: number; feasibility?: number };
 type SortMode = "default" | "impact" | "score";
@@ -86,6 +88,7 @@ type Props = {
   cards: BehaviorCard[];
   tasks: Task[];
   onSetAxis: (id: string, patch: AxisPatch) => void;
+  onSetSteps: (id: string, steps: BehaviorStep[]) => void;
   onResetAxes: () => void;
   onDelete: (id: string) => void;
   onReplaceText: (id: string, text: string) => void;
@@ -148,6 +151,7 @@ export default function FocusMapView({
   cards,
   tasks,
   onSetAxis,
+  onSetSteps,
   onResetAxes,
   onDelete,
   onReplaceText,
@@ -1736,6 +1740,15 @@ export default function FocusMapView({
                   {renderSlider(b, "impact")}
                   {renderSlider(b, "feasibility")}
                 </>
+              )}
+
+              {b.type !== "unsorted" && !needsBreakdown(b.type) && (
+                <BehaviorStepsEditor
+                  behaviorTitle={b.text}
+                  goal={goalContext}
+                  steps={b.steps ?? []}
+                  onChange={(steps) => onSetSteps(b.id, steps)}
+                />
               )}
 
               {resultOptions.length > 0 && onAssignResult && (
