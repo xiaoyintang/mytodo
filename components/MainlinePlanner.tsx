@@ -166,7 +166,7 @@ export default function MainlinePlanner({ days, today, aspirations, dayPlans, on
               />
               <span
                 className="flex-1 truncate text-[11px] text-[var(--color-text-secondary)]"
-                title={a.title}
+                data-full-text={a.title}
               >
                 {a.title}
               </span>

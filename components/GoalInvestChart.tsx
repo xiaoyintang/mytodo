@@ -63,7 +63,7 @@ export default function GoalInvestChart({ weekDates, entries, aspirations, dayPl
               />
               <span
                 className="flex-1 truncate text-[13px] text-[var(--color-text-primary)]"
-                title={r.a.title}
+                data-full-text={r.a.title}
               >
                 {r.a.title}
               </span>
@@ -95,7 +95,7 @@ export default function GoalInvestChart({ weekDates, entries, aspirations, dayPl
                       </span>
                       <span
                         className="flex-1 truncate text-[var(--color-text-secondary)]"
-                        title={e.title}
+                        data-full-text={e.title}
                       >
                         {e.title}
                       </span>

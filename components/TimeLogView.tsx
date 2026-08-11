@@ -490,7 +490,7 @@ export default function TimeLogView({
         <div className="flex items-center gap-2">
           <span
             className="truncate text-[13px] font-medium text-[var(--color-text-primary)]"
-            title={row.name}
+            data-full-text={row.name}
           >
             {row.name}
           </span>
@@ -628,7 +628,7 @@ export default function TimeLogView({
                     <div className="flex-1 flex flex-col min-w-0">
                       <span
                         className="truncate text-[13px] font-medium text-[var(--color-text-primary)]"
-                        title={p.title}
+                        data-full-text={p.title}
                       >
                         {p.title}
                       </span>
@@ -747,7 +747,7 @@ export default function TimeLogView({
                       <div className="flex-1 flex flex-col gap-0.5 min-w-0">
                         <span
                           className="truncate text-[14px] font-medium text-[var(--color-text-primary)]"
-                          title={e.title}
+                          data-full-text={e.title}
                         >
                           {e.title}
                         </span>
@@ -825,7 +825,7 @@ export default function TimeLogView({
                                 setGoalEditing(null);
                               }}
                               className="px-2 py-[3px] rounded-md border text-[10px] font-medium max-w-full truncate"
-                              title={a.title}
+                              data-full-text={a.title}
                               style={{
                                 backgroundColor: on ? c : "#fff",
                                 borderColor: c,

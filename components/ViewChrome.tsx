@@ -34,14 +34,14 @@ export function AppHeader({ title, subtitle, onPrev, onNext, onAdd }: HeaderProp
       <div className="min-w-0">
         <h1
           className="truncate text-[22px] font-bold leading-7 tracking-[-0.35px] text-[var(--color-text-primary)]"
-          title={title}
+          data-full-text={title}
         >
           {title}
         </h1>
         {subtitle && (
           <p
             className="mt-0.5 truncate text-[12px] font-medium leading-4 text-[var(--color-text-tertiary)]"
-            title={subtitle}
+            data-full-text={subtitle}
           >
             {subtitle}
           </p>

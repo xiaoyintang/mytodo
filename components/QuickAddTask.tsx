@@ -143,7 +143,7 @@ export default function QuickAddTask({ onCreate }: { onCreate: (task: Omit<Task,
               <div className="flex-1 flex flex-col min-w-0">
                 <span
                   className="truncate text-[13px] font-medium text-[var(--color-text-primary)]"
-                  title={t.title}
+                  data-full-text={t.title}
                 >
                   {t.title}
                 </span>

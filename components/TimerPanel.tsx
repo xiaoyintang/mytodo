@@ -55,7 +55,7 @@ export default function TimerPanel({ running, elapsedMs, onStart, onStop }: Prop
             <span
               className="truncate text-[13px] font-semibold"
               style={{ color: style.text }}
-              title={`${running.title} 进行中`}
+              data-full-text={`${running.title} 进行中`}
             >
               {running.title} 进行中
             </span>

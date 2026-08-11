@@ -8,6 +8,7 @@ import HabitLabView from "@/components/HabitLabView";
 import GoalsView from "@/components/GoalsView";
 import AddTaskModal from "@/components/AddTaskModal";
 import SyncModal from "@/components/SyncModal";
+import FastTooltip from "@/components/FastTooltip";
 import type {
   Aspiration,
   AspirationKind,
@@ -920,6 +921,7 @@ export default function TodoApp() {
 
   return (
     <main className="flex h-full w-full items-start justify-center overflow-auto bg-white p-0 sm:bg-[#F5F5F5] sm:p-6">
+      <FastTooltip />
       {goalsOpen ? (
         <GoalsView
           initialOpenId={goalEntryId}

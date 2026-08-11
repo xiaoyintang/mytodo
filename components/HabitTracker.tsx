@@ -338,7 +338,7 @@ export default function HabitTracker({
             </p>
             <p
               className="mt-0.5 truncate text-[10px] text-[var(--color-text-tertiary)]"
-              title={
+              data-full-text={
                 todayTargetTitles.length > 0
                   ? `正在推动「${todayTargetTitles.slice(0, 2).join("」「")}」`
                   : `${todayActiveHabits.length} 个习惯已经从“想做”变成“做过”`
@@ -390,7 +390,7 @@ export default function HabitTracker({
                 />
                 <span
                   className="min-w-0 flex-1 truncate text-[11px] font-semibold text-[var(--color-text-secondary)]"
-                  title={group.title}
+                  data-full-text={group.title}
                 >
                   {group.title}
                 </span>
@@ -530,7 +530,7 @@ export default function HabitTracker({
                           <div className="flex min-w-0 items-center gap-1.5">
                             <span
                               className="min-w-0 flex-1 truncate text-[12px] font-semibold leading-4 text-[var(--color-text-primary)]"
-                              title={h.title}
+                              data-full-text={h.title}
                             >
                               {h.title}
                             </span>
@@ -557,7 +557,7 @@ export default function HabitTracker({
                               <>
                                 <span className="flex-shrink-0 font-medium text-[var(--color-primary)]">结果</span>
                                 <span className="flex-shrink-0">·</span>
-                                <span className="min-w-0 truncate" title={result.title}>
+                                <span className="min-w-0 truncate" data-full-text={result.title}>
                                   {result.title}
                                 </span>
                               </>
@@ -707,7 +707,7 @@ export default function HabitTracker({
               <span className="absolute -bottom-0.5 -left-1 h-1 w-1 rounded-full bg-[#F59E0B]" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[10px] font-medium text-[#4F6F5B]" title={celebration.title}>
+              <p className="truncate text-[10px] font-medium text-[#4F6F5B]" data-full-text={celebration.title}>
                 {celebration.title}
               </p>
               <p className="mt-0.5 text-[13px] font-bold text-[#166534]">{celebration.headline}</p>

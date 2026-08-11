@@ -908,7 +908,6 @@ export default function FocusMapView({
                       setTypingId(null);
                     }}
                     className="flex-1 text-[13px] text-[var(--color-text-primary)] leading-snug text-left"
-                    title={`${b.text}\n点一下改文字`}
                   >
                     {b.text}
                   </button>

@@ -50,7 +50,7 @@ export default function MainlineBar({
           <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] animate-pulse flex-shrink-0" />
           <span
             className="min-w-0 truncate text-[12px] font-semibold text-[var(--color-primary)]"
-            title={running.title}
+            data-full-text={running.title}
           >
             {running.title}
           </span>
@@ -87,7 +87,7 @@ export default function MainlineBar({
                 />
                 <span
                   className="truncate text-[12px] font-semibold text-[var(--color-text-primary)]"
-                  title={a.title}
+                  data-full-text={a.title}
                 >
                   {a.title}
                 </span>

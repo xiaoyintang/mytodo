@@ -538,7 +538,7 @@ export default function TaskBottomSheet({
                       type="button"
                       onClick={() => onUpdate(task.id, { aspirationId: on ? undefined : a.id })}
                       className="px-2.5 py-1 rounded-md border text-[12px] font-medium transition-colors max-w-full truncate"
-                      title={a.title}
+                      data-full-text={a.title}
                       style={{
                         backgroundColor: on ? c : "#fff",
                         borderColor: c,
