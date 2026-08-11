@@ -850,14 +850,33 @@ export default function TimeLogView({
 
         {/* 今日汇总（默认展开，天天看） */}
         {daySummary.length > 0 && (
-          <div className="w-full flex flex-col gap-3">
+          <div className="w-full flex flex-col gap-4">
             <div className="w-full flex items-center justify-between">
               <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">今日汇总</span>
               <span className="text-[var(--color-text-tertiary)] text-[13px] font-medium">共 {formatMinutes(dayTotal)}</span>
             </div>
-            <CategoryDonut slices={daySlices} total={dayTotal} />
 
-            <div className="w-full flex flex-col gap-2.5">
+            <GoalInvestChart
+              mode="day"
+              periodDates={[selectedDate]}
+              entries={entries}
+              aspirations={aspirations}
+              dayPlans={dayPlans}
+            />
+
+            <div className="w-full flex flex-col gap-2.5 pt-1 border-t border-[var(--color-border)]">
+              <div className="w-full flex items-center justify-between pt-2">
+                <span className="text-[14px] font-semibold text-[var(--color-text-primary)]">时间构成</span>
+                <span className="text-[11px] text-[var(--color-text-tertiary)]">正事 · 娱乐 · 休息</span>
+              </div>
+              <CategoryDonut slices={daySlices} total={dayTotal} />
+            </div>
+
+            <div className="w-full flex flex-col gap-2.5 pt-1 border-t border-[var(--color-border)]">
+              <div className="w-full flex items-center justify-between pt-2">
+                <span className="text-[14px] font-semibold text-[var(--color-text-primary)]">活动明细</span>
+                <span className="text-[11px] text-[var(--color-text-tertiary)]">按记录名称合并</span>
+              </div>
               {daySummary.map((row) => renderSummaryRow(row, dayMaxMinutes, true))}
             </div>
           </div>
@@ -884,7 +903,8 @@ export default function TimeLogView({
           </button>
           {weekOpen && (
             <GoalInvestChart
-              weekDates={days.map((d) => toISODate(d) as ISODate)}
+              mode="week"
+              periodDates={days.map((d) => toISODate(d) as ISODate)}
               entries={entries}
               aspirations={aspirations}
               dayPlans={dayPlans}
@@ -893,8 +913,18 @@ export default function TimeLogView({
 
           {weekOpen && summary.length > 0 && (
             <>
-              <CategoryDonut slices={weekSlices} total={weekTotal} />
-              <div className="w-full flex flex-col gap-2.5">
+              <div className="w-full flex flex-col gap-2.5 pt-1 border-t border-[var(--color-border)]">
+                <div className="w-full flex items-center justify-between pt-2">
+                  <span className="text-[14px] font-semibold text-[var(--color-text-primary)]">时间构成</span>
+                  <span className="text-[11px] text-[var(--color-text-tertiary)]">正事 · 娱乐 · 休息</span>
+                </div>
+                <CategoryDonut slices={weekSlices} total={weekTotal} />
+              </div>
+              <div className="w-full flex flex-col gap-2.5 pt-1 border-t border-[var(--color-border)]">
+                <div className="w-full flex items-center justify-between pt-2">
+                  <span className="text-[14px] font-semibold text-[var(--color-text-primary)]">活动明细</span>
+                  <span className="text-[11px] text-[var(--color-text-tertiary)]">按记录名称合并</span>
+                </div>
                 {summary.map((row) => renderSummaryRow(row, maxMinutes, false))}
               </div>
             </>
