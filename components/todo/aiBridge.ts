@@ -6,6 +6,12 @@ export type AIImportDraft = {
   type: BehaviorType;
   resultTitle?: string;
   operation: "add" | "replace";
+  /**
+   * 外部 AI 返回的是这条行为最终、完整、有序的固定流程，而不是逐步补丁。
+   * 未提供 stepsMode = 保留原流程；replace = 用 steps 整体替换；clear = 明确清空。
+   */
+  stepsMode?: "replace" | "clear";
+  steps?: string[];
   /** 替换时必须指向已有行为；保留原文是为了让用户核对，而不是让 AI 直接覆盖。 */
   replacesText?: string;
 };
@@ -31,6 +37,8 @@ export type AIBehaviorImportApply = {
   replaceId?: string;
   text: string;
   type: BehaviorType;
+  stepsMode?: "replace" | "clear";
+  steps?: string[];
   /** 归属已有结果，或归属本批次新建/替换后的结果。 */
   resultId?: string;
   resultImportClientId?: string;
@@ -57,6 +65,47 @@ function cleanText(value: unknown) {
     .replace(/^(?:行为|行动)\s*[:：]\s*/i, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function cleanStep(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .replace(/^[-*•]\s*/, "")
+    .replace(/^\d+[.)、]\s*/, "")
+    .replace(/\s+/g, " ")
+    .slice(0, 80)
+    .trim();
+}
+
+function uniqueSteps(values: unknown[]): string[] {
+  const seen = new Set<string>();
+  const steps: string[] = [];
+  values.forEach((value) => {
+    const step = cleanStep(value);
+    const key = normalizeBehaviorText(step);
+    if (!step || !key || seen.has(key)) return;
+    seen.add(key);
+    steps.push(step);
+  });
+  return steps.slice(0, 12);
+}
+
+function parseInlineSteps(value: unknown): { stepsMode: "replace" | "clear"; steps: string[] } {
+  if (Array.isArray(value)) {
+    const steps = uniqueSteps(value);
+    return { stepsMode: steps.length > 0 ? "replace" : "clear", steps };
+  }
+  const raw = String(value ?? "").trim();
+  if (!raw || /^(?:无|没有|清空|删除|取消|none|empty|clear|remove)$/i.test(raw)) {
+    return { stepsMode: "clear", steps: [] };
+  }
+  let parts = raw.split(/\s*(?:→|⟶|=>|->|；|;)\s*/).filter(Boolean);
+  if (parts.length === 1) {
+    const numbered = raw.split(/\s+(?=\d+[.)、]\s*)/).filter(Boolean);
+    if (numbered.length > 1) parts = numbered;
+  }
+  const steps = uniqueSteps(parts);
+  return { stepsMode: steps.length > 0 ? "replace" : "clear", steps };
 }
 
 function parseJson(raw: string): AIImportDraft[] {
@@ -92,12 +141,19 @@ function parseJson(raw: string): AIImportDraft[] {
           const operation = replacesText
             ? "replace"
             : parseOperation(item.operation ?? item.mode ?? item.changeType);
+          const hasSteps = ["steps", "procedure", "workflow", "fixedSteps"].some((key) =>
+            Object.prototype.hasOwnProperty.call(item, key),
+          );
+          const stepChange = hasSteps
+            ? parseInlineSteps(item.steps ?? item.procedure ?? item.workflow ?? item.fixedSteps)
+            : undefined;
           return {
             text,
             type: parseType(item.type ?? item.kind),
             operation,
             ...(resultTitle ? { resultTitle } : {}),
             ...(replacesText ? { replacesText } : {}),
+            ...(stepChange ?? {}),
           };
         })
         .filter((item): item is AIImportDraft => item !== null);
@@ -112,6 +168,15 @@ function parseJson(raw: string): AIImportDraft[] {
 function stripInlineMetadata(value: string, inheritedResult?: string): AIImportDraft | null {
   let text = value.trim().replace(/^\[[ xX]\]\s*/, "");
   if (!text || /^[-:|\s]+$/.test(text)) return null;
+
+  let stepChange: { stepsMode: "replace" | "clear"; steps: string[] } | undefined;
+  const stepsMatch = text.match(
+    /(?:\||｜|；|;|—)\s*(?:固定流程|执行流程|流程步骤|流程|步骤)\s*[:：]\s*(.+?)\s*$/i,
+  );
+  if (stepsMatch) {
+    stepChange = parseInlineSteps(stepsMatch[1]);
+    text = text.slice(0, stepsMatch.index).trim();
+  }
 
   let resultTitle = inheritedResult;
   const resultMatch = text.match(
@@ -151,6 +216,7 @@ function stripInlineMetadata(value: string, inheritedResult?: string): AIImportD
     operation,
     ...(resultTitle ? { resultTitle } : {}),
     ...(replacesText ? { replacesText } : {}),
+    ...(stepChange ?? {}),
   };
 }
 
@@ -310,6 +376,8 @@ function uniqueDrafts(items: AIImportDraft[]) {
       item.operation,
       normalizeBehaviorText(item.replacesText ?? ""),
       normalizedText,
+      item.stepsMode ?? "preserve",
+      ...(item.steps ?? []).map(normalizeBehaviorText),
     ].join(":");
     if (seen.has(key)) return false;
     seen.add(key);
@@ -359,7 +427,10 @@ export function buildAIHandoffPrompt({
     ? cards.map((card) => {
         const result = results.find((item) => item.id === card.resultId);
         const resultLabel = result ? ` · 关键结果：${result.title}` : " · 未归属关键结果";
-        return `- [${TYPE_LABEL[card.type]}] ${card.text}${resultLabel}`;
+        const stepsLabel = card.steps?.length
+          ? ` · 固定流程：${card.steps.map((step, index) => `${index + 1}. ${step.title}`).join(" → ")}`
+          : "";
+        return `- [${TYPE_LABEL[card.type]}] ${card.text}${resultLabel}${stepsLabel}`;
       })
     : ["- 还没有行为备选。"];
 
@@ -382,8 +453,9 @@ ${cardLines.join("\n")}
 2. 先检查关键结果是否真的是“发生什么变化才算推进”，是否覆盖主要成功条件、彼此重复或误写成了活动。必要时可以建议新增或替换，但不要为了显得有建议而硬改。
 3. 在关键结果结构合理之后，再和我一起发散行为。不要只把目标换一种说法，也不要把成果冒充成行为。
 4. 行为必须是某个具体时刻可以开始做的动作；太大的行为请给出最小可执行版本。
-5. 可以说明它为什么可能有效、可行性取决于什么，但不要替我生成精确的 0～100 分。影响力和“我能不能做到”最终由我自己判断。
-6. 避免重复上面的已有关键结果和行为；不要直接删除任何内容，只能提议新增或替换。
+5. 如果一个行为本身是必须按顺序完成的固定方法，可以为这个父行为设计“固定流程”。这些步骤共同构成一个行为包，不是互相竞争的行为备选，不要分别评价影响力。
+6. 可以说明它为什么可能有效、可行性取决于什么，但不要替我生成精确的 0～100 分。影响力和“我能不能做到”最终由我自己判断。
+7. 避免重复上面的已有关键结果和行为；不要直接删除任何内容，只能提议新增或替换。
 
 讨论结束后，请把最终变更严格放在下面两个区块中，方便我导回 App。即使其中一类没有变更，也请保留对应标题并写“- 无”。
 
@@ -400,6 +472,12 @@ ${cardLines.join("\n")}
 - [新增] [一次性] 行为内容 | 关键结果：对应的关键结果原文
 - [替换] 原行为：已有行为原文 → [可重复] 改写后的行为 | 关键结果：对应的关键结果原文
 - [替换] 原行为：已有行为原文 → [停止] 改写后的行为 | 关键结果：对应的关键结果原文
+
+固定流程是可选的，必须放在该行为同一行的最后，用“→”给出**完整最终顺序**：
+- [新增] [可重复] 难受时做15分钟第三人称书写 | 关键结果：减少焦虑 | 固定流程：写下事实 → 改用他/她称呼自己 → 写下身体感受
+- [替换] 原行为：难受时写点东西 → [可重复] 难受时做15分钟第三人称书写 | 关键结果：减少焦虑 | 固定流程：写下事实 → 改用他/她称呼自己 → 写下身体感受
+
+如果只调整已有行为的流程，替换前后可以写同一个父行为；App 会只更新流程。省略“固定流程”表示保留已有流程；只有确实要删掉时才写“| 固定流程：清空”。不要把流程中的每一步另写成新的可导入行为。
 
 如果某条暂时无法归属关键结果，也可以省略“| 关键结果：…”；不要在这两个区块里放解释性段落。`;
 }

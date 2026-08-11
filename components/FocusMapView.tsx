@@ -142,6 +142,12 @@ function cnDate(iso: string): string {
   return `${Number(m)}月${Number(d)}日`;
 }
 
+function sameProcedure(current: BehaviorStep[] | undefined, proposed: string[] | undefined) {
+  const left = (current ?? []).map((step) => normalizeBehaviorText(step.title));
+  const right = (proposed ?? []).map(normalizeBehaviorText);
+  return left.length === right.length && left.every((step, index) => step === right[index]);
+}
+
 export default function FocusMapView({
   aspiration,
   focusTitle,
@@ -378,8 +384,19 @@ export default function FocusMapView({
         const sameTextCard = sourceCards.find(
           (card) => normalizeBehaviorText(card.text) === normalizeBehaviorText(draft.text),
         );
+        const resolvedType =
+          draft.operation === "replace" && draft.type === "unsorted" && matchedReplacement
+            ? matchedReplacement.type
+            : draft.type;
+        const procedureUnchanged = !draft.stepsMode || sameProcedure(
+          matchedReplacement?.steps,
+          draft.stepsMode === "clear" ? [] : draft.steps,
+        );
         const unchanged = Boolean(
-          matchedReplacement && sameTextCard?.id === matchedReplacement.id,
+          matchedReplacement &&
+          sameTextCard?.id === matchedReplacement.id &&
+          matchedReplacement.type === resolvedType &&
+          procedureUnchanged,
         );
         const duplicate = draft.operation === "add"
           ? existing.has(normalizeBehaviorText(draft.text))
@@ -394,10 +411,7 @@ export default function FocusMapView({
           duplicate,
           unchanged,
           replaceId: matchedReplacement?.id,
-          type:
-            draft.operation === "replace" && draft.type === "unsorted" && matchedReplacement
-              ? matchedReplacement.type
-              : draft.type,
+          type: resolvedType,
           resultImportClientId: matchedImportedResult?.id,
           resultId:
             matchedResult?.id ??
@@ -470,6 +484,9 @@ export default function FocusMapView({
     operation: ImportCandidate["operation"],
     text: string,
     replaceId?: string,
+    type?: BehaviorType,
+    stepsMode?: ImportCandidate["stepsMode"],
+    steps?: string[],
   ) {
     const sourceCards = allCards ?? cards;
     const normalized = normalizeBehaviorText(text);
@@ -477,8 +494,18 @@ export default function FocusMapView({
     const sameTextCard = sourceCards.find(
       (card) => normalizeBehaviorText(card.text) === normalized,
     );
+    const resolvedType = type === "unsorted" && target ? target.type : type;
+    const procedureUnchanged = !stepsMode || sameProcedure(
+      target?.steps,
+      stepsMode === "clear" ? [] : steps,
+    );
     return {
-      unchanged: Boolean(target && normalizeBehaviorText(target.text) === normalized),
+      unchanged: Boolean(
+        target &&
+        normalizeBehaviorText(target.text) === normalized &&
+        (!resolvedType || target.type === resolvedType) &&
+        procedureUnchanged,
+      ),
       duplicate:
         operation === "add"
           ? Boolean(sameTextCard)
@@ -487,7 +514,14 @@ export default function FocusMapView({
   }
 
   function changeImportOperation(item: ImportCandidate, operation: ImportCandidate["operation"]) {
-    const status = importTextStatus(operation, item.text);
+    const status = importTextStatus(
+      operation,
+      item.text,
+      undefined,
+      item.type,
+      item.stepsMode,
+      item.steps,
+    );
     updateImportItem(item.id, {
       operation,
       replaceId: undefined,
@@ -501,12 +535,20 @@ export default function FocusMapView({
   function changeImportTarget(item: ImportCandidate, replaceId?: string) {
     const target = (allCards ?? cards).find((card) => card.id === replaceId);
     const requestedResult = matchGoalResult(item.resultTitle, resultOptions);
-    const status = importTextStatus("replace", item.text, replaceId);
+    const type = item.type === "unsorted" && target ? target.type : item.type;
+    const status = importTextStatus(
+      "replace",
+      item.text,
+      replaceId,
+      type,
+      item.stepsMode,
+      item.steps,
+    );
     updateImportItem(item.id, {
       replaceId,
       replacesText: target?.text,
       unmatchedReplacement: undefined,
-      type: item.type === "unsorted" && target ? target.type : item.type,
+      type,
       resultId: requestedResult?.id ?? target?.resultId,
       resultImportClientId: undefined,
       ...status,
@@ -515,8 +557,27 @@ export default function FocusMapView({
   }
 
   function changeImportText(item: ImportCandidate, text: string) {
-    const status = importTextStatus(item.operation, text, item.replaceId);
+    const status = importTextStatus(
+      item.operation,
+      text,
+      item.replaceId,
+      item.type,
+      item.stepsMode,
+      item.steps,
+    );
     updateImportItem(item.id, { text, ...status });
+  }
+
+  function changeImportType(item: ImportCandidate, type: BehaviorType) {
+    const status = importTextStatus(
+      item.operation,
+      item.text,
+      item.replaceId,
+      type,
+      item.stepsMode,
+      item.steps,
+    );
+    updateImportItem(item.id, { type, ...status });
   }
 
   function importItemReady(item: ImportCandidate) {
@@ -556,6 +617,8 @@ export default function FocusMapView({
         replaceId: item.replaceId,
         text: item.text.trim(),
         type: item.type,
+        stepsMode: item.stepsMode,
+        steps: item.steps,
         resultId: item.resultId,
         resultImportClientId: item.resultImportClientId,
       })),
@@ -569,11 +632,12 @@ export default function FocusMapView({
     const resultReplaces = chosenResults.length - resultAdds;
     const behaviorAdds = chosenBehaviors.filter((item) => item.operation === "add").length;
     const behaviorReplaces = chosenBehaviors.length - behaviorAdds;
+    const procedureChanges = chosenBehaviors.filter((item) => item.stepsMode).length;
     const resultPart = chosenResults.length > 0
       ? `关键结果 ${resultAdds ? `新增 ${resultAdds}` : ""}${resultAdds && resultReplaces ? "、" : ""}${resultReplaces ? `替换 ${resultReplaces}` : ""}`
       : "";
     const behaviorPart = chosenBehaviors.length > 0
-      ? `行为 ${behaviorAdds ? `新增 ${behaviorAdds}` : ""}${behaviorAdds && behaviorReplaces ? "、" : ""}${behaviorReplaces ? `替换 ${behaviorReplaces}` : ""}`
+      ? `行为 ${behaviorAdds ? `新增 ${behaviorAdds}` : ""}${behaviorAdds && behaviorReplaces ? "、" : ""}${behaviorReplaces ? `替换 ${behaviorReplaces}` : ""}${procedureChanges ? `（含固定流程 ${procedureChanges}）` : ""}`
       : "";
     setBridgeNotice(`已${[resultPart, behaviorPart].filter(Boolean).join("；")}；可撤回本次导入`);
   }
@@ -1428,11 +1492,51 @@ export default function FocusMapView({
                         className="w-full bg-transparent text-[11px] font-medium text-[var(--color-text-primary)] outline-none"
                         aria-label="变更后的行为文字"
                       />
+                      {item.stepsMode && (() => {
+                        const original = item.replaceId
+                          ? (allCards ?? cards).find((card) => card.id === item.replaceId)
+                          : undefined;
+                        const nextSteps = item.stepsMode === "clear" ? [] : item.steps ?? [];
+                        return (
+                          <div className="mt-1.5 rounded-md border border-[#BFDBFE] bg-[#F8FAFF] px-2 py-1.5">
+                            <div className="flex flex-wrap items-center justify-between gap-1">
+                              <span className="text-[9px] font-semibold text-[var(--color-primary)]">
+                                固定流程
+                                {item.operation === "replace" && original
+                                  ? ` · ${original.steps?.length ?? 0} 步 → ${nextSteps.length} 步`
+                                  : ` · ${nextSteps.length} 步`}
+                              </span>
+                              <span className="text-[8px] text-[var(--color-text-tertiary)]">
+                                整体替换，顺序以此为准
+                              </span>
+                            </div>
+                            {nextSteps.length > 0 ? (
+                              <ol className="mt-1 flex flex-col gap-0.5">
+                                {nextSteps.map((step, index) => (
+                                  <li key={`${index}-${step}`} className="flex items-start gap-1.5 text-[9px] leading-snug text-[var(--color-text-secondary)]">
+                                    <span className="w-3 flex-shrink-0 text-right tabular-nums text-[var(--color-primary)]">
+                                      {index + 1}.
+                                    </span>
+                                    <span>{step}</span>
+                                  </li>
+                                ))}
+                              </ol>
+                            ) : (
+                              <p className="mt-1 text-[9px] text-[#C2410C]">清空这条行为的固定流程</p>
+                            )}
+                            {item.operation === "replace" && original && (
+                              <p className="mt-1 text-[8px] leading-snug text-[var(--color-text-tertiary)]">
+                                只更新行为模板；已经排出的任务保持原步骤。
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         <select
                           value={item.type}
                           onChange={(event) =>
-                            updateImportItem(item.id, { type: event.target.value as BehaviorType })
+                            changeImportType(item, event.target.value as BehaviorType)
                           }
                           className="rounded-md bg-[var(--color-bg-gray-lighter)] px-1.5 py-1 text-[9px] font-medium text-[var(--color-text-secondary)] outline-none"
                           aria-label={`「${item.text}」的类型`}
@@ -1494,7 +1598,22 @@ export default function FocusMapView({
                         )}
                         {item.operation === "replace" && item.replaceId && !item.unchanged && (
                           <span className="text-[8px] text-[var(--color-primary)]">
-                            保留原位置与关联 · 清空旧评分
+                            {(() => {
+                              const original = (allCards ?? cards).find(
+                                (card) => card.id === item.replaceId,
+                              );
+                              const onlyProcedureChanges = Boolean(
+                                item.stepsMode &&
+                                original &&
+                                normalizeBehaviorText(original.text) === normalizeBehaviorText(item.text) &&
+                                original.type === item.type &&
+                                !item.resultImportClientId &&
+                                original.resultId === item.resultId,
+                              );
+                              return onlyProcedureChanges
+                                ? "只更新固定流程 · 保留原评分与关联"
+                                : "保留原位置与关联 · 清空旧评分";
+                            })()}
                           </span>
                         )}
                         {item.unmatchedResult && (

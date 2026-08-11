@@ -114,6 +114,17 @@ function instantiateBehaviorSteps(card?: BehaviorCard): SubTask[] | undefined {
   }));
 }
 
+function importBehaviorSteps(
+  titles: string[] | undefined,
+  prefix: string,
+): BehaviorStep[] | undefined {
+  if (!titles?.length) return undefined;
+  return titles.map((title, index) => ({
+    id: `bs-${prefix}-${index}-${Math.random().toString(36).slice(2, 6)}`,
+    title: title.trim(),
+  }));
+}
+
 // Status cycle: todo → in_progress → done → todo
 const STATUS_CYCLE: Record<TaskStatus, TaskStatus> = {
   todo: "in_progress",
@@ -753,17 +764,36 @@ export default function TodoApp() {
     };
     const behaviorUpdates = new Map<
       string,
-      { text: string; type: BehaviorType; resultId?: string }
+      {
+        text: string;
+        type: BehaviorType;
+        resultId?: string;
+        stepsSpecified: boolean;
+        steps?: BehaviorStep[];
+        resetScores: boolean;
+      }
     >();
     const createdCards: BehaviorCard[] = [];
 
     behaviorChanges.forEach((change, index) => {
       const resultId = resolveResultId(change);
       if (change.operation === "replace" && change.replaceId && validCardIds.has(change.replaceId)) {
+        const original = sourceCards.find((card) => card.id === change.replaceId);
+        if (!original) return;
+        const resetScores =
+          original.text.trim() !== change.text.trim() ||
+          original.type !== change.type ||
+          original.resultId !== resultId;
         behaviorUpdates.set(change.replaceId, {
           text: change.text.trim(),
           type: change.type,
           resultId,
+          stepsSpecified: Boolean(change.stepsMode),
+          steps:
+            change.stepsMode === "replace"
+              ? importBehaviorSteps(change.steps, `${now}-${index}`)
+              : undefined,
+          resetScores,
         });
         return;
       }
@@ -776,6 +806,10 @@ export default function TodoApp() {
         type: change.type,
         typeSource: change.type === "unsorted" ? undefined : "ai",
         createdAt: now + index,
+        steps:
+          change.stepsMode === "replace"
+            ? importBehaviorSteps(change.steps, `${now}-${index}`)
+            : undefined,
       });
     });
 
@@ -787,14 +821,19 @@ export default function TodoApp() {
           if (!update) return behavior;
           return {
             ...behavior,
-            ...update,
-            typeSource: update.type === "unsorted" ? undefined : "ai" as const,
+            text: update.text,
+            type: update.type,
             resultId: update.resultId,
-            impact: undefined,
-            feasibility: undefined,
-            reason: undefined,
-            blocker: undefined,
-            hasDecision: undefined,
+            steps: update.stepsSpecified ? update.steps : behavior.steps,
+            typeSource:
+              update.type === behavior.type
+                ? behavior.typeSource
+                : update.type === "unsorted" ? undefined : "ai" as const,
+            impact: update.resetScores ? undefined : behavior.impact,
+            feasibility: update.resetScores ? undefined : behavior.feasibility,
+            reason: update.resetScores ? undefined : behavior.reason,
+            blocker: update.resetScores ? undefined : behavior.blocker,
+            hasDecision: update.resetScores ? undefined : behavior.hasDecision,
           };
         }),
         ...createdCards,
