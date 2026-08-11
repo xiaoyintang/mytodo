@@ -627,7 +627,7 @@ export default function TodoApp() {
   // 收集口回车即存：不带 type → 未判定；魔法棒收进来的自带 type
   function addBehaviors(
     aspirationId: string,
-    items: Array<{ text: string; type?: BehaviorType }>,
+    items: Array<{ text: string; type?: BehaviorType; resultId?: string }>,
     resultId?: string,
   ) {
     snapshotLab();
@@ -635,7 +635,7 @@ export default function TodoApp() {
     const cards: BehaviorCard[] = items.map((it, i) => ({
       id: `b-${now}-${i}-${Math.random().toString(36).slice(2, 7)}`,
       aspirationId,
-      resultId,
+      resultId: it.resultId ?? resultId,
       text: it.text,
       type: it.type ?? "unsorted",
       typeSource: it.type ? "ai" : undefined,

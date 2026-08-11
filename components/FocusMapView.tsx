@@ -11,6 +11,14 @@ import type {
 } from "@/components/todo/types";
 import { callBehaviorAPI, toPendingItems, type PendingItem } from "@/components/todo/behaviorApi";
 import { TYPE_LABEL, TYPE_STYLE, goldenScore, isGolden, isRepeatable, needsBreakdown } from "@/components/todo/behavior";
+import {
+  buildAIHandoffPrompt,
+  IMPORT_TYPE_OPTIONS,
+  matchGoalResult,
+  normalizeBehaviorText,
+  parseAIBehaviorImport,
+  type AIImportDraft,
+} from "@/components/todo/aiBridge";
 import { CN_WEEKDAY, addDays, toISODate } from "@/components/todo/date";
 import { BLOCKER_INFO, blockerOf } from "@/components/todo/blocker";
 import {
@@ -18,6 +26,9 @@ import {
   ArrowUpDown,
   CalendarPlus,
   Check,
+  ClipboardPaste,
+  Copy,
+  MessagesSquare,
   RefreshCw,
   RotateCcw,
   Scissors,
@@ -38,12 +49,22 @@ type BehaviorReview = {
   suggestion?: string;
   message?: string;
 };
+type ImportCandidate = AIImportDraft & {
+  id: string;
+  checked: boolean;
+  duplicate: boolean;
+  resultId?: string;
+  unmatchedResult?: string;
+};
 
 type Props = {
   aspiration: Aspiration;
   /** 有关键结果时，用它作为当前焦点地图和 AI 的直接目标。 */
   focusTitle?: string;
+  defaultResultId?: string;
   resultOptions?: GoalResult[];
+  /** 外部 AI 交接需要看到整个目标的行为；cards 仍只负责当前焦点地图。 */
+  allCards?: BehaviorCard[];
   /** 可重复行为 + 一次性任务，都上图 */
   cards: BehaviorCard[];
   tasks: Task[];
@@ -51,7 +72,7 @@ type Props = {
   onResetAxes: () => void;
   onDelete: (id: string) => void;
   onReplaceText: (id: string, text: string) => void;
-  onAddExtra: (items: Array<{ text: string; type: BehaviorType }>) => void;
+  onAddExtra: (items: Array<{ text: string; type: BehaviorType; resultId?: string }>) => void;
   onAddHabit: (card: BehaviorCard) => void;
   onRemoveHabit: (behaviorId: string) => void;
   onSchedule: (cardId: string, title: string, date: ISODate) => void;
@@ -100,7 +121,9 @@ function cnDate(iso: string): string {
 export default function FocusMapView({
   aspiration,
   focusTitle,
+  defaultResultId,
   resultOptions = [],
+  allCards,
   cards,
   tasks,
   onSetAxis,
@@ -161,6 +184,13 @@ export default function FocusMapView({
   const [wandBusy, setWandBusy] = useState<string | "root" | null>(null);
   const [wand, setWand] = useState<{ forId: string | null; note: string; items: PendingItem[] } | null>(null);
   const [wandNote, setWandNote] = useState<string | null>(null);
+  // 外部 AI 交接：聊天负责发散，焦点地图继续负责收集、归类和比较。
+  const [bridgeOpen, setBridgeOpen] = useState(false);
+  const [bridgeCopied, setBridgeCopied] = useState(false);
+  const [bridgeNotice, setBridgeNotice] = useState<string | null>(null);
+  const [importText, setImportText] = useState("");
+  const [importItems, setImportItems] = useState<ImportCandidate[]>([]);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const golden = cards
     .filter(isGolden)
@@ -194,6 +224,92 @@ export default function FocusMapView({
     if (!t) return;
     onAdd(t);
     setDraft("");
+  }
+
+  async function copyAIHandoff() {
+    const prompt = buildAIHandoffPrompt({
+      aspiration,
+      focusTitle: goalContext,
+      results: resultOptions,
+      cards: allCards ?? cards,
+    });
+    try {
+      let copied = false;
+      if (navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(prompt);
+          copied = true;
+        } catch {
+          // 某些移动浏览器暴露了 Clipboard API，却会拒绝写入；继续走兼容方案。
+        }
+      }
+      if (!copied) {
+        const fallback = document.createElement("textarea");
+        fallback.value = prompt;
+        fallback.setAttribute("readonly", "");
+        fallback.style.position = "fixed";
+        fallback.style.opacity = "0";
+        document.body.appendChild(fallback);
+        fallback.select();
+        copied = document.execCommand("copy");
+        fallback.remove();
+        if (!copied) throw new Error("copy failed");
+      }
+      setBridgeCopied(true);
+      setBridgeNotice("已复制完整上下文，可以去任意聊天 AI 里继续讨论");
+      window.setTimeout(() => setBridgeCopied(false), 1800);
+    } catch {
+      setBridgeNotice("浏览器没有允许复制，请稍后重试");
+    }
+  }
+
+  function identifyImport() {
+    const drafts = parseAIBehaviorImport(importText);
+    if (drafts.length === 0) {
+      setImportItems([]);
+      setImportError("还没识别出行为。最好粘贴 AI 最后的「可导入行为」清单，或使用一行一条的列表。");
+      return;
+    }
+
+    const existing = new Set((allCards ?? cards).map((card) => normalizeBehaviorText(card.text)));
+    const now = Date.now();
+    setImportItems(
+      drafts.map((draft, index) => {
+        const matchedResult = matchGoalResult(draft.resultTitle, resultOptions);
+        const duplicate = existing.has(normalizeBehaviorText(draft.text));
+        return {
+          ...draft,
+          id: `import-${now}-${index}`,
+          checked: !duplicate,
+          duplicate,
+          resultId: matchedResult?.id ?? defaultResultId,
+          unmatchedResult: draft.resultTitle && !matchedResult ? draft.resultTitle : undefined,
+        };
+      }),
+    );
+    setImportError(null);
+    setBridgeNotice(null);
+  }
+
+  function updateImportItem(id: string, patch: Partial<ImportCandidate>) {
+    setImportItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  }
+
+  function confirmImport() {
+    const chosen = importItems.filter((item) => item.checked && item.text.trim());
+    if (chosen.length === 0) return;
+    onAddExtra(
+      chosen.map((item) => ({
+        text: item.text.trim(),
+        type: item.type,
+        resultId: item.resultId,
+      })),
+    );
+    setBridgeOpen(false);
+    setImportText("");
+    setImportItems([]);
+    setImportError(null);
+    setBridgeNotice(`已带回 ${chosen.length} 条行为；评分仍留给你自己判断`);
   }
 
   function saveEdit(id: string) {
@@ -785,6 +901,191 @@ export default function FocusMapView({
       </div>
       {wandNote && <p className="text-[11px] text-[var(--color-text-secondary)]">{wandNote}</p>}
       {wand?.forId == null && renderWandBox()}
+
+      {/* 不把焦点地图硬做成聊天框：把完整上下文交给任意 AI，聊完再收回结构化行为。 */}
+      <div className="flex w-full flex-col gap-2 rounded-[11px] border border-[#D9E5FF] bg-[#F8FAFF] p-2.5">
+        <div className="flex w-full flex-wrap items-center gap-2">
+          <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary-light)] text-[var(--color-primary)]">
+            <MessagesSquare className="h-3.5 w-3.5" />
+          </span>
+          <div className="min-w-[150px] flex-1">
+            <p className="text-[11px] font-semibold text-[var(--color-text-primary)]">需要聊一聊，才想得出行为？</p>
+            <p className="mt-0.5 text-[9px] leading-3.5 text-[var(--color-text-tertiary)]">
+              把目标、关键结果和已有行为带去任意聊天 AI，聊完再粘贴回来。
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={copyAIHandoff}
+            className="flex h-7 items-center gap-1 rounded-lg border border-[var(--color-primary)] bg-white px-2 text-[10px] font-semibold text-[var(--color-primary)] transition-colors hover:bg-[var(--color-primary-light)]"
+          >
+            {bridgeCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+            {bridgeCopied ? "已复制" : "带去聊"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setBridgeOpen((open) => !open);
+              setImportError(null);
+            }}
+            className="flex h-7 items-center gap-1 rounded-lg bg-[var(--color-primary)] px-2 text-[10px] font-semibold text-white transition-colors hover:bg-[#1D4ED8]"
+            aria-expanded={bridgeOpen}
+          >
+            <ClipboardPaste className="h-3 w-3" />
+            带回来
+          </button>
+        </div>
+
+        {bridgeNotice && (
+          <p className="rounded-md bg-white px-2 py-1.5 text-[10px] font-medium text-[var(--color-primary)]" role="status">
+            {bridgeNotice}
+          </p>
+        )}
+
+        {bridgeOpen && (
+          <div className="flex w-full flex-col gap-2 border-t border-[#D9E5FF] pt-2">
+            <textarea
+              value={importText}
+              onChange={(event) => {
+                setImportText(event.target.value);
+                setImportItems([]);
+                setImportError(null);
+              }}
+              rows={4}
+              placeholder="把 AI 最后的「可导入行为」清单粘贴到这里……"
+              className="w-full resize-y rounded-lg border border-[var(--color-border)] bg-white px-2.5 py-2 text-[11px] leading-relaxed text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-tertiary)] focus:border-[var(--color-primary)]"
+            />
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[9px] leading-3.5 text-[var(--color-text-tertiary)]">
+                只读取列表，不会把整段聊天直接写进焦点地图。
+              </span>
+              <button
+                type="button"
+                onClick={identifyImport}
+                disabled={!importText.trim()}
+                className="flex-shrink-0 rounded-lg bg-white px-2.5 py-1.5 text-[10px] font-semibold text-[var(--color-primary)] ring-1 ring-inset ring-[var(--color-primary)] transition-colors hover:bg-[var(--color-primary-light)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                识别行为
+              </button>
+            </div>
+
+            {importError && (
+              <p className="rounded-lg bg-[#FFF7ED] px-2.5 py-2 text-[10px] leading-relaxed text-[#C2410C]">
+                {importError}
+              </p>
+            )}
+
+            {importItems.length > 0 && (
+              <div className="flex w-full flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold text-[var(--color-text-secondary)]">
+                    识别出 {importItems.length} 条，确认后才导入
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setImportItems((prev) => prev.map((item) => ({ ...item, checked: !item.duplicate })))
+                    }
+                    className="text-[9px] font-medium text-[var(--color-primary)]"
+                  >
+                    恢复推荐选择
+                  </button>
+                </div>
+
+                {importItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className={[
+                      "flex w-full items-start gap-2 rounded-lg border bg-white p-2",
+                      item.checked ? "border-[#BFDBFE]" : "border-[var(--color-border)] opacity-65",
+                    ].join(" ")}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={item.checked}
+                      onChange={(event) => updateImportItem(item.id, { checked: event.target.checked })}
+                      className="mt-1 h-3.5 w-3.5 flex-shrink-0 accent-[var(--color-primary)]"
+                      aria-label={`选择导入「${item.text}」`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <input
+                        value={item.text}
+                        onChange={(event) => updateImportItem(item.id, { text: event.target.value })}
+                        className="w-full bg-transparent text-[11px] font-medium text-[var(--color-text-primary)] outline-none"
+                        aria-label="导入的行为文字"
+                      />
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        <select
+                          value={item.type}
+                          onChange={(event) =>
+                            updateImportItem(item.id, { type: event.target.value as BehaviorType })
+                          }
+                          className="rounded-md bg-[var(--color-bg-gray-lighter)] px-1.5 py-1 text-[9px] font-medium text-[var(--color-text-secondary)] outline-none"
+                          aria-label={`「${item.text}」的类型`}
+                        >
+                          {IMPORT_TYPE_OPTIONS.map((type) => (
+                            <option key={type} value={type}>{TYPE_LABEL[type]}</option>
+                          ))}
+                        </select>
+                        {resultOptions.length > 0 && (
+                          <select
+                            value={item.resultId ?? ""}
+                            onChange={(event) =>
+                              updateImportItem(item.id, {
+                                resultId: event.target.value || undefined,
+                                unmatchedResult: undefined,
+                              })
+                            }
+                            className="min-w-0 max-w-[220px] rounded-md bg-[var(--color-bg-gray-lighter)] px-1.5 py-1 text-[9px] text-[var(--color-text-secondary)] outline-none"
+                            aria-label={`「${item.text}」归属的关键结果`}
+                          >
+                            <option value="">未归属关键结果</option>
+                            {resultOptions.map((result) => (
+                              <option key={result.id} value={result.id}>{result.title}</option>
+                            ))}
+                          </select>
+                        )}
+                        {item.duplicate && (
+                          <span className="rounded bg-[#FFF7ED] px-1.5 py-0.5 text-[8px] font-medium text-[#C2410C]">
+                            已有相同行为，默认不选
+                          </span>
+                        )}
+                        {item.unmatchedResult && (
+                          <span className="text-[8px] text-[#C27720]">
+                            AI 写的是「{item.unmatchedResult}」，请确认归属
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                <div className="flex items-center justify-end gap-2 pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBridgeOpen(false);
+                      setImportItems([]);
+                      setImportError(null);
+                    }}
+                    className="px-2.5 py-1.5 text-[10px] font-medium text-[var(--color-text-secondary)]"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmImport}
+                    disabled={!importItems.some((item) => item.checked && item.text.trim())}
+                    className="rounded-lg bg-[var(--color-primary)] px-3 py-1.5 text-[10px] font-semibold text-white transition-colors hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    导入 {importItems.filter((item) => item.checked && item.text.trim()).length} 条
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* 排序：想比较第 9 和第 4？排一下它俩就挨着了 */}
       <div className="w-full flex items-center gap-1.5 flex-wrap">

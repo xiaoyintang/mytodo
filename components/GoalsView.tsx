@@ -50,7 +50,7 @@ type Props = {
   ) => string[];
   onAddBehaviors: (
     aspirationId: string,
-    items: Array<{ text: string; type?: BehaviorType }>,
+    items: Array<{ text: string; type?: BehaviorType; resultId?: string }>,
     resultId?: string,
   ) => void;
   onApplyJudgements: (results: Judgement[]) => void;
@@ -373,7 +373,9 @@ export default function GoalsView({
               key={resolvedResultId ?? "direct"}
               aspiration={open}
               focusTitle={selectedResult?.title ?? open.title}
+              defaultResultId={selectedResult?.id}
               resultOptions={openResults}
+              allCards={openCards}
               cards={focusCards}
               tasks={tasks}
               onSetAxis={onSetBehaviorAxis}
