@@ -14,6 +14,10 @@ import type {
 } from "@/components/todo/types";
 import { guessMeasure, pendingJudgement } from "@/components/todo/behavior";
 import { callBehaviorAPI } from "@/components/todo/behaviorApi";
+import type {
+  AIBehaviorImportApply,
+  AIResultImportApply,
+} from "@/components/todo/aiBridge";
 import { goalColor } from "@/components/todo/goal";
 import { formatMinutes } from "@/components/todo/time";
 import FocusMapView from "@/components/FocusMapView";
@@ -53,8 +57,10 @@ type Props = {
     items: Array<{ text: string; type?: BehaviorType; resultId?: string }>,
     resultId?: string,
   ) => void;
-  onReplaceBehaviors: (
-    items: Array<{ id: string; text: string; type: BehaviorType; resultId?: string }>,
+  onApplyAIImport: (
+    aspirationId: string,
+    results: AIResultImportApply[],
+    behaviors: AIBehaviorImportApply[],
   ) => void;
   onApplyJudgements: (results: Judgement[]) => void;
   onSetBehaviorType: (id: string, type: BehaviorType) => void;
@@ -92,7 +98,7 @@ export default function GoalsView({
   onAssignBehaviorResult,
   onApplyGoalResultStructure,
   onAddBehaviors,
-  onReplaceBehaviors,
+  onApplyAIImport,
   onApplyJudgements,
   onSetBehaviorType,
   onShrinkBehavior,
@@ -387,7 +393,9 @@ export default function GoalsView({
               onDelete={onDeleteBehavior}
               onReplaceText={onShrinkBehavior}
               onAddExtra={(items) => onAddBehaviors(open.id, items, selectedResult?.id)}
-              onReplaceExtra={onReplaceBehaviors}
+              onApplyImport={(results, behaviorChanges) =>
+                onApplyAIImport(open.id, results, behaviorChanges)
+              }
               onAdd={(text) => onAddBehaviors(open.id, [{ text }], selectedResult?.id)}
               onEditText={onEditBehaviorText}
               onSetType={onSetBehaviorType}

@@ -10,6 +10,32 @@ export type AIImportDraft = {
   replacesText?: string;
 };
 
+export type AIResultImportDraft = {
+  title: string;
+  evidence?: string;
+  operation: "add" | "replace";
+  /** 替换时逐字引用现有关键结果，导回时据此匹配，绝不让 AI 直接猜 id。 */
+  replacesTitle?: string;
+};
+
+export type AIResultImportApply = {
+  clientId: string;
+  operation: "add" | "replace";
+  replaceId?: string;
+  title: string;
+  evidence?: string;
+};
+
+export type AIBehaviorImportApply = {
+  operation: "add" | "replace";
+  replaceId?: string;
+  text: string;
+  type: BehaviorType;
+  /** 归属已有结果，或归属本批次新建/替换后的结果。 */
+  resultId?: string;
+  resultImportClientId?: string;
+};
+
 const ACTION_TYPES: BehaviorType[] = ["unsorted", "onetime", "habit", "stop"];
 
 function parseType(value: unknown): BehaviorType {
@@ -128,12 +154,102 @@ function stripInlineMetadata(value: string, inheritedResult?: string): AIImportD
   };
 }
 
+function stripResultMetadata(value: string): AIResultImportDraft | null {
+  let text = value.trim().replace(/^\[[ xX]\]\s*/, "");
+  if (!text || /^[-:|\s]+$/.test(text)) return null;
+
+  let evidence: string | undefined;
+  const evidenceMatch = text.match(
+    /(?:\||｜|；|;)\s*(?:达成证据|达成信号|证据)\s*[:：]\s*(.+?)\s*$/i,
+  ) ?? text.match(/\s*[（(](?:达成证据|达成信号|证据)\s*[:：]\s*([^)）]+)[)）]\s*$/i);
+  if (evidenceMatch) {
+    evidence = cleanText(evidenceMatch[1]);
+    text = text.slice(0, evidenceMatch.index).trim();
+  }
+
+  const operationTag = text.match(/^[【[]\s*(新增|替换|add|replace)\s*[\]】]\s*/i);
+  const operation = parseOperation(operationTag?.[1]);
+  if (operationTag) text = text.slice(operationTag[0].length).trim();
+
+  let replacesTitle: string | undefined;
+  if (operation === "replace") {
+    const replacement = text.match(
+      /^(?:原关键结果|原结果|原)\s*[:：]\s*(.+?)\s*(?:=>|->|→|⟶|改为|替换为)\s*(?:(?:新关键结果|新结果)\s*[:：]\s*)?(.+)$/i,
+    );
+    if (!replacement) return null;
+    replacesTitle = cleanText(replacement[1]);
+    text = replacement[2].trim();
+  } else {
+    text = text.replace(/^(?:关键结果|结果|KR)\s*[:：]\s*/i, "");
+  }
+
+  const title = cleanText(text);
+  if (title.length < 2 || title.length > 160) return null;
+  return {
+    title,
+    operation,
+    ...(evidence ? { evidence } : {}),
+    ...(replacesTitle ? { replacesTitle } : {}),
+  };
+}
+
+export function parseAIGoalResultImport(raw: string): AIResultImportDraft[] {
+  const allLines = raw.split(/\r?\n/);
+  const marker = allLines.findIndex((line) =>
+    /可导入关键结果|importable\s+(?:key\s+)?results/i.test(line),
+  );
+  const behaviorMarker = allLines.findIndex((line, index) =>
+    index > marker && /可导入行为|importable behaviors/i.test(line),
+  );
+  const lines = marker >= 0
+    ? allLines.slice(marker + 1, behaviorMarker >= 0 ? behaviorMarker : undefined)
+    : allLines;
+  const parsed: AIResultImportDraft[] = [];
+
+  for (const source of lines) {
+    const line = source.trim();
+    if (!line) continue;
+    const bullet = line.match(/^(?:[-*•]\s+|\d+[.)、]\s+)(.+)$/);
+    const tagged = line.match(/^([【[]\s*(?:新增|替换|add|replace)\s*[\]】]\s*.+)$/i);
+    const candidate = bullet?.[1] ?? tagged?.[1];
+    if (!candidate) continue;
+    // 没有专用区块时也能救回显式写着“关键结果”的变更，但不把行为误收进来。
+    if (marker < 0 && !/(?:原|新)?关键结果\s*[:：]|(?:key\s+)?result\s*:/i.test(candidate)) {
+      continue;
+    }
+    const item = stripResultMetadata(candidate);
+    if (item) parsed.push(item);
+  }
+
+  const seen = new Set<string>();
+  return parsed.filter((item) => {
+    const key = [
+      item.operation,
+      normalizeBehaviorText(item.replacesTitle ?? ""),
+      normalizeBehaviorText(item.title),
+    ].join(":");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function isGoalResultChangeLine(value: string) {
+  return /^(?:[【[]\s*(?:新增|替换|add|replace)\s*[\]】]\s*)?(?:原|新)?关键结果\s*[:：]|^(?:[【[]\s*(?:add|replace)\s*[\]】]\s*)?(?:key\s+)?result\s*:/i.test(
+    value.trim(),
+  );
+}
+
 export function parseAIBehaviorImport(raw: string): AIImportDraft[] {
   const jsonItems = parseJson(raw);
   if (jsonItems.length > 0) return uniqueDrafts(jsonItems);
 
   const allLines = raw.split(/\r?\n/);
   const marker = allLines.findIndex((line) => /可导入行为|importable behaviors/i.test(line));
+  const resultMarker = allLines.findIndex((line) =>
+    /可导入关键结果|importable\s+(?:key\s+)?results/i.test(line),
+  );
+  if (marker < 0 && resultMarker >= 0) return [];
   const lines = marker >= 0 ? allLines.slice(marker + 1) : allLines;
   const parsed: AIImportDraft[] = [];
   let inheritedResult: string | undefined;
@@ -156,6 +272,7 @@ export function parseAIBehaviorImport(raw: string): AIImportDraft[] {
       /^(?:[-*•]\s+|\d+[.)、]\s+)?([【[]\s*(?:新增|替换|add|replace)\s*[\]】]\s*.+)$/i,
     );
     if (taggedChange) {
+      if (isGoalResultChangeLine(taggedChange[1])) continue;
       const item = stripInlineMetadata(taggedChange[1], inheritedResult);
       if (item) parsed.push(item);
       continue;
@@ -163,6 +280,7 @@ export function parseAIBehaviorImport(raw: string): AIImportDraft[] {
 
     const bullet = line.match(/^(?:[-*•]\s+|\d+[.)、]\s+)(.+)$/);
     if (!bullet) continue;
+    if (isGoalResultChangeLine(bullet[1])) continue;
     const item = stripInlineMetadata(bullet[1], inheritedResult);
     if (item) parsed.push(item);
   }
@@ -173,6 +291,7 @@ export function parseAIBehaviorImport(raw: string): AIImportDraft[] {
     if (plain.length <= 20) {
       for (const line of plain) {
         if (/^(?:#{1,6}\s*)?(?:说明|分析|建议|总结|可导入行为)\s*[:：]?$/.test(line)) continue;
+        if (isGoalResultChangeLine(line)) continue;
         const item = stripInlineMetadata(line, inheritedResult);
         if (item) parsed.push(item);
       }
@@ -260,12 +379,21 @@ ${cardLines.join("\n")}
 
 ## 我希望你怎么帮助我
 1. 先问我 3～5 个真正影响方案质量的问题，了解我的阶段、资源、限制、已经尝试过什么，以及我为什么会卡住。
-2. 和我一起发散多个方向，不要只把目标换一种说法，也不要把成果冒充成行为。
-3. 行为必须是某个具体时刻可以开始做的动作；太大的行为请给出最小可执行版本。
-4. 可以说明它为什么可能有效、可行性取决于什么，但不要替我生成精确的 0～100 分。影响力和“我能不能做到”最终由我自己判断。
-5. 避免重复上面的已有行为。
+2. 先检查关键结果是否真的是“发生什么变化才算推进”，是否覆盖主要成功条件、彼此重复或误写成了活动。必要时可以建议新增或替换，但不要为了显得有建议而硬改。
+3. 在关键结果结构合理之后，再和我一起发散行为。不要只把目标换一种说法，也不要把成果冒充成行为。
+4. 行为必须是某个具体时刻可以开始做的动作；太大的行为请给出最小可执行版本。
+5. 可以说明它为什么可能有效、可行性取决于什么，但不要替我生成精确的 0～100 分。影响力和“我能不能做到”最终由我自己判断。
+6. 避免重复上面的已有关键结果和行为；不要直接删除任何内容，只能提议新增或替换。
 
-讨论结束后，请把最终变更严格放在下面这个区块中，方便我导回 App。新增行为标为「新增」；如果是在改写已有行为，必须标为「替换」，并逐字引用上方已有行为的原文：
+讨论结束后，请把最终变更严格放在下面两个区块中，方便我导回 App。即使其中一类没有变更，也请保留对应标题并写“- 无”。
+
+新增或改写关键结果时，写清楚怎样确认有进展；替换必须逐字引用上方已有关键结果的原文：
+
+## 可导入关键结果
+- [新增] 关键结果：新的关键结果 | 达成证据：怎样确认有进展
+- [替换] 原关键结果：已有关键结果原文 → 新关键结果：改写后的关键结果 | 达成证据：怎样确认有进展
+
+新增行为标为「新增」；改写已有行为标为「替换」，并逐字引用上方已有行为的原文。行为归属必须使用应用关键结果变更后的最终标题：
 
 ## 可导入行为
 - [新增] [可重复] 行为内容 | 关键结果：对应的关键结果原文
@@ -273,7 +401,7 @@ ${cardLines.join("\n")}
 - [替换] 原行为：已有行为原文 → [可重复] 改写后的行为 | 关键结果：对应的关键结果原文
 - [替换] 原行为：已有行为原文 → [停止] 改写后的行为 | 关键结果：对应的关键结果原文
 
-如果某条暂时无法归属关键结果，也可以省略“| 关键结果：…”；不要在这个区块里放解释性段落。`;
+如果某条暂时无法归属关键结果，也可以省略“| 关键结果：…”；不要在这两个区块里放解释性段落。`;
 }
 
 export const IMPORT_TYPE_OPTIONS = ACTION_TYPES;

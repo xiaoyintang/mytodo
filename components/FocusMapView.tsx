@@ -17,8 +17,12 @@ import {
   matchBehaviorCard,
   matchGoalResult,
   normalizeBehaviorText,
+  parseAIGoalResultImport,
   parseAIBehaviorImport,
+  type AIBehaviorImportApply,
   type AIImportDraft,
+  type AIResultImportApply,
+  type AIResultImportDraft,
 } from "@/components/todo/aiBridge";
 import { CN_WEEKDAY, addDays, toISODate } from "@/components/todo/date";
 import { BLOCKER_INFO, blockerOf } from "@/components/todo/blocker";
@@ -57,7 +61,16 @@ type ImportCandidate = AIImportDraft & {
   unchanged: boolean;
   replaceId?: string;
   resultId?: string;
+  resultImportClientId?: string;
   unmatchedResult?: string;
+  unmatchedReplacement?: string;
+};
+type ResultImportCandidate = AIResultImportDraft & {
+  id: string;
+  checked: boolean;
+  duplicate: boolean;
+  unchanged: boolean;
+  replaceId?: string;
   unmatchedReplacement?: string;
 };
 
@@ -77,8 +90,9 @@ type Props = {
   onDelete: (id: string) => void;
   onReplaceText: (id: string, text: string) => void;
   onAddExtra: (items: Array<{ text: string; type: BehaviorType; resultId?: string }>) => void;
-  onReplaceExtra: (
-    items: Array<{ id: string; text: string; type: BehaviorType; resultId?: string }>,
+  onApplyImport: (
+    results: AIResultImportApply[],
+    behaviors: AIBehaviorImportApply[],
   ) => void;
   onAddHabit: (card: BehaviorCard) => void;
   onRemoveHabit: (behaviorId: string) => void;
@@ -138,7 +152,7 @@ export default function FocusMapView({
   onDelete,
   onReplaceText,
   onAddExtra,
-  onReplaceExtra,
+  onApplyImport,
   onAddHabit,
   onRemoveHabit,
   onSchedule,
@@ -197,6 +211,7 @@ export default function FocusMapView({
   const [bridgeCopied, setBridgeCopied] = useState(false);
   const [bridgeNotice, setBridgeNotice] = useState<string | null>(null);
   const [importText, setImportText] = useState("");
+  const [importResults, setImportResults] = useState<ResultImportCandidate[]>([]);
   const [importItems, setImportItems] = useState<ImportCandidate[]>([]);
   const [importError, setImportError] = useState<string | null>(null);
 
@@ -271,23 +286,91 @@ export default function FocusMapView({
     }
   }
 
+  function matchImportedResult(title: string | undefined, items: ResultImportCandidate[]) {
+    if (!title) return undefined;
+    const needle = normalizeBehaviorText(title);
+    const exact = items.find((item) => normalizeBehaviorText(item.title) === needle);
+    if (exact || needle.length < 4) return exact;
+    return items.find((item) => {
+      const candidate = normalizeBehaviorText(item.title);
+      return candidate.includes(needle) || needle.includes(candidate);
+    });
+  }
+
+  function resultImportStatus(
+    operation: ResultImportCandidate["operation"],
+    title: string,
+    evidence?: string,
+    replaceId?: string,
+  ) {
+    const normalized = normalizeBehaviorText(title);
+    const target = replaceId ? resultOptions.find((result) => result.id === replaceId) : undefined;
+    const sameTitleResult = resultOptions.find(
+      (result) => normalizeBehaviorText(result.title) === normalized,
+    );
+    return {
+      unchanged: Boolean(
+        target &&
+        normalizeBehaviorText(target.title) === normalized &&
+        (target.evidence ?? "").trim() === (evidence ?? "").trim()
+      ),
+      duplicate:
+        operation === "add"
+          ? Boolean(sameTitleResult)
+          : Boolean(sameTitleResult && sameTitleResult.id !== replaceId),
+    };
+  }
+
   function identifyImport() {
-    const drafts = parseAIBehaviorImport(importText);
-    if (drafts.length === 0) {
+    const resultDrafts = parseAIGoalResultImport(importText);
+    const behaviorDrafts = parseAIBehaviorImport(importText);
+    if (resultDrafts.length === 0 && behaviorDrafts.length === 0) {
+      setImportResults([]);
       setImportItems([]);
-      setImportError("还没识别出行为。最好粘贴 AI 最后的「可导入行为」清单，或使用一行一条的列表。");
+      setImportError("还没识别出变更。请粘贴 AI 最后的「可导入关键结果 / 可导入行为」区块。");
       return;
     }
 
     const sourceCards = allCards ?? cards;
     const existing = new Set(sourceCards.map((card) => normalizeBehaviorText(card.text)));
     const now = Date.now();
+    const resultCandidates = resultDrafts.map((draft, index): ResultImportCandidate => {
+      const matchedReplacement = draft.operation === "replace"
+        ? matchGoalResult(draft.replacesTitle, resultOptions)
+        : undefined;
+      const status = resultImportStatus(
+        draft.operation,
+        draft.title,
+        draft.evidence,
+        matchedReplacement?.id,
+      );
+      const canApply = draft.operation === "add"
+        ? !status.duplicate
+        : Boolean(matchedReplacement) && !status.duplicate && !status.unchanged;
+      return {
+        ...draft,
+        id: `import-result-${now}-${index}`,
+        checked: canApply,
+        ...status,
+        replaceId: matchedReplacement?.id,
+        unmatchedReplacement:
+          draft.operation === "replace" && draft.replacesTitle && !matchedReplacement
+            ? draft.replacesTitle
+            : undefined,
+      };
+    });
+    setImportResults(resultCandidates);
+
     setImportItems(
-      drafts.map((draft, index) => {
+      behaviorDrafts.map((draft, index) => {
         const matchedReplacement = draft.operation === "replace"
           ? matchBehaviorCard(draft.replacesText, sourceCards)
           : undefined;
-        const matchedResult = matchGoalResult(draft.resultTitle, resultOptions);
+        // 行为清单按“应用变更后的最终标题”写归属，所以先匹配同批关键结果。
+        const matchedImportedResult = matchImportedResult(draft.resultTitle, resultCandidates);
+        const matchedResult = matchedImportedResult
+          ? undefined
+          : matchGoalResult(draft.resultTitle, resultOptions);
         const sameTextCard = sourceCards.find(
           (card) => normalizeBehaviorText(card.text) === normalizeBehaviorText(draft.text),
         );
@@ -311,10 +394,16 @@ export default function FocusMapView({
             draft.operation === "replace" && draft.type === "unsorted" && matchedReplacement
               ? matchedReplacement.type
               : draft.type,
+          resultImportClientId: matchedImportedResult?.id,
           resultId:
             matchedResult?.id ??
-            (draft.operation === "replace" ? matchedReplacement?.resultId : defaultResultId),
-          unmatchedResult: draft.resultTitle && !matchedResult ? draft.resultTitle : undefined,
+            (matchedImportedResult
+              ? undefined
+              : draft.operation === "replace" ? matchedReplacement?.resultId : defaultResultId),
+          unmatchedResult:
+            draft.resultTitle && !matchedImportedResult && !matchedResult
+              ? draft.resultTitle
+              : undefined,
           unmatchedReplacement:
             draft.operation === "replace" && draft.replacesText && !matchedReplacement
               ? draft.replacesText
@@ -326,8 +415,51 @@ export default function FocusMapView({
     setBridgeNotice(null);
   }
 
+  function updateImportResult(id: string, patch: Partial<ResultImportCandidate>) {
+    setImportResults((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+    );
+  }
+
   function updateImportItem(id: string, patch: Partial<ImportCandidate>) {
     setImportItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  }
+
+  function changeResultImportOperation(
+    item: ResultImportCandidate,
+    operation: ResultImportCandidate["operation"],
+  ) {
+    const status = resultImportStatus(operation, item.title, item.evidence);
+    updateImportResult(item.id, {
+      operation,
+      replaceId: undefined,
+      replacesTitle: undefined,
+      unmatchedReplacement: undefined,
+      ...status,
+      checked: operation === "add" && !status.duplicate,
+    });
+  }
+
+  function changeResultImportTarget(item: ResultImportCandidate, replaceId?: string) {
+    const target = resultOptions.find((result) => result.id === replaceId);
+    const status = resultImportStatus("replace", item.title, item.evidence, replaceId);
+    updateImportResult(item.id, {
+      replaceId,
+      replacesTitle: target?.title,
+      unmatchedReplacement: undefined,
+      ...status,
+      checked: Boolean(target) && !status.duplicate && !status.unchanged,
+    });
+  }
+
+  function changeResultImportText(
+    item: ResultImportCandidate,
+    patch: { title?: string; evidence?: string },
+  ) {
+    const title = patch.title ?? item.title;
+    const evidence = patch.evidence ?? item.evidence;
+    const status = resultImportStatus(item.operation, title, evidence, item.replaceId);
+    updateImportResult(item.id, { ...patch, ...status });
   }
 
   function importTextStatus(
@@ -372,6 +504,7 @@ export default function FocusMapView({
       unmatchedReplacement: undefined,
       type: item.type === "unsorted" && target ? target.type : item.type,
       resultId: requestedResult?.id ?? target?.resultId,
+      resultImportClientId: undefined,
       ...status,
       checked: Boolean(target) && !status.duplicate && !status.unchanged,
     });
@@ -383,47 +516,62 @@ export default function FocusMapView({
   }
 
   function importItemReady(item: ImportCandidate) {
+    const importedResult = item.resultImportClientId
+      ? importResults.find((result) => result.id === item.resultImportClientId)
+      : undefined;
     return Boolean(
       item.checked &&
       item.text.trim() &&
+      (item.operation === "add" || item.replaceId) &&
+      (!item.resultImportClientId || (importedResult && resultImportReady(importedResult))),
+    );
+  }
+
+  function resultImportReady(item: ResultImportCandidate) {
+    return Boolean(
+      item.checked &&
+      item.title.trim() &&
       (item.operation === "add" || item.replaceId),
     );
   }
 
   function confirmImport() {
-    const chosen = importItems.filter(importItemReady);
-    if (chosen.length === 0) return;
-    const additions = chosen.filter((item) => item.operation === "add");
-    const replacements = chosen.filter(
-      (item): item is ImportCandidate & { replaceId: string } =>
-        item.operation === "replace" && Boolean(item.replaceId),
+    const chosenResults = importResults.filter(resultImportReady);
+    const chosenBehaviors = importItems.filter(importItemReady);
+    if (chosenResults.length === 0 && chosenBehaviors.length === 0) return;
+    onApplyImport(
+      chosenResults.map((item) => ({
+        clientId: item.id,
+        operation: item.operation,
+        replaceId: item.replaceId,
+        title: item.title.trim(),
+        evidence: item.evidence?.trim() || undefined,
+      })),
+      chosenBehaviors.map((item) => ({
+        operation: item.operation,
+        replaceId: item.replaceId,
+        text: item.text.trim(),
+        type: item.type,
+        resultId: item.resultId,
+        resultImportClientId: item.resultImportClientId,
+      })),
     );
-    if (additions.length > 0) {
-      onAddExtra(additions.map((item) => ({
-        text: item.text.trim(),
-        type: item.type,
-        resultId: item.resultId,
-      })));
-    }
-    if (replacements.length > 0) {
-      onReplaceExtra(replacements.map((item) => ({
-        id: item.replaceId,
-        text: item.text.trim(),
-        type: item.type,
-        resultId: item.resultId,
-      })));
-    }
     setBridgeOpen(false);
     setImportText("");
+    setImportResults([]);
     setImportItems([]);
     setImportError(null);
-    const parts = [
-      additions.length > 0 ? `新增 ${additions.length} 条` : "",
-      replacements.length > 0 ? `替换 ${replacements.length} 条` : "",
-    ].filter(Boolean);
-    setBridgeNotice(
-      `已${parts.join("、")}；替换项沿用原位置，旧评分已清空`,
-    );
+    const resultAdds = chosenResults.filter((item) => item.operation === "add").length;
+    const resultReplaces = chosenResults.length - resultAdds;
+    const behaviorAdds = chosenBehaviors.filter((item) => item.operation === "add").length;
+    const behaviorReplaces = chosenBehaviors.length - behaviorAdds;
+    const resultPart = chosenResults.length > 0
+      ? `关键结果 ${resultAdds ? `新增 ${resultAdds}` : ""}${resultAdds && resultReplaces ? "、" : ""}${resultReplaces ? `替换 ${resultReplaces}` : ""}`
+      : "";
+    const behaviorPart = chosenBehaviors.length > 0
+      ? `行为 ${behaviorAdds ? `新增 ${behaviorAdds}` : ""}${behaviorAdds && behaviorReplaces ? "、" : ""}${behaviorReplaces ? `替换 ${behaviorReplaces}` : ""}`
+      : "";
+    setBridgeNotice(`已${[resultPart, behaviorPart].filter(Boolean).join("；")}；可撤回本次导入`);
   }
 
   function saveEdit(id: string) {
@@ -1016,16 +1164,16 @@ export default function FocusMapView({
       {wandNote && <p className="text-[11px] text-[var(--color-text-secondary)]">{wandNote}</p>}
       {wand?.forId == null && renderWandBox()}
 
-      {/* 不把焦点地图硬做成聊天框：把完整上下文交给任意 AI，聊完再收回结构化行为。 */}
+      {/* 不把焦点地图硬做成聊天框：把完整上下文交给任意 AI，聊完再收回结果与行为。 */}
       <div className="flex w-full flex-col gap-2 rounded-[11px] border border-[#D9E5FF] bg-[#F8FAFF] p-2.5">
         <div className="flex w-full flex-wrap items-center gap-2">
           <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary-light)] text-[var(--color-primary)]">
             <MessagesSquare className="h-3.5 w-3.5" />
           </span>
           <div className="min-w-[150px] flex-1">
-            <p className="text-[11px] font-semibold text-[var(--color-text-primary)]">需要聊一聊，才想得出行为？</p>
+            <p className="text-[11px] font-semibold text-[var(--color-text-primary)]">需要聊一聊，才理得清结果和行为？</p>
             <p className="mt-0.5 text-[9px] leading-3.5 text-[var(--color-text-tertiary)]">
-              把完整上下文带去任意聊天 AI，聊完可新增，也可替换原行为。
+              把完整上下文带去任意聊天 AI，聊完可调整关键结果和行为。
             </p>
           </div>
           <button
@@ -1062,16 +1210,17 @@ export default function FocusMapView({
               value={importText}
               onChange={(event) => {
                 setImportText(event.target.value);
+                setImportResults([]);
                 setImportItems([]);
                 setImportError(null);
               }}
               rows={4}
-              placeholder="把 AI 最后的「可导入行为」清单粘贴到这里……"
+              placeholder="把 AI 最后的「可导入关键结果 / 可导入行为」区块粘贴到这里……"
               className="w-full resize-y rounded-lg border border-[var(--color-border)] bg-white px-2.5 py-2 text-[11px] leading-relaxed text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-tertiary)] focus:border-[var(--color-primary)]"
             />
             <div className="flex items-center justify-between gap-2">
               <span className="text-[9px] leading-3.5 text-[var(--color-text-tertiary)]">
-                只读取变更清单；替换必须选中原行为，AI 不会直接覆盖。
+                先确认关键结果，再确认行为归属；所有替换都要匹配原文。
               </span>
               <button
                 type="button"
@@ -1079,7 +1228,7 @@ export default function FocusMapView({
                 disabled={!importText.trim()}
                 className="flex-shrink-0 rounded-lg bg-white px-2.5 py-1.5 text-[10px] font-semibold text-[var(--color-primary)] ring-1 ring-inset ring-[var(--color-primary)] transition-colors hover:bg-[var(--color-primary-light)] disabled:cursor-not-allowed disabled:opacity-40"
               >
-                识别行为
+                识别变更
               </button>
             </div>
 
@@ -1089,28 +1238,138 @@ export default function FocusMapView({
               </p>
             )}
 
-            {importItems.length > 0 && (
+            {(importResults.length > 0 || importItems.length > 0) && (
               <div className="flex w-full flex-col gap-1.5">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-semibold text-[var(--color-text-secondary)]">
-                    识别出 {importItems.length} 条变更，确认后才生效
+                    关键结果 {importResults.length} 条 · 行为 {importItems.length} 条，确认后才生效
                   </span>
                   <button
                     type="button"
-                    onClick={() =>
+                    onClick={() => {
+                      setImportResults((prev) => prev.map((item) => ({
+                        ...item,
+                        checked:
+                          !item.duplicate &&
+                          !item.unchanged &&
+                          (item.operation === "add" || Boolean(item.replaceId)),
+                      })));
                       setImportItems((prev) => prev.map((item) => ({
                         ...item,
                         checked:
                           !item.duplicate &&
                           !item.unchanged &&
                           (item.operation === "add" || Boolean(item.replaceId)),
-                      })))
-                    }
+                      })));
+                    }}
                     className="text-[9px] font-medium text-[var(--color-primary)]"
                   >
                     恢复推荐选择
                   </button>
                 </div>
+
+                {importResults.length > 0 && (
+                  <div className="flex flex-col gap-1.5">
+                    <p className="text-[9px] font-semibold text-[var(--color-primary)]">
+                      1 · 先确认关键结果
+                    </p>
+                    {importResults.map((item) => (
+                      <div
+                        key={item.id}
+                        className={[
+                          "flex w-full items-start gap-2 rounded-lg border bg-white p-2",
+                          item.checked ? "border-[#BFDBFE]" : "border-[var(--color-border)] opacity-65",
+                        ].join(" ")}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={item.checked}
+                          onChange={(event) => updateImportResult(item.id, { checked: event.target.checked })}
+                          className="mt-1 h-3.5 w-3.5 flex-shrink-0 accent-[var(--color-primary)]"
+                          aria-label={`选择应用关键结果「${item.title}」`}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-1.5 flex w-full flex-wrap items-center gap-1.5">
+                            <select
+                              value={item.operation}
+                              onChange={(event) =>
+                                changeResultImportOperation(
+                                  item,
+                                  event.target.value as ResultImportCandidate["operation"],
+                                )
+                              }
+                              className="rounded-md bg-[var(--color-primary-light)] px-1.5 py-1 text-[9px] font-semibold text-[var(--color-primary)] outline-none"
+                              aria-label={`关键结果「${item.title}」的变更方式`}
+                            >
+                              <option value="add">新增</option>
+                              <option value="replace">替换</option>
+                            </select>
+                            {item.operation === "replace" && (
+                              <select
+                                value={item.replaceId ?? ""}
+                                onChange={(event) =>
+                                  changeResultImportTarget(item, event.target.value || undefined)
+                                }
+                                className="min-w-0 max-w-full flex-1 rounded-md bg-[#FFF7ED] px-1.5 py-1 text-[9px] font-medium text-[#C2410C] outline-none"
+                                aria-label={`选择「${item.title}」要替换的原关键结果`}
+                              >
+                                <option value="">选择要替换的原关键结果…</option>
+                                {resultOptions.map((result) => (
+                                  <option key={result.id} value={result.id}>{result.title}</option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                          <input
+                            value={item.title}
+                            onChange={(event) => changeResultImportText(item, { title: event.target.value })}
+                            className="w-full bg-transparent text-[11px] font-semibold text-[var(--color-text-primary)] outline-none"
+                            aria-label="变更后的关键结果"
+                          />
+                          <input
+                            value={item.evidence ?? ""}
+                            onChange={(event) => changeResultImportText(item, { evidence: event.target.value })}
+                            placeholder="达成证据：怎样确认有进展？"
+                            className="mt-0.5 w-full bg-transparent text-[9px] text-[var(--color-text-secondary)] outline-none placeholder:text-[var(--color-text-tertiary)]"
+                            aria-label={`关键结果「${item.title}」的达成证据`}
+                          />
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            {item.duplicate && (
+                              <span className="rounded bg-[#FFF7ED] px-1.5 py-0.5 text-[8px] font-medium text-[#C2410C]">
+                                {item.operation === "add"
+                                  ? "已有同名关键结果，默认不选"
+                                  : "会与另一条关键结果重名，默认不选"}
+                              </span>
+                            )}
+                            {item.unchanged && (
+                              <span className="rounded bg-[var(--color-bg-gray-light)] px-1.5 py-0.5 text-[8px] text-[var(--color-text-secondary)]">
+                                内容没有变化
+                              </span>
+                            )}
+                            {item.operation === "replace" && !item.replaceId && (
+                              <span className="text-[8px] font-medium text-[#C2410C]">
+                                {item.unmatchedReplacement
+                                  ? `没找到原关键结果「${item.unmatchedReplacement}」，请手动选择`
+                                  : "请选择要替换的原关键结果"}
+                              </span>
+                            )}
+                            {item.operation === "replace" && item.replaceId && !item.unchanged && (
+                              <span className="text-[8px] text-[var(--color-primary)]">
+                                原有行为归属会保留
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {importItems.length > 0 && (
+                  <p className="mt-1 text-[9px] font-semibold text-[var(--color-primary)]">
+                    {importResults.length > 0 ? "2" : "1"} · 再确认行为和归属
+                  </p>
+                )}
 
                 {importItems.map((item) => (
                   <div
@@ -1178,22 +1437,35 @@ export default function FocusMapView({
                             <option key={type} value={type}>{TYPE_LABEL[type]}</option>
                           ))}
                         </select>
-                        {resultOptions.length > 0 && (
+                        {(resultOptions.length > 0 || importResults.length > 0) && (
                           <select
-                            value={item.resultId ?? ""}
-                            onChange={(event) =>
+                            value={
+                              item.resultImportClientId
+                                ? `import:${item.resultImportClientId}`
+                                : item.resultId ?? ""
+                            }
+                            onChange={(event) => {
+                              const value = event.target.value;
                               updateImportItem(item.id, {
-                                resultId: event.target.value || undefined,
+                                resultId: value && !value.startsWith("import:") ? value : undefined,
+                                resultImportClientId: value.startsWith("import:")
+                                  ? value.slice("import:".length)
+                                  : undefined,
                                 resultTitle: undefined,
                                 unmatchedResult: undefined,
-                              })
-                            }
+                              });
+                            }}
                             className="min-w-0 max-w-[220px] rounded-md bg-[var(--color-bg-gray-lighter)] px-1.5 py-1 text-[9px] text-[var(--color-text-secondary)] outline-none"
                             aria-label={`「${item.text}」归属的关键结果`}
                           >
                             <option value="">未归属关键结果</option>
                             {resultOptions.map((result) => (
                               <option key={result.id} value={result.id}>{result.title}</option>
+                            ))}
+                            {importResults.map((result) => (
+                              <option key={result.id} value={`import:${result.id}`}>
+                                导入后：{result.title}
+                              </option>
                             ))}
                           </select>
                         )}
@@ -1226,6 +1498,13 @@ export default function FocusMapView({
                             AI 写的是「{item.unmatchedResult}」，请确认归属
                           </span>
                         )}
+                        {item.resultImportClientId && !importResults.some(
+                          (result) => result.id === item.resultImportClientId && resultImportReady(result),
+                        ) && (
+                          <span className="text-[8px] text-[#C27720]">
+                            先勾选并补全它引用的关键结果
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1236,6 +1515,7 @@ export default function FocusMapView({
                     type="button"
                     onClick={() => {
                       setBridgeOpen(false);
+                      setImportResults([]);
                       setImportItems([]);
                       setImportError(null);
                     }}
@@ -1246,10 +1526,12 @@ export default function FocusMapView({
                   <button
                     type="button"
                     onClick={confirmImport}
-                    disabled={!importItems.some(importItemReady)}
+                    disabled={
+                      !importResults.some(resultImportReady) && !importItems.some(importItemReady)
+                    }
                     className="rounded-lg bg-[var(--color-primary)] px-3 py-1.5 text-[10px] font-semibold text-white transition-colors hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    应用 {importItems.filter(importItemReady).length} 条
+                    应用 {importResults.filter(resultImportReady).length + importItems.filter(importItemReady).length} 条变更
                   </button>
                 </div>
               </div>

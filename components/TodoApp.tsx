@@ -30,6 +30,10 @@ import { toISODate, parseISODate, addDays, startOfWeek, useToday } from "@/compo
 import { useLocalStorageState } from "@/components/todo/storage";
 import { useCloudSync } from "@/components/todo/sync";
 import { nextGoalColor } from "@/components/todo/goal";
+import type {
+  AIBehaviorImportApply,
+  AIResultImportApply,
+} from "@/components/todo/aiBridge";
 import { useTimer } from "@/components/todo/useTimer";
 import { Cloud, CloudOff, RefreshCw } from "lucide-react";
 
@@ -158,6 +162,7 @@ export default function TodoApp() {
       goalResults: GoalResult[];
       behaviors: BehaviorCard[];
       restoreTasks?: Task[];
+      restoreHabits?: Habit[];
     }>
   >([]);
 
@@ -473,10 +478,10 @@ export default function TodoApp() {
   // 撤回栈：愿望和行为一起存快照（删愿望会连带删它的行为，得一起退回来）。
   // 注意：拖滑块不进栈（一次拖动会触发几十次 onChange，会把栈冲爆），
   // 但「重排」进栈——所以误点重排能把所有滑块位置退回来。
-  function snapshotLab(restoreTasks?: Task[]) {
+  function snapshotLab(restoreTasks?: Task[], restoreHabits?: Habit[]) {
     setLabHistory((h) => [
       ...h.slice(-29),
-      { aspirations, goalResults, behaviors: behaviorCards, restoreTasks },
+      { aspirations, goalResults, behaviors: behaviorCards, restoreTasks, restoreHabits },
     ]);
   }
 
@@ -486,12 +491,26 @@ export default function TodoApp() {
     setAspirations(prev.aspirations);
     setGoalResults(prev.goalResults);
     setBehaviorCards(prev.behaviors);
-    // 只把当时被连带删掉的任务加回来，不整包覆盖 tasks——
-    // 否则会把用户在日视图里的其他改动一起回滚
+    // 只恢复这次结构变更碰过的任务/习惯，不整包覆盖——
+    // 否则会把用户在其他视图里的无关改动一起回滚。
     if (prev.restoreTasks?.length) {
       setTasks((cur) => {
-        const have = new Set(cur.map((t) => t.id));
-        return [...cur, ...prev.restoreTasks!.filter((t) => !have.has(t.id))];
+        const restore = new Map(prev.restoreTasks!.map((task) => [task.id, task]));
+        const have = new Set(cur.map((task) => task.id));
+        return [
+          ...cur.map((task) => restore.get(task.id) ?? task),
+          ...prev.restoreTasks!.filter((task) => !have.has(task.id)),
+        ];
+      });
+    }
+    if (prev.restoreHabits?.length) {
+      setHabits((cur) => {
+        const restore = new Map(prev.restoreHabits!.map((habit) => [habit.id, habit]));
+        const have = new Set(cur.map((habit) => habit.id));
+        return [
+          ...cur.map((habit) => restore.get(habit.id) ?? habit),
+          ...prev.restoreHabits!.filter((habit) => !have.has(habit.id)),
+        ];
       });
     }
     setLabHistory((h) => h.slice(0, -1));
@@ -645,34 +664,130 @@ export default function TodoApp() {
   }
 
   /**
-   * 外部聊天导回的“替换”保留原行为 id、顺序和派生关系，只更新这条行为本身。
-   * 语义已经变了，旧的影响力/可行性不能继续冒充有效评分，所以一并清空。
+   * 外部聊天的关键结果与行为要一次落库：先为结果确定真实 id，再解析行为归属。
+   * 这样行为可以直接引用同一批新建/改写后的结果，且整批只生成一个撤回快照。
    */
-  function replaceBehaviors(
-    items: Array<{ id: string; text: string; type: BehaviorType; resultId?: string }>,
+  function applyAIHandoffImport(
+    aspirationId: string,
+    resultChanges: AIResultImportApply[],
+    behaviorChanges: AIBehaviorImportApply[],
   ) {
-    if (items.length === 0) return;
-    snapshotLab();
-    items.forEach((item) => renameDerived(item.id, item.text));
-    const byId = new Map(items.map((item) => [item.id, item]));
-    setBehaviorCards((prev) =>
-      prev.map((behavior) => {
-        const replacement = byId.get(behavior.id);
-        if (!replacement) return behavior;
-        return {
-          ...behavior,
-          text: replacement.text,
-          type: replacement.type,
-          typeSource: replacement.type === "unsorted" ? undefined : "ai",
-          resultId: replacement.resultId || undefined,
-          impact: undefined,
-          feasibility: undefined,
-          reason: undefined,
-          blocker: undefined,
-          hasDecision: undefined,
-        };
-      }),
+    if (resultChanges.length === 0 && behaviorChanges.length === 0) return;
+    const replacingBehaviorIds = new Set(
+      behaviorChanges
+        .filter((change) => change.operation === "replace" && change.replaceId)
+        .map((change) => change.replaceId as string),
     );
+    const touchedTaskIds = new Set(
+      behaviorCards
+        .filter((card) => replacingBehaviorIds.has(card.id) && card.taskId)
+        .map((card) => card.taskId as string),
+    );
+    snapshotLab(
+      tasks.filter((task) => touchedTaskIds.has(task.id) && task.status !== "done"),
+      habits.filter((habit) => habit.behaviorId && replacingBehaviorIds.has(habit.behaviorId)),
+    );
+
+    const existingResultIds = new Set(
+      goalResults
+        .filter((result) => result.aspirationId === aspirationId)
+        .map((result) => result.id),
+    );
+    const resultIdByClient = new Map<string, string>();
+    const resultUpdates = new Map<string, { title: string; evidence?: string }>();
+    const now = Date.now();
+    const createdResults: GoalResult[] = [];
+
+    resultChanges.forEach((change, index) => {
+      if (change.operation === "replace" && change.replaceId && existingResultIds.has(change.replaceId)) {
+        resultIdByClient.set(change.clientId, change.replaceId);
+        resultUpdates.set(change.replaceId, {
+          title: change.title.trim(),
+          evidence: change.evidence?.trim() || undefined,
+        });
+        return;
+      }
+      if (change.operation !== "add") return;
+      const id = `gr-${now}-${index}-${Math.random().toString(36).slice(2, 7)}`;
+      resultIdByClient.set(change.clientId, id);
+      createdResults.push({
+        id,
+        aspirationId,
+        title: change.title.trim(),
+        evidence: change.evidence?.trim() || undefined,
+        createdAt: now + index,
+      });
+    });
+
+    if (resultUpdates.size > 0 || createdResults.length > 0) {
+      setGoalResults((prev) => [
+        ...prev.map((result) => {
+          const update = resultUpdates.get(result.id);
+          return update ? { ...result, ...update } : result;
+        }),
+        ...createdResults,
+      ]);
+    }
+
+    const sourceCards = behaviorCards.filter((card) => card.aspirationId === aspirationId);
+    const validCardIds = new Set(sourceCards.map((card) => card.id));
+    const resolveResultId = (change: AIBehaviorImportApply) => {
+      if (change.resultImportClientId) {
+        return resultIdByClient.get(change.resultImportClientId);
+      }
+      return change.resultId && existingResultIds.has(change.resultId)
+        ? change.resultId
+        : undefined;
+    };
+    const behaviorUpdates = new Map<
+      string,
+      { text: string; type: BehaviorType; resultId?: string }
+    >();
+    const createdCards: BehaviorCard[] = [];
+
+    behaviorChanges.forEach((change, index) => {
+      const resultId = resolveResultId(change);
+      if (change.operation === "replace" && change.replaceId && validCardIds.has(change.replaceId)) {
+        behaviorUpdates.set(change.replaceId, {
+          text: change.text.trim(),
+          type: change.type,
+          resultId,
+        });
+        return;
+      }
+      if (change.operation !== "add") return;
+      createdCards.push({
+        id: `b-${now}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+        aspirationId,
+        resultId,
+        text: change.text.trim(),
+        type: change.type,
+        typeSource: change.type === "unsorted" ? undefined : "ai",
+        createdAt: now + index,
+      });
+    });
+
+    behaviorUpdates.forEach((update, id) => renameDerived(id, update.text));
+    if (behaviorUpdates.size > 0 || createdCards.length > 0) {
+      setBehaviorCards((prev) => [
+        ...prev.map((behavior) => {
+          const update = behaviorUpdates.get(behavior.id);
+          if (!update) return behavior;
+          return {
+            ...behavior,
+            ...update,
+            typeSource: update.type === "unsorted" ? undefined : "ai" as const,
+            resultId: update.resultId,
+            impact: undefined,
+            feasibility: undefined,
+            reason: undefined,
+            blocker: undefined,
+            hasDecision: undefined,
+          };
+        }),
+        ...createdCards,
+      ]);
+    }
   }
 
   // 批量判定结果写回；用户手动改判过的不动
@@ -979,7 +1094,7 @@ export default function TodoApp() {
           onAssignBehaviorResult={assignBehaviorResult}
           onApplyGoalResultStructure={applyGoalResultStructure}
           onAddBehaviors={addBehaviors}
-          onReplaceBehaviors={replaceBehaviors}
+          onApplyAIImport={applyAIHandoffImport}
           onApplyJudgements={applyJudgements}
           onSetBehaviorType={setBehaviorType}
           onShrinkBehavior={shrinkBehavior}
