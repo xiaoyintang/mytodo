@@ -53,6 +53,9 @@ type Props = {
     items: Array<{ text: string; type?: BehaviorType; resultId?: string }>,
     resultId?: string,
   ) => void;
+  onReplaceBehaviors: (
+    items: Array<{ id: string; text: string; type: BehaviorType; resultId?: string }>,
+  ) => void;
   onApplyJudgements: (results: Judgement[]) => void;
   onSetBehaviorType: (id: string, type: BehaviorType) => void;
   onShrinkBehavior: (id: string, text: string) => void;
@@ -89,6 +92,7 @@ export default function GoalsView({
   onAssignBehaviorResult,
   onApplyGoalResultStructure,
   onAddBehaviors,
+  onReplaceBehaviors,
   onApplyJudgements,
   onSetBehaviorType,
   onShrinkBehavior,
@@ -383,6 +387,7 @@ export default function GoalsView({
               onDelete={onDeleteBehavior}
               onReplaceText={onShrinkBehavior}
               onAddExtra={(items) => onAddBehaviors(open.id, items, selectedResult?.id)}
+              onReplaceExtra={onReplaceBehaviors}
               onAdd={(text) => onAddBehaviors(open.id, [{ text }], selectedResult?.id)}
               onEditText={onEditBehaviorText}
               onSetType={onSetBehaviorType}

@@ -14,6 +14,7 @@ import { TYPE_LABEL, TYPE_STYLE, goldenScore, isGolden, isRepeatable, needsBreak
 import {
   buildAIHandoffPrompt,
   IMPORT_TYPE_OPTIONS,
+  matchBehaviorCard,
   matchGoalResult,
   normalizeBehaviorText,
   parseAIBehaviorImport,
@@ -53,8 +54,11 @@ type ImportCandidate = AIImportDraft & {
   id: string;
   checked: boolean;
   duplicate: boolean;
+  unchanged: boolean;
+  replaceId?: string;
   resultId?: string;
   unmatchedResult?: string;
+  unmatchedReplacement?: string;
 };
 
 type Props = {
@@ -73,6 +77,9 @@ type Props = {
   onDelete: (id: string) => void;
   onReplaceText: (id: string, text: string) => void;
   onAddExtra: (items: Array<{ text: string; type: BehaviorType; resultId?: string }>) => void;
+  onReplaceExtra: (
+    items: Array<{ id: string; text: string; type: BehaviorType; resultId?: string }>,
+  ) => void;
   onAddHabit: (card: BehaviorCard) => void;
   onRemoveHabit: (behaviorId: string) => void;
   onSchedule: (cardId: string, title: string, date: ISODate) => void;
@@ -131,6 +138,7 @@ export default function FocusMapView({
   onDelete,
   onReplaceText,
   onAddExtra,
+  onReplaceExtra,
   onAddHabit,
   onRemoveHabit,
   onSchedule,
@@ -271,19 +279,46 @@ export default function FocusMapView({
       return;
     }
 
-    const existing = new Set((allCards ?? cards).map((card) => normalizeBehaviorText(card.text)));
+    const sourceCards = allCards ?? cards;
+    const existing = new Set(sourceCards.map((card) => normalizeBehaviorText(card.text)));
     const now = Date.now();
     setImportItems(
       drafts.map((draft, index) => {
+        const matchedReplacement = draft.operation === "replace"
+          ? matchBehaviorCard(draft.replacesText, sourceCards)
+          : undefined;
         const matchedResult = matchGoalResult(draft.resultTitle, resultOptions);
-        const duplicate = existing.has(normalizeBehaviorText(draft.text));
+        const sameTextCard = sourceCards.find(
+          (card) => normalizeBehaviorText(card.text) === normalizeBehaviorText(draft.text),
+        );
+        const unchanged = Boolean(
+          matchedReplacement && sameTextCard?.id === matchedReplacement.id,
+        );
+        const duplicate = draft.operation === "add"
+          ? existing.has(normalizeBehaviorText(draft.text))
+          : Boolean(sameTextCard && sameTextCard.id !== matchedReplacement?.id);
+        const canApply = draft.operation === "add"
+          ? !duplicate
+          : Boolean(matchedReplacement) && !duplicate && !unchanged;
         return {
           ...draft,
           id: `import-${now}-${index}`,
-          checked: !duplicate,
+          checked: canApply,
           duplicate,
-          resultId: matchedResult?.id ?? defaultResultId,
+          unchanged,
+          replaceId: matchedReplacement?.id,
+          type:
+            draft.operation === "replace" && draft.type === "unsorted" && matchedReplacement
+              ? matchedReplacement.type
+              : draft.type,
+          resultId:
+            matchedResult?.id ??
+            (draft.operation === "replace" ? matchedReplacement?.resultId : defaultResultId),
           unmatchedResult: draft.resultTitle && !matchedResult ? draft.resultTitle : undefined,
+          unmatchedReplacement:
+            draft.operation === "replace" && draft.replacesText && !matchedReplacement
+              ? draft.replacesText
+              : undefined,
         };
       }),
     );
@@ -295,21 +330,100 @@ export default function FocusMapView({
     setImportItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)));
   }
 
+  function importTextStatus(
+    operation: ImportCandidate["operation"],
+    text: string,
+    replaceId?: string,
+  ) {
+    const sourceCards = allCards ?? cards;
+    const normalized = normalizeBehaviorText(text);
+    const target = replaceId ? sourceCards.find((card) => card.id === replaceId) : undefined;
+    const sameTextCard = sourceCards.find(
+      (card) => normalizeBehaviorText(card.text) === normalized,
+    );
+    return {
+      unchanged: Boolean(target && normalizeBehaviorText(target.text) === normalized),
+      duplicate:
+        operation === "add"
+          ? Boolean(sameTextCard)
+          : Boolean(sameTextCard && sameTextCard.id !== replaceId),
+    };
+  }
+
+  function changeImportOperation(item: ImportCandidate, operation: ImportCandidate["operation"]) {
+    const status = importTextStatus(operation, item.text);
+    updateImportItem(item.id, {
+      operation,
+      replaceId: undefined,
+      replacesText: undefined,
+      unmatchedReplacement: undefined,
+      ...status,
+      checked: operation === "add" && !status.duplicate,
+    });
+  }
+
+  function changeImportTarget(item: ImportCandidate, replaceId?: string) {
+    const target = (allCards ?? cards).find((card) => card.id === replaceId);
+    const requestedResult = matchGoalResult(item.resultTitle, resultOptions);
+    const status = importTextStatus("replace", item.text, replaceId);
+    updateImportItem(item.id, {
+      replaceId,
+      replacesText: target?.text,
+      unmatchedReplacement: undefined,
+      type: item.type === "unsorted" && target ? target.type : item.type,
+      resultId: requestedResult?.id ?? target?.resultId,
+      ...status,
+      checked: Boolean(target) && !status.duplicate && !status.unchanged,
+    });
+  }
+
+  function changeImportText(item: ImportCandidate, text: string) {
+    const status = importTextStatus(item.operation, text, item.replaceId);
+    updateImportItem(item.id, { text, ...status });
+  }
+
+  function importItemReady(item: ImportCandidate) {
+    return Boolean(
+      item.checked &&
+      item.text.trim() &&
+      (item.operation === "add" || item.replaceId),
+    );
+  }
+
   function confirmImport() {
-    const chosen = importItems.filter((item) => item.checked && item.text.trim());
+    const chosen = importItems.filter(importItemReady);
     if (chosen.length === 0) return;
-    onAddExtra(
-      chosen.map((item) => ({
+    const additions = chosen.filter((item) => item.operation === "add");
+    const replacements = chosen.filter(
+      (item): item is ImportCandidate & { replaceId: string } =>
+        item.operation === "replace" && Boolean(item.replaceId),
+    );
+    if (additions.length > 0) {
+      onAddExtra(additions.map((item) => ({
         text: item.text.trim(),
         type: item.type,
         resultId: item.resultId,
-      })),
-    );
+      })));
+    }
+    if (replacements.length > 0) {
+      onReplaceExtra(replacements.map((item) => ({
+        id: item.replaceId,
+        text: item.text.trim(),
+        type: item.type,
+        resultId: item.resultId,
+      })));
+    }
     setBridgeOpen(false);
     setImportText("");
     setImportItems([]);
     setImportError(null);
-    setBridgeNotice(`已带回 ${chosen.length} 条行为；评分仍留给你自己判断`);
+    const parts = [
+      additions.length > 0 ? `新增 ${additions.length} 条` : "",
+      replacements.length > 0 ? `替换 ${replacements.length} 条` : "",
+    ].filter(Boolean);
+    setBridgeNotice(
+      `已${parts.join("、")}；替换项沿用原位置，旧评分已清空`,
+    );
   }
 
   function saveEdit(id: string) {
@@ -911,7 +1025,7 @@ export default function FocusMapView({
           <div className="min-w-[150px] flex-1">
             <p className="text-[11px] font-semibold text-[var(--color-text-primary)]">需要聊一聊，才想得出行为？</p>
             <p className="mt-0.5 text-[9px] leading-3.5 text-[var(--color-text-tertiary)]">
-              把目标、关键结果和已有行为带去任意聊天 AI，聊完再粘贴回来。
+              把完整上下文带去任意聊天 AI，聊完可新增，也可替换原行为。
             </p>
           </div>
           <button
@@ -957,7 +1071,7 @@ export default function FocusMapView({
             />
             <div className="flex items-center justify-between gap-2">
               <span className="text-[9px] leading-3.5 text-[var(--color-text-tertiary)]">
-                只读取列表，不会把整段聊天直接写进焦点地图。
+                只读取变更清单；替换必须选中原行为，AI 不会直接覆盖。
               </span>
               <button
                 type="button"
@@ -979,12 +1093,18 @@ export default function FocusMapView({
               <div className="flex w-full flex-col gap-1.5">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-semibold text-[var(--color-text-secondary)]">
-                    识别出 {importItems.length} 条，确认后才导入
+                    识别出 {importItems.length} 条变更，确认后才生效
                   </span>
                   <button
                     type="button"
                     onClick={() =>
-                      setImportItems((prev) => prev.map((item) => ({ ...item, checked: !item.duplicate })))
+                      setImportItems((prev) => prev.map((item) => ({
+                        ...item,
+                        checked:
+                          !item.duplicate &&
+                          !item.unchanged &&
+                          (item.operation === "add" || Boolean(item.replaceId)),
+                      })))
                     }
                     className="text-[9px] font-medium text-[var(--color-primary)]"
                   >
@@ -1005,14 +1125,45 @@ export default function FocusMapView({
                       checked={item.checked}
                       onChange={(event) => updateImportItem(item.id, { checked: event.target.checked })}
                       className="mt-1 h-3.5 w-3.5 flex-shrink-0 accent-[var(--color-primary)]"
-                      aria-label={`选择导入「${item.text}」`}
+                      aria-label={`选择应用「${item.text}」`}
                     />
                     <div className="min-w-0 flex-1">
+                      <div className="mb-1.5 flex w-full flex-wrap items-center gap-1.5">
+                        <select
+                          value={item.operation}
+                          onChange={(event) =>
+                            changeImportOperation(
+                              item,
+                              event.target.value as ImportCandidate["operation"],
+                            )
+                          }
+                          className="rounded-md bg-[var(--color-primary-light)] px-1.5 py-1 text-[9px] font-semibold text-[var(--color-primary)] outline-none"
+                          aria-label={`「${item.text}」的变更方式`}
+                        >
+                          <option value="add">新增</option>
+                          <option value="replace">替换</option>
+                        </select>
+                        {item.operation === "replace" && (
+                          <select
+                            value={item.replaceId ?? ""}
+                            onChange={(event) =>
+                              changeImportTarget(item, event.target.value || undefined)
+                            }
+                            className="min-w-0 max-w-full flex-1 rounded-md bg-[#FFF7ED] px-1.5 py-1 text-[9px] font-medium text-[#C2410C] outline-none"
+                            aria-label={`选择「${item.text}」要替换的原行为`}
+                          >
+                            <option value="">选择要替换的原行为…</option>
+                            {(allCards ?? cards).map((card) => (
+                              <option key={card.id} value={card.id}>{card.text}</option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
                       <input
                         value={item.text}
-                        onChange={(event) => updateImportItem(item.id, { text: event.target.value })}
+                        onChange={(event) => changeImportText(item, event.target.value)}
                         className="w-full bg-transparent text-[11px] font-medium text-[var(--color-text-primary)] outline-none"
-                        aria-label="导入的行为文字"
+                        aria-label="变更后的行为文字"
                       />
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         <select
@@ -1033,6 +1184,7 @@ export default function FocusMapView({
                             onChange={(event) =>
                               updateImportItem(item.id, {
                                 resultId: event.target.value || undefined,
+                                resultTitle: undefined,
                                 unmatchedResult: undefined,
                               })
                             }
@@ -1047,7 +1199,26 @@ export default function FocusMapView({
                         )}
                         {item.duplicate && (
                           <span className="rounded bg-[#FFF7ED] px-1.5 py-0.5 text-[8px] font-medium text-[#C2410C]">
-                            已有相同行为，默认不选
+                            {item.operation === "add"
+                              ? "已有相同行为，默认不选"
+                              : "变更后会与另一条行为重复，默认不选"}
+                          </span>
+                        )}
+                        {item.unchanged && (
+                          <span className="rounded bg-[var(--color-bg-gray-light)] px-1.5 py-0.5 text-[8px] font-medium text-[var(--color-text-secondary)]">
+                            替换前后相同，无需应用
+                          </span>
+                        )}
+                        {item.operation === "replace" && !item.replaceId && (
+                          <span className="text-[8px] font-medium text-[#C2410C]">
+                            {item.unmatchedReplacement
+                              ? `没找到 AI 写的原行为「${item.unmatchedReplacement}」，请手动选择`
+                              : "请选择要替换的原行为"}
+                          </span>
+                        )}
+                        {item.operation === "replace" && item.replaceId && !item.unchanged && (
+                          <span className="text-[8px] text-[var(--color-primary)]">
+                            保留原位置与关联 · 清空旧评分
                           </span>
                         )}
                         {item.unmatchedResult && (
@@ -1075,10 +1246,10 @@ export default function FocusMapView({
                   <button
                     type="button"
                     onClick={confirmImport}
-                    disabled={!importItems.some((item) => item.checked && item.text.trim())}
+                    disabled={!importItems.some(importItemReady)}
                     className="rounded-lg bg-[var(--color-primary)] px-3 py-1.5 text-[10px] font-semibold text-white transition-colors hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    导入 {importItems.filter((item) => item.checked && item.text.trim()).length} 条
+                    应用 {importItems.filter(importItemReady).length} 条
                   </button>
                 </div>
               </div>

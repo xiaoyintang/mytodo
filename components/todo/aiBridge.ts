@@ -5,6 +5,9 @@ export type AIImportDraft = {
   text: string;
   type: BehaviorType;
   resultTitle?: string;
+  operation: "add" | "replace";
+  /** 替换时必须指向已有行为；保留原文是为了让用户核对，而不是让 AI 直接覆盖。 */
+  replacesText?: string;
 };
 
 const ACTION_TYPES: BehaviorType[] = ["unsorted", "onetime", "habit", "stop"];
@@ -15,6 +18,10 @@ function parseType(value: unknown): BehaviorType {
   if (/停止|戒掉|减少|不再|stop/.test(raw)) return "stop";
   if (/重复|习惯|每天|每周|habit|repeat/.test(raw)) return "habit";
   return "unsorted";
+}
+
+function parseOperation(value: unknown): "add" | "replace" {
+  return /替换|更新|改写|replace|update/i.test(String(value ?? "")) ? "replace" : "add";
 }
 
 function cleanText(value: unknown) {
@@ -44,7 +51,7 @@ function parseJson(raw: string): AIImportDraft[] {
         .map((entry): AIImportDraft | null => {
           if (typeof entry === "string") {
             const text = cleanText(entry);
-            return text ? { text, type: "unsorted" } : null;
+            return text ? { text, type: "unsorted", operation: "add" } : null;
           }
           if (!entry || typeof entry !== "object") return null;
           const item = entry as Record<string, unknown>;
@@ -53,10 +60,18 @@ function parseJson(raw: string): AIImportDraft[] {
           const resultTitle = cleanText(
             item.resultTitle ?? item.result ?? item.keyResult ?? item.kr,
           );
+          const replacesText = cleanText(
+            item.replacesText ?? item.originalText ?? item.original ?? item.oldText ?? item.replaces,
+          );
+          const operation = replacesText
+            ? "replace"
+            : parseOperation(item.operation ?? item.mode ?? item.changeType);
           return {
             text,
             type: parseType(item.type ?? item.kind),
+            operation,
             ...(resultTitle ? { resultTitle } : {}),
+            ...(replacesText ? { replacesText } : {}),
           };
         })
         .filter((item): item is AIImportDraft => item !== null);
@@ -81,6 +96,21 @@ function stripInlineMetadata(value: string, inheritedResult?: string): AIImportD
     text = text.slice(0, resultMatch.index).trim();
   }
 
+  const operationTag = text.match(/^[【[]\s*(新增|替换|add|replace)\s*[\]】]\s*/i);
+  const operation = parseOperation(operationTag?.[1]);
+  if (operationTag) text = text.slice(operationTag[0].length).trim();
+
+  let replacesText: string | undefined;
+  if (operation === "replace") {
+    const replacement = text.match(
+      /^(?:原行为|原|替换)\s*[:：]\s*(.+?)\s*(?:=>|->|→|⟶|改为|替换为)\s*(?:新行为\s*[:：]\s*)?(.+)$/i,
+    ) ?? text.match(/^(.+?)\s*(?:=>|->|→|⟶|改为|替换为)\s*(.+)$/i);
+    if (replacement) {
+      replacesText = cleanText(replacement[1]);
+      text = replacement[2].trim();
+    }
+  }
+
   const typeTag = text.match(/^[【[]\s*([^\]】]+)\s*[\]】]\s*/);
   const typeMeta = text.match(/(?:\||｜|；|;|—)\s*类型\s*[:：]\s*([^|｜；;]+)\s*$/i);
   const type = parseType(typeTag?.[1] ?? typeMeta?.[1]);
@@ -89,7 +119,13 @@ function stripInlineMetadata(value: string, inheritedResult?: string): AIImportD
 
   text = cleanText(text);
   if (text.length < 2 || text.length > 160) return null;
-  return { text, type, ...(resultTitle ? { resultTitle } : {}) };
+  return {
+    text,
+    type,
+    operation,
+    ...(resultTitle ? { resultTitle } : {}),
+    ...(replacesText ? { replacesText } : {}),
+  };
 }
 
 export function parseAIBehaviorImport(raw: string): AIImportDraft[] {
@@ -138,10 +174,27 @@ export function parseAIBehaviorImport(raw: string): AIImportDraft[] {
 function uniqueDrafts(items: AIImportDraft[]) {
   const seen = new Set<string>();
   return items.filter((item) => {
-    const key = normalizeBehaviorText(item.text);
-    if (!key || seen.has(key)) return false;
+    const normalizedText = normalizeBehaviorText(item.text);
+    if (!normalizedText) return false;
+    const key = [
+      item.operation,
+      normalizeBehaviorText(item.replacesText ?? ""),
+      normalizedText,
+    ].join(":");
+    if (seen.has(key)) return false;
     seen.add(key);
     return true;
+  });
+}
+
+export function matchBehaviorCard(title: string | undefined, cards: BehaviorCard[]) {
+  if (!title) return undefined;
+  const needle = normalizeBehaviorText(title);
+  const exact = cards.find((card) => normalizeBehaviorText(card.text) === needle);
+  if (exact || needle.length < 4) return exact;
+  return cards.find((card) => {
+    const candidate = normalizeBehaviorText(card.text);
+    return candidate.includes(needle) || needle.includes(candidate);
   });
 }
 
@@ -201,12 +254,13 @@ ${cardLines.join("\n")}
 4. 可以说明它为什么可能有效、可行性取决于什么，但不要替我生成精确的 0～100 分。影响力和“我能不能做到”最终由我自己判断。
 5. 避免重复上面的已有行为。
 
-讨论结束后，请把最终候选严格放在下面这个区块中，方便我导回 App：
+讨论结束后，请把最终变更严格放在下面这个区块中，方便我导回 App。新增行为标为「新增」；如果是在改写已有行为，必须标为「替换」，并逐字引用上方已有行为的原文：
 
 ## 可导入行为
-- [可重复] 行为内容 | 关键结果：对应的关键结果原文
-- [一次性] 行为内容 | 关键结果：对应的关键结果原文
-- [停止] 要减少或停止的行为 | 关键结果：对应的关键结果原文
+- [新增] [可重复] 行为内容 | 关键结果：对应的关键结果原文
+- [新增] [一次性] 行为内容 | 关键结果：对应的关键结果原文
+- [替换] 原行为：已有行为原文 → [可重复] 改写后的行为 | 关键结果：对应的关键结果原文
+- [替换] 原行为：已有行为原文 → [停止] 改写后的行为 | 关键结果：对应的关键结果原文
 
 如果某条暂时无法归属关键结果，也可以省略“| 关键结果：…”；不要在这个区块里放解释性段落。`;
 }

@@ -644,6 +644,37 @@ export default function TodoApp() {
     setBehaviorCards((prev) => [...prev, ...cards]);
   }
 
+  /**
+   * 外部聊天导回的“替换”保留原行为 id、顺序和派生关系，只更新这条行为本身。
+   * 语义已经变了，旧的影响力/可行性不能继续冒充有效评分，所以一并清空。
+   */
+  function replaceBehaviors(
+    items: Array<{ id: string; text: string; type: BehaviorType; resultId?: string }>,
+  ) {
+    if (items.length === 0) return;
+    snapshotLab();
+    items.forEach((item) => renameDerived(item.id, item.text));
+    const byId = new Map(items.map((item) => [item.id, item]));
+    setBehaviorCards((prev) =>
+      prev.map((behavior) => {
+        const replacement = byId.get(behavior.id);
+        if (!replacement) return behavior;
+        return {
+          ...behavior,
+          text: replacement.text,
+          type: replacement.type,
+          typeSource: replacement.type === "unsorted" ? undefined : "ai",
+          resultId: replacement.resultId || undefined,
+          impact: undefined,
+          feasibility: undefined,
+          reason: undefined,
+          blocker: undefined,
+          hasDecision: undefined,
+        };
+      }),
+    );
+  }
+
   // 批量判定结果写回；用户手动改判过的不动
   function applyJudgements(
     results: Array<{
@@ -948,6 +979,7 @@ export default function TodoApp() {
           onAssignBehaviorResult={assignBehaviorResult}
           onApplyGoalResultStructure={applyGoalResultStructure}
           onAddBehaviors={addBehaviors}
+          onReplaceBehaviors={replaceBehaviors}
           onApplyJudgements={applyJudgements}
           onSetBehaviorType={setBehaviorType}
           onShrinkBehavior={shrinkBehavior}
