@@ -182,6 +182,9 @@ export default function TaskBottomSheet({
   const [draggingSubId, setDraggingSubId] = useState<string | null>(null);
   const [stepDropPlacement, setStepDropPlacement] = useState<StepDropPlacement | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const timeEditorRef = useRef<HTMLDivElement>(null);
+  const editStartTimeRef = useRef("");
+  const editEndTimeRef = useRef("");
   const clarifyRequestRef = useRef(0);
   const stepDragRef = useRef<{ sourceId: string; placement: StepDropPlacement | null } | null>(null);
 
@@ -192,6 +195,8 @@ export default function TaskBottomSheet({
       setPickerWeekStart(startOfWeek(parseISODate(task.date), true));
       setEditStartTime(task.startTime || "");
       setEditEndTime(task.endTime || "");
+      editStartTimeRef.current = task.startTime || "";
+      editEndTimeRef.current = task.endTime || "";
     }
     setIsEditing(false);
     setIsEditingDate(false);
@@ -219,6 +224,24 @@ export default function TaskBottomSheet({
       inputRef.current.select();
     }
   }, [isEditing]);
+
+  // 时间面板打开后，点面板外的空白处就保存并收起。
+  // 用 click 而不是 mousedown：如果按下时就收起，下面的按钮会移动到光标下，
+  // mouseup 可能形成一次“穿透点击”。完整点击结束后再保存就不会误触。
+  useEffect(() => {
+    if (!isEditingTime || !task) return;
+    function handleOutside(e: MouseEvent) {
+      if (timeEditorRef.current?.contains(e.target as Node)) return;
+      const taskId = task!.id;
+      onUpdate(taskId, {
+        startTime: editStartTimeRef.current || undefined,
+        endTime: editEndTimeRef.current || undefined,
+      });
+      setIsEditingTime(false);
+    }
+    document.addEventListener("click", handleOutside);
+    return () => document.removeEventListener("click", handleOutside);
+  }, [isEditingTime, task, onUpdate]);
 
   if (!isOpen || !task) return null;
 
@@ -270,9 +293,29 @@ export default function TaskBottomSheet({
   function handleSaveTime() {
     if (!task) return;
     onUpdate(task.id, {
-      startTime: editStartTime || undefined,
-      endTime: editEndTime || undefined,
+      startTime: editStartTimeRef.current || undefined,
+      endTime: editEndTimeRef.current || undefined,
     });
+    setIsEditingTime(false);
+  }
+
+  function updateStartTime(value: string) {
+    editStartTimeRef.current = value;
+    setEditStartTime(value);
+  }
+
+  function updateEndTime(value: string) {
+    editEndTimeRef.current = value;
+    setEditEndTime(value);
+  }
+
+  function cancelTimeEdit() {
+    const start = task?.startTime || "";
+    const end = task?.endTime || "";
+    editStartTimeRef.current = start;
+    editEndTimeRef.current = end;
+    setEditStartTime(start);
+    setEditEndTime(end);
     setIsEditingTime(false);
   }
 
@@ -473,47 +516,57 @@ export default function TaskBottomSheet({
 
             {/* Time Picker */}
             {isEditingTime && (
-              <div className="mt-3 p-3 border border-[var(--color-border)] rounded-[10px] bg-[var(--color-bg-gray-lighter)]">
+              <div
+                ref={timeEditorRef}
+                className="mt-3 p-3 border border-[var(--color-border)] rounded-[10px] bg-[var(--color-bg-gray-lighter)]"
+                onClick={(event) => {
+                  const target = event.target as HTMLElement;
+                  // 灰色面板自身的空白也算保存；时间输入器和按钮保持正常交互。
+                  if (target.closest("[data-time-picker], button, input")) return;
+                  handleSaveTime();
+                }}
+              >
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="flex-1">
+                  <div className="min-w-0 flex-1">
                     <label className="text-[12px] text-[var(--color-text-tertiary)] mb-1 block">开始时间</label>
                     <TimePicker
                       value={editStartTime}
-                      onChange={setEditStartTime}
+                      onChange={updateStartTime}
                       placeholder="开始"
                       label="选择开始时间"
                     />
                   </div>
                   <span className="text-[var(--color-text-tertiary)] mt-5">—</span>
-                  <div className="flex-1">
+                  <div className="min-w-0 flex-1">
                     <label className="text-[12px] text-[var(--color-text-tertiary)] mb-1 block">结束时间</label>
                     <TimePicker
                       value={editEndTime}
-                      onChange={setEditEndTime}
+                      onChange={updateEndTime}
                       placeholder="结束"
                       label="选择结束时间"
                     />
                   </div>
                 </div>
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditStartTime(task.startTime || "");
-                      setEditEndTime(task.endTime || "");
-                      setIsEditingTime(false);
-                    }}
-                    className="px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] hover:bg-white rounded transition-colors"
-                  >
-                    取消
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveTime}
-                    className="px-3 py-1.5 text-[12px] bg-[var(--color-primary)] text-white rounded hover:bg-[#1d4ed8] transition-colors"
-                  >
-                    确认
-                  </button>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <span className="text-[10px] text-[var(--color-text-tertiary)]">
+                    可直接输入，如 09:30；点空白处自动保存
+                  </span>
+                  <div className="flex flex-shrink-0 items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={cancelTimeEdit}
+                      className="px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] hover:bg-white rounded transition-colors"
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveTime}
+                      className="px-3 py-1.5 text-[12px] bg-[var(--color-primary)] text-white rounded hover:bg-[#1d4ed8] transition-colors"
+                    >
+                      保存
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
