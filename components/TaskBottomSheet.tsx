@@ -125,6 +125,16 @@ type NextActionReview = {
   message?: string;
 };
 
+type TaskFlowReviewState = {
+  taskId: string;
+  state: "ready" | "review" | "error";
+  summary?: string;
+  message?: string;
+  stepReviews: Array<{ stepId: string; issue: string; suggestion: string }>;
+  insertions: Array<{ beforeStepId?: string; title: string; reason: string }>;
+  suggestedOrder?: string[];
+};
+
 type StepDropPlacement = { targetId: string; edge: "before" | "after" };
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
@@ -197,6 +207,8 @@ export default function TaskBottomSheet({
   const [breaking, setBreaking] = useState(false);
   const [clarifyingSubId, setClarifyingSubId] = useState<string | null>(null);
   const [nextActionReview, setNextActionReview] = useState<NextActionReview | null>(null);
+  const [reviewingFlow, setReviewingFlow] = useState(false);
+  const [flowReview, setFlowReview] = useState<TaskFlowReviewState | null>(null);
   const [editingSubId, setEditingSubId] = useState<string | null>(null);
   const [editSubText, setEditSubText] = useState("");
   const [draggingSubId, setDraggingSubId] = useState<string | null>(null);
@@ -239,6 +251,11 @@ export default function TaskBottomSheet({
     stepDragRef.current = null;
     clarifyRequestRef.current += 1;
   }, [task]);
+
+  useEffect(() => {
+    setReviewingFlow(false);
+    setFlowReview(null);
+  }, [task?.id]);
 
   // 从任务列表直接点目标名进来时，如果来源不足以判断关键结果，
   // 立即把唯一需要补的信息放到眼前；选过一次后不再打扰。
@@ -747,6 +764,8 @@ export default function TaskBottomSheet({
           {/* 成果可以作为父任务，但执行现场要明确当前下一步。 */}
           {(() => {
             const taskId = task.id;
+            const taskTitle = task.title;
+            const taskAspirationId = task.aspirationId;
             const subs = task.subtasks ?? [];
             const doneN = subs.filter((x) => x.done).length;
             const openSubs = subs.filter((x) => !x.done);
@@ -758,6 +777,69 @@ export default function TaskBottomSheet({
               clarifyRequestRef.current += 1;
               setClarifyingSubId(null);
               setNextActionReview(null);
+            }
+
+            async function reviewWholeFlow() {
+              if (subs.length === 0) return;
+              const reviewingTaskId = taskId;
+              setReviewingFlow(true);
+              setFlowReview(null);
+              const goal = aspirations.find((a) => a.id === taskAspirationId)?.title;
+              const res = await callBehaviorAPI({
+                mode: "review-task-flow",
+                parentTask: taskTitle,
+                goal,
+                result: selectedTaskResult?.title,
+                steps: subs.map((step) => ({ id: step.id, text: step.title, done: step.done })),
+              });
+              setReviewingFlow(false);
+
+              if (!res.ok) {
+                setFlowReview({
+                  taskId: reviewingTaskId,
+                  state: "error",
+                  message: res.noKey ? "还没有配置 AI，现有流程不会受影响" : "AI 暂时没响应，稍后再试",
+                  stepReviews: [],
+                  insertions: [],
+                });
+                return;
+              }
+
+              const stepReviews = Array.isArray(res.data.stepReviews)
+                ? res.data.stepReviews
+                    .map((entry) => {
+                      const item = entry as Record<string, unknown>;
+                      return {
+                        stepId: String(item.stepId ?? ""),
+                        issue: String(item.issue ?? "").trim(),
+                        suggestion: String(item.suggestion ?? "").trim(),
+                      };
+                    })
+                    .filter((item) => item.stepId && item.issue && item.suggestion)
+                : [];
+              const insertions = Array.isArray(res.data.insertions)
+                ? res.data.insertions
+                    .map((entry) => {
+                      const item = entry as Record<string, unknown>;
+                      return {
+                        beforeStepId: String(item.beforeStepId ?? "") || undefined,
+                        title: String(item.title ?? "").trim(),
+                        reason: String(item.reason ?? "").trim(),
+                      };
+                    })
+                    .filter((item) => item.title && item.reason)
+                : [];
+              const suggestedOrder = Array.isArray(res.data.suggestedOrder)
+                ? res.data.suggestedOrder.map((id) => String(id ?? "")).filter(Boolean)
+                : undefined;
+              setFlowReview({
+                taskId: reviewingTaskId,
+                state: res.data.ready === true ? "ready" : "review",
+                summary: String(res.data.summary ?? "").trim(),
+                stepReviews,
+                insertions,
+                suggestedOrder,
+              });
             }
 
             function submitInsertBeforeNext() {
@@ -965,7 +1047,7 @@ export default function TaskBottomSheet({
 
             return (
               <div className="mb-4">
-                <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
                   <span className="flex items-center gap-1.5 text-[13px] font-medium text-[var(--color-text-primary)]">
                     <ListChecks className="w-4 h-4 text-[var(--color-primary)]" />
                     行动步骤
@@ -975,10 +1057,22 @@ export default function TaskBottomSheet({
                       </span>
                     )}
                   </span>
-                  <button
-                    type="button"
-                    disabled={breaking}
-                    onClick={async () => {
+                  <div className="flex flex-shrink-0 items-center gap-1.5">
+                    {subs.length > 0 && (
+                      <button
+                        type="button"
+                        disabled={reviewingFlow}
+                        onClick={reviewWholeFlow}
+                        className="flex items-center gap-1 rounded-md border border-[#BFDBFE] bg-white px-2 py-1 text-[10px] font-medium text-[var(--color-primary)] transition-colors hover:bg-[var(--color-primary-light)] disabled:opacity-60"
+                      >
+                        <ListChecks className="h-3 w-3" />
+                        {reviewingFlow ? "检查中…" : "检查整体"}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={breaking}
+                      onClick={async () => {
                       setBreaking(true);
                       const goal = aspirations.find((a) => a.id === task.aspirationId)?.title;
                       const res = await callBehaviorAPI({
@@ -993,11 +1087,12 @@ export default function TaskBottomSheet({
                       // 只拆出它自己一条 = 这任务已经够小，不用加
                       if (titles.length > 1) onAddSubtasks(task.id, titles);
                     }}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-[var(--color-primary-light)] text-[var(--color-primary)] text-[11px] font-medium hover:bg-[#DBEAFE] transition-colors disabled:opacity-60"
-                  >
-                    <Wand2 className="w-3 h-3" />
-                    {breaking ? "拆解中…" : "AI 拆成步骤"}
-                  </button>
+                      className="flex items-center gap-1 rounded-md bg-[var(--color-primary-light)] px-2 py-1 text-[10px] font-medium text-[var(--color-primary)] transition-colors hover:bg-[#DBEAFE] disabled:opacity-60"
+                    >
+                      <Wand2 className="w-3 h-3" />
+                      {breaking ? "拆解中…" : subs.length > 0 ? "重新拆解" : "AI 拆成步骤"}
+                    </button>
+                  </div>
                 </div>
 
                 {subs.length === 0 && (
@@ -1005,6 +1100,103 @@ export default function TaskBottomSheet({
                     标题本身能直接做，就不用拆；如果它表达的是一个成果，先写下现在能做的第一步。
                     不用一次拆完，加一步、做一步也可以。
                   </p>
+                )}
+
+                {flowReview?.taskId === task.id && (
+                  <div
+                    className={[
+                      "mb-2 rounded-lg border px-2.5 py-2",
+                      flowReview.state === "ready"
+                        ? "border-[#BBF7D0] bg-[#F0FDF4]"
+                        : flowReview.state === "error"
+                          ? "border-[var(--color-border)] bg-[var(--color-bg-gray-lighter)]"
+                          : "border-[#BFDBFE] bg-[#F8FBFF]",
+                    ].join(" ")}
+                  >
+                    {flowReview.state === "ready" ? (
+                      <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-[var(--color-text-secondary)]">
+                        <Check className="mt-[1px] h-3.5 w-3.5 flex-shrink-0 text-[var(--color-success)]" strokeWidth={3} />
+                        {flowReview.summary || "整体流程完整，当前下一步可以开始"}
+                      </p>
+                    ) : flowReview.state === "error" ? (
+                      <p className="text-[11px] text-[var(--color-text-tertiary)]">{flowReview.message}</p>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        <div>
+                          <span className="text-[10px] font-semibold text-[var(--color-primary)]">整体判断</span>
+                          <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--color-text-secondary)]">
+                            {flowReview.summary}
+                          </p>
+                        </div>
+
+                        {flowReview.suggestedOrder && (
+                          <div className="rounded-md bg-white px-2 py-1.5">
+                            <span className="text-[9px] font-semibold text-[#B45309]">建议调整顺序</span>
+                            <p className="mt-0.5 text-[10px] leading-relaxed text-[var(--color-text-secondary)]">
+                              {flowReview.suggestedOrder
+                                .map((id, index) => `${index + 1}. ${subs.find((step) => step.id === id)?.title ?? ""}`)
+                                .filter((label) => !label.endsWith(". "))
+                                .join(" → ")}
+                            </p>
+                            <p className="mt-0.5 text-[9px] text-[var(--color-text-tertiary)]">确认后可用右侧拖动柄调整</p>
+                          </div>
+                        )}
+
+                        {flowReview.stepReviews.map((item) => {
+                          const source = subs.find((step) => step.id === item.stepId);
+                          if (!source) return null;
+                          const adopted = source.title === item.suggestion;
+                          return (
+                            <div key={item.stepId} className="rounded-md bg-white px-2 py-1.5">
+                              <p className="truncate text-[9px] text-[var(--color-text-tertiary)]" data-full-text={source.title}>
+                                原步骤：{source.title}
+                              </p>
+                              <p className="mt-0.5 text-[10px] text-[var(--color-text-secondary)]">{item.issue}</p>
+                              <div className="mt-1 flex items-start gap-2">
+                                <p className="min-w-0 flex-1 text-[11px] font-medium leading-snug text-[var(--color-text-primary)]">
+                                  {item.suggestion}
+                                </p>
+                                <button
+                                  type="button"
+                                  disabled={adopted}
+                                  onClick={() => onEditSubtask(task.id, item.stepId, item.suggestion)}
+                                  className="flex-shrink-0 rounded-md bg-[var(--color-primary)] px-2 py-1 text-[9px] font-medium text-white disabled:bg-[var(--color-bg-gray-light)] disabled:text-[var(--color-text-tertiary)]"
+                                >
+                                  {adopted ? "已采用" : "采用"}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {flowReview.insertions.map((item, index) => {
+                          const before = item.beforeStepId
+                            ? subs.find((step) => step.id === item.beforeStepId)
+                            : undefined;
+                          const added = subs.some((step) => step.title === item.title);
+                          return (
+                            <div key={`${item.beforeStepId ?? "end"}-${index}`} className="rounded-md border border-dashed border-[#93C5FD] bg-white px-2 py-1.5">
+                              <p className="text-[9px] font-semibold text-[var(--color-primary)]">
+                                建议补一步{before ? ` · 放在「${before.title}」之前` : " · 放在最后"}
+                              </p>
+                              <p className="mt-0.5 text-[10px] text-[var(--color-text-secondary)]">{item.reason}</p>
+                              <div className="mt-1 flex items-start gap-2">
+                                <p className="min-w-0 flex-1 text-[11px] font-medium text-[var(--color-text-primary)]">{item.title}</p>
+                                <button
+                                  type="button"
+                                  disabled={added}
+                                  onClick={() => onAddSubtasks(task.id, [item.title], item.beforeStepId)}
+                                  className="flex-shrink-0 rounded-md border border-[var(--color-primary)] px-2 py-1 text-[9px] font-medium text-[var(--color-primary)] disabled:border-[var(--color-border)] disabled:text-[var(--color-text-tertiary)]"
+                                >
+                                  {added ? "已添加" : "添加"}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 {nextSubtask && (
@@ -1035,7 +1227,11 @@ export default function TaskBottomSheet({
                           const res = await callBehaviorAPI({
                             mode: "clarify-next",
                             text: nextSubtask.title,
-                            parentTask: task.title,
+                            parentTask: taskTitle,
+                            goal: aspirations.find((a) => a.id === taskAspirationId)?.title,
+                            result: selectedTaskResult?.title,
+                            currentStepId: nextSubtask.id,
+                            steps: subs.map((step) => ({ id: step.id, text: step.title, done: step.done })),
                           });
                           if (clarifyRequestRef.current !== requestId) return;
                           setClarifyingSubId((current) => current === reviewingSubtaskId ? null : current);

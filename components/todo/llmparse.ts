@@ -391,9 +391,45 @@ const BREAKDOWN_PROMPT = `把一个任务拆成几个**能直接动手做**的�
 【输出】必须是合法 JSON，不要输出其他内容：
 {"subtasks":["第一步","第二步"]}`;
 
-const CLARIFY_NEXT_ACTION_PROMPT = `你是一个“下一步行动”教练。用户会给你一个父任务和它当前排在最前面的行动步骤。
+const REVIEW_TASK_FLOW_PROMPT = `你是一个“任务流程审查员”。用户会给你目标、关键结果、父任务，以及按顺序排列的全部行动步骤。
+
+你的判断对象是**整条流程**，不是孤立润色某一句。先理解父任务想交付什么、每一步在流程里承担什么作用，再判断是否需要修改。
+
+按顺序检查：
+0. 对齐：父任务和整条流程是否真的推进所选关键结果；如果明显不相关，只指出归属问题，不要硬改步骤来凑
+1. 覆盖：这些步骤合起来能否完成父任务，有没有关键缺口
+2. 顺序：前置依赖是否在前，第一条未完成步骤现在能否开始
+3. 去重：有没有两步其实在做同一件事
+4. 粒度：步骤是否处于相近层级；不要一条写整个项目，另一条只写“打开软件”
+5. 可执行：结合前后文判断每一步是否有动作、对象和完成边界
+6. 可控：不要把“等别人回复、获得批准”当作用户能直接完成的动作
+
+重要约束：
+- 不要为了显得有建议而硬改；流程合理就 ready=true
+- 不要把自然动作拆成点击按钮、移动鼠标等机械操作
+- 不要凭空添加用户没提过的工具、数据、方法或交付要求
+- 短不是问题，但“整理素材、处理文档、准备内容、优化一下”仍是抽象占位词；即使前后文明确，也要补上对象范围或完成边界
+- 例如“发布一期视频”的流程里，“整理素材”应指出整理哪部分、留下什么结果；“点击发布视频”则已有天然终点，不要加废话
+- 如果父任务明显不服务于关键结果，ready=false，summary 说明归属问题，stepReviews 和 insertions 留空
+- ready=true 必须同时满足：任务与关键结果对齐、流程完整、顺序合理、所有未完成步骤都能直接开始且知道何时完成
+- done=true 的步骤是已经发生的历史，只用来理解上下文；不要建议改写或移动已完成步骤
+- 最多提出 4 项变更，优先解决会让人卡住、返工或无法完成父任务的问题
+- stepReviews 只改已有步骤；insertions 只补真正缺失的一步
+- suggestedOrder 只有在依赖顺序确实不合理时才输出，且必须包含全部现有 stepId，不多不少
+- suggestion 和 insertion.title 都要像待办清单里的短动作句，尽量不超过 28 个汉字；一句只承担一个主要动作
+- 具体原因放 issue/reason，不要把解释、方法论和多个并列要求全塞进建议步骤
+
+输出合法 JSON：
+- 流程已经合理：
+{"ready":true,"summary":"一句整体判断","stepReviews":[],"insertions":[]}
+- 需要调整：
+{"ready":false,"summary":"最重要的整体判断","stepReviews":[{"stepId":"原 stepId","issue":"为什么这一步放在整个流程里会卡住","suggestion":"结合上下文改写后的步骤"}],"insertions":[{"beforeStepId":"插在哪一步之前；末尾则省略","title":"建议补充的步骤","reason":"为什么整个流程缺它"}],"suggestedOrder":["step-2","step-1","step-3"]}`;
+
+const CLARIFY_NEXT_ACTION_PROMPT = `你是一个“下一步行动”教练。用户会给你目标、关键结果、父任务、完整行动流程，以及当前排在最前面的未完成步骤。
 
 你的目标不是打分，也不是重新拆完整个任务，而是判断：这句话能不能让人读完后直接开始，并且做完时知道自己已经完成。
+
+必须先看完整流程，理解当前步骤在前后文中的作用。不要因为单独看这句话略短，就重复后续步骤、改变它的职责，或补上流程里已经由别的步骤承担的内容。
 
 按以下顺序检查：
 1. 有具体动作：不是“推进、处理、准备、优化、想一下”这类抽象占位词
@@ -483,6 +519,14 @@ export type NextActionClarification = {
   ready: boolean;
   issue?: string;
   suggestion?: string;
+};
+export type TaskFlowStep = { id: string; text: string; done: boolean };
+export type TaskFlowReview = {
+  ready: boolean;
+  summary: string;
+  stepReviews: Array<{ stepId: string; issue: string; suggestion: string }>;
+  insertions: Array<{ beforeStepId?: string; title: string; reason: string }>;
+  suggestedOrder?: string[];
 };
 export type BehaviorClarification = {
   kind: "ready" | "expand" | "rewrite";
@@ -663,8 +707,21 @@ export async function breakdownTaskWithLLM(
 export async function clarifyNextActionWithLLM(
   text: string,
   parentTask: string,
+  context?: {
+    goal?: string;
+    result?: string;
+    currentStepId?: string;
+    steps?: TaskFlowStep[];
+  },
 ): Promise<NextActionClarification | null> {
-  const user = `父任务：${parentTask}\n当前下一步：${text}`;
+  const user = JSON.stringify({
+    goal: context?.goal,
+    keyResult: context?.result,
+    parentTask,
+    currentStepId: context?.currentStepId,
+    currentNextAction: text,
+    steps: context?.steps ?? [],
+  });
   const parsed = await callLLMJson(CLARIFY_NEXT_ACTION_PROMPT, user, {
     think: true,
     temperature: 0.2,
@@ -679,6 +736,70 @@ export async function clarifyNextActionWithLLM(
   const suggestion = String(raw.suggestion ?? "").trim().slice(0, 60);
   if (!issue || !suggestion) return null;
   return { ready: false, issue, suggestion };
+}
+
+/** 从父任务到全部步骤整体审查；建议保持只读，最终是否应用由用户决定。 */
+export async function reviewTaskFlowWithLLM(
+  parentTask: string,
+  steps: TaskFlowStep[],
+  goal?: string,
+  result?: string,
+): Promise<TaskFlowReview | null> {
+  const parsed = await callLLMJson(
+    REVIEW_TASK_FLOW_PROMPT,
+    JSON.stringify({ goal, keyResult: result, parentTask, steps }),
+    { think: true, temperature: 0.2 },
+  );
+  if (parsed === null || typeof parsed !== "object") return null;
+
+  const raw = parsed as Record<string, unknown>;
+  if (raw.ready !== true && raw.ready !== false) return null;
+  const summary = String(raw.summary ?? "").trim().slice(0, 120);
+  if (!summary) return null;
+
+  const knownIds = new Set(steps.map((step) => step.id));
+  const stepReviews = Array.isArray(raw.stepReviews)
+    ? raw.stepReviews
+        .map((entry) => {
+          const item = entry as Record<string, unknown>;
+          const stepId = String(item.stepId ?? "").trim();
+          const issue = String(item.issue ?? "").trim().slice(0, 80);
+          const suggestion = String(item.suggestion ?? "").trim().slice(0, 80);
+          return knownIds.has(stepId) && issue && suggestion
+            ? { stepId, issue, suggestion }
+            : null;
+        })
+        .filter((item): item is { stepId: string; issue: string; suggestion: string } => item !== null)
+        .slice(0, 4)
+    : [];
+
+  const insertions = Array.isArray(raw.insertions)
+    ? raw.insertions
+        .map((entry) => {
+          const item = entry as Record<string, unknown>;
+          const before = String(item.beforeStepId ?? "").trim();
+          const title = String(item.title ?? "").trim().slice(0, 80);
+          const reason = String(item.reason ?? "").trim().slice(0, 80);
+          if (!title || !reason || (before && !knownIds.has(before))) return null;
+          return { beforeStepId: before || undefined, title, reason };
+        })
+        .filter((item): item is { beforeStepId: string | undefined; title: string; reason: string } => item !== null)
+        .slice(0, 3)
+    : [];
+
+  const order = Array.isArray(raw.suggestedOrder)
+    ? raw.suggestedOrder.map((id) => String(id ?? "").trim())
+    : [];
+  const suggestedOrder =
+    order.length === steps.length &&
+    new Set(order).size === steps.length &&
+    order.every((id) => knownIds.has(id)) &&
+    order.some((id, index) => id !== steps[index]?.id)
+      ? order
+      : undefined;
+
+  const ready = raw.ready === true && stepReviews.length === 0 && insertions.length === 0 && !suggestedOrder;
+  return { ready, summary, stepReviews, insertions, suggestedOrder };
 }
 
 /** 检查候选行为的表达质量；不碰焦点地图的影响力/可行性判断 */

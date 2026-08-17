@@ -8,6 +8,7 @@ import {
   concreteWithLLM,
   hasLLM,
   magicWandWithLLM,
+  reviewTaskFlowWithLLM,
   shrinkWithLLM,
   sortBehaviorsWithLLM,
   structureGoalResultsWithLLM,
@@ -17,7 +18,8 @@ import {
 //   { mode: "sort", items: [{id,text}], goal? } → 批量判定：愿望/成果/一次性/可重复/要戒掉
 //   { mode: "wand", aspiration, existing?, context? } → 魔法棒：发散一批候选行为
 //   { mode: "breakdown", text, goal? } → 把一个任务拆成子步骤（穷尽，不筛选）
-//   { mode: "clarify-next", text, parentTask } → 检查当前下一步，只给一个问题和一个改写
+//   { mode: "review-task-flow", parentTask, steps, goal?, result? } → 结合上下文检查整条任务流程
+//   { mode: "clarify-next", text, parentTask, steps? } → 结合完整流程检查当前下一步
 //   { mode: "clarify-behavior", text, goal, behaviorType? } → 检查焦点地图候选行为的表达
 //   { mode: "structure-results", goal, items } → 从现有行为提议 2-5 条结果路径
 //   { mode: "suggest-results" | "review-results", goal, results } → 从目标生成/检查关键结果
@@ -25,6 +27,22 @@ import {
 // 未配 LLM_API_KEY 一律返回 501，前端各自降级。
 
 const MAX_ITEMS = 40;
+
+function parseTaskFlowSteps(raw: unknown) {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  return raw
+    .map((entry) => {
+      const item = entry as Record<string, unknown>;
+      const id = String(item.id ?? "").trim().slice(0, 100);
+      const text = String(item.text ?? "").trim().slice(0, 200);
+      if (!id || !text || seen.has(id)) return null;
+      seen.add(id);
+      return { id, text, done: item.done === true };
+    })
+    .filter((item): item is { id: string; text: string; done: boolean } => item !== null)
+    .slice(0, 20);
+}
 
 // 开思考的判定要跑十几秒，别让平台在中途掐断
 export const maxDuration = 60;
@@ -124,9 +142,35 @@ export async function POST(req: Request) {
     if (!text) return NextResponse.json({ error: "empty_text" }, { status: 400 });
     const parentTask = String(body.parentTask ?? "").trim().slice(0, 200);
     if (!parentTask) return NextResponse.json({ error: "empty_parent_task" }, { status: 400 });
-    const result = await clarifyNextActionWithLLM(text, parentTask);
-    if (result === null) return NextResponse.json({ error: "llm_error" }, { status: 502 });
-    return NextResponse.json(result);
+    const goal = String(body.goal ?? "").trim().slice(0, 160);
+    const keyResult = String(body.result ?? "").trim().slice(0, 160);
+    const currentStepId = String(body.currentStepId ?? "").trim().slice(0, 100);
+    const steps = parseTaskFlowSteps(body.steps);
+    const clarification = await clarifyNextActionWithLLM(text, parentTask, {
+      goal: goal || undefined,
+      result: keyResult || undefined,
+      currentStepId: currentStepId || undefined,
+      steps,
+    });
+    if (clarification === null) return NextResponse.json({ error: "llm_error" }, { status: 502 });
+    return NextResponse.json(clarification);
+  }
+
+  if (mode === "review-task-flow") {
+    const parentTask = String(body.parentTask ?? "").trim().slice(0, 200);
+    if (!parentTask) return NextResponse.json({ error: "empty_parent_task" }, { status: 400 });
+    const steps = parseTaskFlowSteps(body.steps);
+    if (steps.length === 0) return NextResponse.json({ error: "empty_steps" }, { status: 400 });
+    const goal = String(body.goal ?? "").trim().slice(0, 160);
+    const keyResult = String(body.result ?? "").trim().slice(0, 160);
+    const review = await reviewTaskFlowWithLLM(
+      parentTask,
+      steps,
+      goal || undefined,
+      keyResult || undefined,
+    );
+    if (review === null) return NextResponse.json({ error: "llm_error" }, { status: 502 });
+    return NextResponse.json(review);
   }
 
   if (mode === "clarify-behavior") {
