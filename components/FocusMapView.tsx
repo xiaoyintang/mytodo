@@ -32,9 +32,11 @@ import {
   ArrowUpDown,
   CalendarPlus,
   Check,
+  ChevronDown,
   ClipboardPaste,
   Copy,
   MessagesSquare,
+  Pencil,
   RefreshCw,
   RotateCcw,
   Scissors,
@@ -199,6 +201,8 @@ export default function FocusMapView({
   const [edited, setEdited] = useState<Set<string>>(new Set());
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [pinnedId, setPinnedId] = useState<string | null>(null);
+  // 焦点地图首先是一张比较清单：默认鸟瞰，真正要评分/编辑时一次只展开一条。
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // 两种改写共用一套 UI：改小（做不到 → 变小）/ 改具体（会卡住 → 给终点或产出物）
   const [shrinkingId, setShrinkingId] = useState<string | null>(null);
@@ -1078,7 +1082,7 @@ export default function FocusMapView({
     <div className="w-full flex flex-col gap-3">
       <div className="w-full flex items-center gap-2">
         <span className="flex-1 text-[12px] text-[var(--color-text-secondary)]">
-          两根滑块都拖一下，右上角那几条就是黄金行为
+          先看全局；点开一条，再调整影响力和能不能做到
         </span>
         <button
           type="button"
@@ -1717,8 +1721,8 @@ export default function FocusMapView({
         </button>
       )}
 
-      {/* 一行两根滑块，不用记上一轮打了多少 */}
-      <div className="w-full flex flex-col gap-2">
+      {/* 默认是鸟瞰清单；一次只展开一条，评分表单不再永久撑高每个行为。 */}
+      <div className="w-full flex flex-col gap-1">
         {list.map((b) => {
           const rank = goldenRank.get(b.id);
           const st = TYPE_STYLE[b.type];
@@ -1726,11 +1730,13 @@ export default function FocusMapView({
           const task = b.taskId ? tasks.find((t) => t.id === b.taskId) : undefined;
           const inHabits = habitBehaviorIds.has(b.id);
           const issueKind = blockerOf(b);
+          const isExpanded = expandedId === b.id;
           return (
             <div
               key={b.id}
               className={[
-                "w-full flex flex-col gap-1 px-3 py-2.5 rounded-[10px] border transition-colors",
+                "w-full flex flex-col rounded-lg border px-2.5 transition-[background-color,border-color,box-shadow]",
+                isExpanded ? "py-2 shadow-[0_3px_12px_rgba(15,23,42,0.06)]" : "py-1.5",
                 activeId === b.id
                   ? "bg-white border-[var(--color-text-primary)] ring-1 ring-[var(--color-text-primary)]"
                   : picked
@@ -1742,12 +1748,12 @@ export default function FocusMapView({
                         : "bg-white border-[var(--color-border)]",
               ].join(" ")}
             >
-              <div className="w-full flex items-start gap-2">
+              <div className="flex min-h-7 w-full items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => toggleSelect(b.id)}
                   className={[
-                    "w-[18px] h-[18px] mt-[1px] rounded flex items-center justify-center flex-shrink-0 border",
+                    "flex h-[17px] w-[17px] flex-shrink-0 items-center justify-center rounded border",
                     picked
                       ? "bg-[var(--color-primary)] border-[var(--color-primary)]"
                       : "bg-white border-[var(--color-border)]",
@@ -1758,7 +1764,7 @@ export default function FocusMapView({
                   {picked && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
                 </button>
                 {rank && (
-                  <span className="w-[18px] h-[18px] mt-[1px] rounded-full bg-[var(--color-primary)] text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                  <span className="flex h-[17px] w-[17px] flex-shrink-0 items-center justify-center rounded-full bg-[var(--color-primary)] text-[9px] font-bold text-white">
                     {rank}
                   </span>
                 )}
@@ -1774,25 +1780,29 @@ export default function FocusMapView({
                     }}
                     onBlur={() => saveEdit(b.id)}
                     autoFocus
-                    className="flex-1 min-w-0 px-2 py-1 rounded border border-[var(--color-primary)] text-[13px] bg-white focus:outline-none"
+                    className="min-w-0 flex-1 rounded border border-[var(--color-primary)] bg-white px-2 py-1 text-[12px] focus:outline-none"
                   />
                 ) : (
                   <button
                     type="button"
                     onClick={() => {
-                      setEditingId(b.id);
-                      setEditText(b.text);
+                      setExpandedId((current) => (current === b.id ? null : b.id));
                       setTypingId(null);
                     }}
-                    className="flex-1 text-[13px] text-[var(--color-text-primary)] leading-snug text-left"
+                    className="min-w-0 flex-1 truncate text-left text-[12px] font-medium leading-5 text-[var(--color-text-primary)]"
+                    data-full-text={b.text}
+                    aria-expanded={isExpanded}
                   >
                     {b.text}
                   </button>
                 )}
                 <button
                   type="button"
-                  onClick={() => setTypingId(typingId === b.id ? null : b.id)}
-                  className="px-1.5 py-[1px] rounded border text-[9px] font-medium flex-shrink-0"
+                  onClick={() => {
+                    setExpandedId(b.id);
+                    setTypingId(typingId === b.id ? null : b.id);
+                  }}
+                  className="flex-shrink-0 rounded border px-1.5 py-[1px] text-[8px] font-medium"
                   style={{ backgroundColor: st.bg, borderColor: st.border, color: st.text }}
                   title={b.type === "unsorted" ? "AI 正在判它是什么，也可以自己点一个" : "判错了？点一下改"}
                 >
@@ -1802,18 +1812,70 @@ export default function FocusMapView({
                       : "未判定"
                     : TYPE_LABEL[b.type]}
                 </button>
+                {b.steps && b.steps.length > 0 && (
+                  <span
+                    className="flex-shrink-0 text-[8px] font-medium text-[var(--color-primary)]"
+                    title={`固定流程 ${b.steps.length} 步`}
+                  >
+                    {b.steps.length}步
+                  </span>
+                )}
+                {(task || inHabits) && (
+                  <span className="flex-shrink-0" title={task ? "已排日程" : "已在习惯"}>
+                    <Check className="h-3 w-3 text-[var(--color-success)]" />
+                  </span>
+                )}
                 <button
                   type="button"
-                  onClick={() => {
-                    if (behaviorReview?.forId === b.id) setBehaviorReview(null);
-                    onDelete(b.id);
-                  }}
-                  className="w-[16px] h-[16px] flex items-center justify-center flex-shrink-0"
-                  aria-label="删掉这条"
+                  onClick={() => setExpandedId((current) => (current === b.id ? null : b.id))}
+                  className="flex flex-shrink-0 items-center gap-1 rounded-md px-1 py-0.5 text-[9px] tabular-nums text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-gray-light)]"
+                  aria-label={`${isExpanded ? "收起" : "展开"}「${b.text}」的评分与设置`}
+                  aria-expanded={isExpanded}
+                  title={`影响 ${b.impact ?? "未评分"} · 能做 ${b.feasibility ?? "未评分"}`}
                 >
-                  <Trash2 className="w-[13px] h-[13px] text-[#A1A1AA]" />
+                  <span className={b.impact == null ? "text-[var(--color-text-tertiary)]" : "font-semibold text-[var(--color-primary)]"}>
+                    影 {b.impact ?? "—"}
+                  </span>
+                  <span className="text-[var(--color-border)]">·</span>
+                  <span className={b.feasibility == null ? "text-[var(--color-text-tertiary)]" : "font-semibold text-[var(--color-primary)]"}>
+                    能 {b.feasibility ?? "—"}
+                  </span>
+                  {issueKind && <AlertTriangle className="h-3 w-3 text-[#B45309]" />}
+                  <ChevronDown className={["h-3.5 w-3.5 transition-transform", isExpanded ? "rotate-180" : ""].join(" ")} />
                 </button>
               </div>
+
+              {isExpanded && (
+                <div className="mt-1.5 flex w-full flex-col gap-1 border-t border-[var(--color-border)] pt-2">
+                  <div className="flex w-full items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingId(b.id);
+                        setEditText(b.text);
+                        setTypingId(null);
+                      }}
+                      className="flex items-center gap-1 text-[10px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-primary)]"
+                    >
+                      <Pencil className="h-3 w-3" />
+                      修改文字
+                    </button>
+                    <span className="flex-1" />
+                    {task && <span className="text-[9px] font-medium text-[var(--color-success)]">已排日程</span>}
+                    {inHabits && <span className="text-[9px] font-medium text-[var(--color-success)]">已在习惯</span>}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (behaviorReview?.forId === b.id) setBehaviorReview(null);
+                        onDelete(b.id);
+                      }}
+                      className="flex items-center gap-1 text-[10px] text-[var(--color-text-tertiary)] hover:text-[var(--color-danger)]"
+                      aria-label="删掉这条"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      删除
+                    </button>
+                  </div>
 
               {typingId === b.id && (
                 <div className="w-full flex flex-col gap-1 py-1">
@@ -2058,6 +2120,9 @@ export default function FocusMapView({
                   </div>
                 );
               })()}
+
+                </div>
+              )}
 
             </div>
           );
