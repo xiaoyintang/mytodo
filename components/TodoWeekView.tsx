@@ -1,7 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import type { Aspiration, DayPlan, ISODate, Task, TimeEntry, ViewMode } from "@/components/todo/types";
+import type {
+  Aspiration,
+  BehaviorCard,
+  DayPlan,
+  GoalResult,
+  Habit,
+  ISODate,
+  Task,
+  TimeEntry,
+  ViewMode,
+} from "@/components/todo/types";
 import { CN_WEEKDAY, addDays, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
 import { Check, Flag, Timer } from "lucide-react";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
@@ -31,8 +41,12 @@ type Props = {
   onAddEntry: (entry: Omit<TimeEntry, "id">) => void;
   today: ISODate;
   aspirations: Aspiration[];
+  goalResults: GoalResult[];
+  behaviors: BehaviorCard[];
+  habits: Habit[];
   dayPlans: Record<string, DayPlan>;
   onOpenGoals: () => void;
+  onOpenGoal: (aspirationId: string, resultId?: string) => void;
   running: { title: string; startedAt: number } | null;
   elapsedMs: number;
   onStopTimer: () => void;
@@ -243,8 +257,12 @@ export default function TodoWeekView({
   onAddEntry,
   today,
   aspirations,
+  goalResults,
+  behaviors,
+  habits,
   dayPlans,
   onOpenGoals,
+  onOpenGoal,
   running,
   elapsedMs,
   onStopTimer,
@@ -358,6 +376,10 @@ export default function TodoWeekView({
         onUpdate={onUpdateTask}
         onAddEntry={onAddEntry}
         aspirations={aspirations}
+        goalResults={goalResults}
+        behaviors={behaviors}
+        habits={habits}
+        onOpenGoal={onOpenGoal}
       />
     </>
   );

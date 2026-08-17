@@ -28,6 +28,8 @@ export interface Task {
   date: ISODate;
   /** 属于哪个目标（可选，不强制。新建任务时默认沿用上次选的） */
   aspirationId?: string;
+  /** 在推进该目标的哪条关键结果；用于从执行现场一键回到对应焦点地图。 */
+  resultId?: string;
   /** 从哪条习惯手动排到今天。可选；用于完成 Todo 时自动回写习惯记录。 */
   sourceHabitId?: string;
   startTime?: string; // "HH:mm"

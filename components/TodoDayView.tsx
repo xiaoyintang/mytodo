@@ -1,7 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import type { Aspiration, DayPlan, ISODate, Task, TimeEntry, ViewMode } from "@/components/todo/types";
+import type {
+  Aspiration,
+  BehaviorCard,
+  DayPlan,
+  GoalResult,
+  Habit,
+  ISODate,
+  Task,
+  TimeEntry,
+  ViewMode,
+} from "@/components/todo/types";
 import { CN_WEEKDAY, addDays, parseISODate, startOfWeek } from "@/components/todo/date";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
 import { goalColor } from "@/components/todo/goal";
@@ -31,8 +41,12 @@ type Props = {
   onAddEntry: (entry: Omit<TimeEntry, "id">) => void;
   today: ISODate;
   aspirations: Aspiration[];
+  goalResults: GoalResult[];
+  behaviors: BehaviorCard[];
+  habits: Habit[];
   dayPlans: Record<string, DayPlan>;
   onOpenGoals: () => void;
+  onOpenGoal: (aspirationId: string, resultId?: string) => void;
   running: { title: string; startedAt: number } | null;
   elapsedMs: number;
   onStopTimer: () => void;
@@ -98,8 +112,12 @@ export default function TodoDayView({
   onAddEntry,
   today,
   aspirations,
+  goalResults,
+  behaviors,
+  habits,
   dayPlans,
   onOpenGoals,
+  onOpenGoal,
   running,
   elapsedMs,
   onStopTimer,
@@ -108,6 +126,7 @@ export default function TodoDayView({
 }: Props) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
+  const [focusMapIntent, setFocusMapIntent] = useState(false);
   const [offOpen, setOffOpen] = useState(false);        // 非主线任务默认折起来
   // 展开的任务（看子任务）。默认全收起——卡片列表要保持一眼扫得完
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -125,6 +144,37 @@ export default function TodoDayView({
   const selectedTask = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) ?? null : null;
   function handleStartEdit(e: React.MouseEvent, task: Task) {
     e.stopPropagation();
+    setFocusMapIntent(false);
+    setSelectedTaskId(task.id);
+    setIsBottomSheetOpen(true);
+  }
+
+  function handleOpenTaskGoal(e: React.MouseEvent, task: Task) {
+    e.stopPropagation();
+    if (!task.aspirationId) return;
+
+    const results = goalResults.filter((result) => result.aspirationId === task.aspirationId);
+    const directBehavior = behaviors.find((behavior) => behavior.taskId === task.id);
+    const sourceHabit = task.sourceHabitId
+      ? habits.find((habit) => habit.id === task.sourceHabitId)
+      : undefined;
+    const habitBehavior = sourceHabit?.behaviorId
+      ? behaviors.find((behavior) => behavior.id === sourceHabit.behaviorId)
+      : undefined;
+    const inferredResultId = directBehavior
+      ? directBehavior.resultId
+      : habitBehavior
+        ? habitBehavior.resultId
+        : task.resultId;
+    const exactResult = results.find((result) => result.id === inferredResultId);
+
+    if (exactResult || results.length <= 1) {
+      onOpenGoal(task.aspirationId, exactResult?.id || results[0]?.id);
+      return;
+    }
+
+    // 目标下有多条结果、但这项手动任务还没归属时，在任务详情里补选一次。
+    setFocusMapIntent(true);
     setSelectedTaskId(task.id);
     setIsBottomSheetOpen(true);
   }
@@ -132,6 +182,7 @@ export default function TodoDayView({
   function handleCloseBottomSheet() {
     setIsBottomSheetOpen(false);
     setSelectedTaskId(null);
+    setFocusMapIntent(false);
   }
   const selected = parseISODate(selectedDate);
   const weekStart = startOfWeek(selected, true);
@@ -277,12 +328,18 @@ export default function TodoDayView({
                   if (gi < 0) return null;
                   const color = goalColor(aspirations[gi], gi);
                   return (
-                    <span className="flex max-w-[126px] items-center gap-1" style={{ color }}>
+                    <button
+                      type="button"
+                      onClick={(event) => handleOpenTaskGoal(event, t)}
+                      className="flex max-w-[126px] items-center gap-1 rounded-sm transition-opacity hover:opacity-70"
+                      style={{ color }}
+                      aria-label={`打开${aspirations[gi].title}的焦点地图`}
+                    >
                       <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ backgroundColor: color }} />
                       <span className="truncate font-medium" data-full-text={aspirations[gi].title}>
                         {aspirations[gi].title}
                       </span>
-                    </span>
+                    </button>
                   );
                 })()}
                 {subs.length > 0 && (
@@ -521,6 +578,11 @@ export default function TodoDayView({
         onUpdate={onUpdateTask}
         onAddEntry={onAddEntry}
         aspirations={aspirations}
+        goalResults={goalResults}
+        behaviors={behaviors}
+        habits={habits}
+        onOpenGoal={onOpenGoal}
+        focusMapIntent={focusMapIntent}
       />
 
     </AppShell>

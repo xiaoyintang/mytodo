@@ -593,6 +593,9 @@ export default function TodoApp() {
         behavior.resultId === id ? { ...behavior, resultId: undefined } : behavior,
       ),
     );
+    setTasks((prev) =>
+      prev.map((task) => (task.resultId === id ? { ...task, resultId: undefined } : task)),
+    );
   }
 
   function assignBehaviorResult(behaviorId: string, resultId?: string) {
@@ -900,6 +903,7 @@ export default function TodoApp() {
         date,
         status: "todo" as TaskStatus,
         aspirationId,
+        resultId: card?.resultId,
         subtasks: instantiateBehaviorSteps(card),
       },
     ]);
@@ -991,6 +995,7 @@ export default function TodoApp() {
       date: todayIso,
       status: "todo",
       aspirationId: habit.aspirationId,
+      resultId: sourceBehavior?.resultId,
       sourceHabitId: habit.id,
       subtasks: instantiateBehaviorSteps(sourceBehavior),
     });
@@ -1142,6 +1147,13 @@ export default function TodoApp() {
     setSelectedDate(toISODate(newDate));
   }
 
+  /** 从执行现场直接回到这件事所属的焦点地图，而不是重新走一遍目标选择。 */
+  function openGoal(aspirationId: string, resultId?: string) {
+    setGoalEntryId(aspirationId);
+    setGoalEntryResultId(resultId ?? null);
+    setGoalsOpen(true);
+  }
+
   return (
     <main className="flex h-full w-full items-start justify-center overflow-auto bg-white p-0 sm:bg-[#F5F5F5] sm:p-6">
       <FastTooltip />
@@ -1211,8 +1223,12 @@ export default function TodoApp() {
           onAddEntry={addEntry}
           today={todayIso}
           aspirations={safeAspirations}
+          goalResults={safeGoalResults}
+          behaviors={safeBehaviors}
+          habits={safeHabits}
           dayPlans={safeDayPlans}
           onOpenGoals={() => setGoalsOpen(true)}
+          onOpenGoal={openGoal}
           running={timer.running}
           elapsedMs={timer.elapsedMs}
           onStopTimer={timer.stop}
@@ -1241,8 +1257,12 @@ export default function TodoApp() {
           onAddEntry={addEntry}
           today={todayIso}
           aspirations={safeAspirations}
+          goalResults={safeGoalResults}
+          behaviors={safeBehaviors}
+          habits={safeHabits}
           dayPlans={safeDayPlans}
           onOpenGoals={() => setGoalsOpen(true)}
+          onOpenGoal={openGoal}
           running={timer.running}
           elapsedMs={timer.elapsedMs}
           onStopTimer={timer.stop}
@@ -1259,11 +1279,7 @@ export default function TodoApp() {
           goalResults={safeGoalResults}
           dayPlans={safeDayPlans}
           onOpenGoals={() => setGoalsOpen(true)}
-          onOpenGoal={(aspirationId, resultId) => {
-            setGoalEntryId(aspirationId);
-            setGoalEntryResultId(resultId ?? null);
-            setGoalsOpen(true);
-          }}
+          onOpenGoal={openGoal}
           running={timer.running}
           elapsedMs={timer.elapsedMs}
           onStopTimer={timer.stop}
