@@ -1105,7 +1105,7 @@ export default function TaskBottomSheet({
                 {flowReview?.taskId === task.id && (
                   <div
                     className={[
-                      "mb-2 rounded-lg border px-2.5 py-2",
+                      "relative mb-2 rounded-lg border py-2 pl-2.5 pr-10",
                       flowReview.state === "ready"
                         ? "border-[#BBF7D0] bg-[#F0FDF4]"
                         : flowReview.state === "error"
@@ -1113,6 +1113,15 @@ export default function TaskBottomSheet({
                           : "border-[#BFDBFE] bg-[#F8FBFF]",
                     ].join(" ")}
                   >
+                    <button
+                      type="button"
+                      onClick={() => setFlowReview(null)}
+                      className="absolute right-1 top-1 flex h-8 w-8 items-center justify-center rounded-md text-[var(--color-text-tertiary)] transition-colors hover:bg-white/80 hover:text-[var(--color-text-secondary)]"
+                      aria-label="收起整体检查建议"
+                      title="收起"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
                     {flowReview.state === "ready" ? (
                       <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-[var(--color-text-secondary)]">
                         <Check className="mt-[1px] h-3.5 w-3.5 flex-shrink-0 text-[var(--color-success)]" strokeWidth={3} />
