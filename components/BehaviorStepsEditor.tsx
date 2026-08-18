@@ -20,6 +20,7 @@ type Props = {
   goal: string;
   steps: BehaviorStep[];
   onChange: (steps: BehaviorStep[]) => void;
+  mode?: "procedure" | "task" | "task-package";
 };
 
 function stepId(): string {
@@ -43,7 +44,13 @@ function reorderSteps(
   return next;
 }
 
-export default function BehaviorStepsEditor({ behaviorTitle, goal, steps, onChange }: Props) {
+export default function BehaviorStepsEditor({
+  behaviorTitle,
+  goal,
+  steps,
+  onChange,
+  mode = "procedure",
+}: Props) {
   const [open, setOpen] = useState(steps.length > 0);
   const [draft, setDraft] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -54,6 +61,8 @@ export default function BehaviorStepsEditor({ behaviorTitle, goal, steps, onChan
   const [dropPlacement, setDropPlacement] = useState<DropPlacement | null>(null);
   const dragRef = useRef<{ sourceId: string; placement: DropPlacement | null } | null>(null);
   const draftRef = useRef<HTMLTextAreaElement | null>(null);
+  const isTaskFlow = mode === "task" || mode === "task-package";
+  const flowLabel = isTaskFlow ? "任务步骤" : "固定流程";
 
   function openEditor() {
     setOpen(true);
@@ -96,7 +105,7 @@ export default function BehaviorStepsEditor({ behaviorTitle, goal, steps, onChan
     const onlyRepeatsParent =
       titles.length === 1 && titles[0].replace(/\s/g, "") === behaviorTitle.replace(/\s/g, "");
     if (titles.length === 0 || onlyRepeatsParent) {
-      setError("AI 看不出固定流程。你可以把现成步骤一行一条贴进来。");
+      setError(`AI 看不出${flowLabel}。你可以把现成步骤一行一条贴进来。`);
       setOpen(true);
       requestAnimationFrame(() => draftRef.current?.focus());
       return;
@@ -167,7 +176,7 @@ export default function BehaviorStepsEditor({ behaviorTitle, goal, steps, onChan
           className="flex items-center gap-1 rounded-md border border-[var(--color-border)] bg-white px-2 py-1 text-[10px] font-medium text-[var(--color-text-secondary)] transition-colors hover:border-[#93C5FD] hover:text-[var(--color-primary)]"
         >
           <ListChecks className="h-3 w-3" />
-          添加固定流程
+          {mode === "task-package" ? "自己拆成任务包" : `添加${flowLabel}`}
         </button>
         <button
           type="button"
@@ -189,17 +198,19 @@ export default function BehaviorStepsEditor({ behaviorTitle, goal, steps, onChan
         <ListChecks className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-primary)]" />
         <button type="button" onClick={() => setOpen((value) => !value)} className="min-w-0 flex-1 text-left">
           <span className="block text-[11px] font-semibold text-[var(--color-text-primary)]">
-            固定流程{steps.length > 0 ? ` · ${steps.length} 步` : ""}
+            {flowLabel}{steps.length > 0 ? ` · ${steps.length} 步` : ""}
           </span>
           <span className="block text-[9px] leading-snug text-[var(--color-text-tertiary)]">
-            整体评分，步骤不单独打分；排成任务后可逐项勾选
+            {isTaskFlow
+              ? "这些步骤共同完成父任务，不单独评分；排进日程后可逐项勾选"
+              : "整体评分，步骤不单独打分；排成任务后可逐项勾选"}
           </span>
         </button>
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
           className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--color-text-tertiary)] hover:bg-white"
-          aria-label={open ? "收起固定流程" : "展开固定流程"}
+          aria-label={`${open ? "收起" : "展开"}${flowLabel}`}
         >
           {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
         </button>
@@ -207,6 +218,11 @@ export default function BehaviorStepsEditor({ behaviorTitle, goal, steps, onChan
 
       {open && (
         <div className="border-t border-[#DBEAFE] px-2 py-2">
+          {mode === "task-package" && steps.length === 0 && (
+            <p className="mb-2 rounded-md bg-white px-2 py-1.5 text-[9px] leading-snug text-[var(--color-text-secondary)]">
+              添加第一步后，它会成为可评分、可排日程的任务包；如果这套流程以后还会重复，可以再改成可重复流程。
+            </p>
+          )}
           {steps.length > 0 && (
             <div className="mb-2 flex flex-col gap-1">
               {steps.map((step, index) => {
@@ -286,7 +302,7 @@ export default function BehaviorStepsEditor({ behaviorTitle, goal, steps, onChan
                       type="button"
                       onClick={() => onChange(steps.filter((item) => item.id !== step.id))}
                       className="-mt-[1px] flex h-5 w-5 flex-shrink-0 items-center justify-center rounded"
-                      aria-label="删除流程步骤"
+                      aria-label={`删除${flowLabel}`}
                     >
                       <Trash2 className="h-3 w-3 text-[#A1A1AA]" />
                     </button>
@@ -317,7 +333,7 @@ export default function BehaviorStepsEditor({ behaviorTitle, goal, steps, onChan
               onClick={addDraft}
               disabled={!draft.trim()}
               className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-[var(--color-primary)] text-white disabled:bg-[var(--color-bg-gray)] disabled:text-[var(--color-text-tertiary)]"
-              aria-label="添加流程步骤"
+              aria-label={`添加${flowLabel}`}
             >
               <Plus className="h-4 w-4" />
             </button>

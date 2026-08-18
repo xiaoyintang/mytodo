@@ -470,14 +470,16 @@ const CLARIFY_BEHAVIOR_PROMPT = `你是福格行为设计里的“行为表达�
 4. 有完成边界：数量、范围、时长、可见产出，或者动作本身有天然终点（如发送、购买、关闭）
 5. stop 类是例外：“睡前不刷短视频”这类明确要停止什么、在什么范围内停止的说法，可以是合格行为，不要强行改成正向动作
 
-【行为与成果最容易混淆的地方】
-- “每周发布一期视频、完成一份报告、做出一个产品原型”虽然含有动词和数量，但交付它通常要经过多个阶段，仍然是成果，返回 expand
+【行为、任务包与成果最容易混淆的地方】
+- “发布一期视频、完成一份报告、做出一个产品原型、产出一版标准回答”通常需要多个必须共同完成的步骤，是有限交付物，返回 task_package；App 会让用户把步骤留在父项下面，整体比较 ROI
 - “点击发布视频、给客户发送报告、画出首页线框”是一次现场能够发生的行为
-- 如果输入的当前分类是 aspiration 或 outcome，原则上返回 expand；不要因为句子里恰好有一个动词就放行
+- “变得更自信、面试表现更好”没有唯一执行流程，需要寻找不同实现路径，返回 expand
+- 如果输入的当前分类是 aspiration 或 outcome，不要机械返回 expand：先判断它是有限交付物，还是仍需探索路径的愿望/状态
 
-输出只能是以下三种合法 JSON 之一：
+输出只能是以下四种合法 JSON 之一：
 - 已经适合比较：{"kind":"ready"}
-- 仍是愿望或成果，需要发散出多条行为：{"kind":"expand","issue":"一个最关键的问题"}
+- 是有限交付物，应在父项下拆任务步骤：{"kind":"task_package","issue":"为什么它需要多个步骤共同完成"}
+- 仍是愿望或状态，需要发散出多条独立行为备选：{"kind":"expand","issue":"一个最关键的问题"}
 - 已是行为但表达不够清楚：{"kind":"rewrite","issue":"一个最关键的问题","suggestion":"一个改写"}
 
 改写规则：
@@ -488,7 +490,7 @@ const CLARIFY_BEHAVIOR_PROMPT = `你是福格行为设计里的“行为表达�
 - 不要缩成打开软件、拿出纸笔等机械动作
 - 不要擅自添加“每天、早上、饭后”等触发时机
 - 尽量不超过 20 个字，像写给自己的行为卡
-- 如果它还是愿望或成果，必须返回 expand，不能武断地改成唯一一条行为，因为同一个成果可能有很多实现路径`;
+- 如果它是有明确交付物的一次性项目，返回 task_package；只有确实存在多条替代路径、尚未决定怎么推进时才返回 expand`;
 
 // 只剩「有没有边界」这一种。timing/decision/effort 都撤了——
 // 缺锚点看习惯表里 anchor 字段有没有值就行（不会误判），费不费力只有你自己知道
@@ -529,7 +531,7 @@ export type TaskFlowReview = {
   suggestedOrder?: string[];
 };
 export type BehaviorClarification = {
-  kind: "ready" | "expand" | "rewrite";
+  kind: "ready" | "expand" | "task_package" | "rewrite";
   issue?: string;
   suggestion?: string;
 };
@@ -822,6 +824,7 @@ export async function clarifyBehaviorWithLLM(
   const issue = String(raw.issue ?? "").trim().slice(0, 50);
   if (!issue) return null;
   if (kind === "expand") return { kind: "expand", issue };
+  if (kind === "task_package") return { kind: "task_package", issue };
   if (kind !== "rewrite") return null;
 
   const suggestion = String(raw.suggestion ?? "").trim().slice(0, 60);

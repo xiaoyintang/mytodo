@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { Aspiration, BehaviorCard, GoalResult } from "@/components/todo/types";
-import { isGolden } from "@/components/todo/behavior";
+import { isActionable, isGolden } from "@/components/todo/behavior";
 import { UNASSIGNED_RESULT_ID } from "@/components/todo/goal";
 import { callBehaviorAPI } from "@/components/todo/behaviorApi";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -307,7 +307,7 @@ export default function GoalResultsPanel({
             </span>
           </div>
           <p className="mt-0.5 text-[10px] leading-relaxed text-[var(--color-text-tertiary)]">
-            先说明什么变化算推进，再在每条结果下面比较行为
+            先说明什么变化算推进，再在每条结果下面比较推进项
           </p>
         </div>
         <button
@@ -334,11 +334,11 @@ export default function GoalResultsPanel({
       {results.length === 0 && !suggestions && (
         <div className="rounded-[10px] border border-dashed border-[#BFD2FA] bg-white px-3 py-2.5">
           <p className="text-[12px] font-medium text-[var(--color-text-secondary)]">
-            当前是直接拆行为模式
+            当前是直接推进模式
           </p>
           <p className="mt-0.5 text-[10px] leading-relaxed text-[var(--color-text-tertiary)]">
             {cards.length > 0
-              ? `${cards.length} 条行为暂时共用一张焦点地图。可以先从目标想结果，也可以把已有行为反向整理。`
+              ? `${cards.length} 条推进项暂时共用一张焦点地图。可以先从目标想结果，也可以把已有内容反向整理。`
               : "简单目标可以保持这样；目标变复杂时再增加结果层。"}
           </p>
           {cards.length > 0 && (
@@ -349,7 +349,7 @@ export default function GoalResultsPanel({
               className="mt-2 flex items-center gap-1 text-[10px] font-medium text-[var(--color-primary)] disabled:opacity-50"
             >
               <FolderTree className="h-3 w-3" />
-              {suggesting && suggestMode === "structure" ? "整理中…" : "按现有行为整理"}
+              {suggesting && suggestMode === "structure" ? "整理中…" : "按现有推进项整理"}
             </button>
           )}
         </div>
@@ -457,7 +457,7 @@ export default function GoalResultsPanel({
                 </div>
                 {suggestion.behaviorIds.length > 0 && (
                   <span className="flex-shrink-0 text-[10px] text-[var(--color-text-tertiary)]">
-                    {suggestion.behaviorIds.length} 条行为
+                    {suggestion.behaviorIds.length} 条推进项
                   </span>
                 )}
               </div>
@@ -516,7 +516,7 @@ export default function GoalResultsPanel({
         <div className="flex flex-col gap-1.5">
           {results.map((result, index) => {
             const mine = cards.filter((card) => card.resultId === result.id);
-            const golden = mine.filter(isGolden).length;
+            const golden = mine.filter((card) => isActionable(card.type) && isGolden(card)).length;
             const active = activeResultId === result.id;
             return (
               <div
@@ -556,7 +556,7 @@ export default function GoalResultsPanel({
                     </span>
                   </span>
                   <span className="flex-shrink-0 text-[9px] text-[var(--color-text-tertiary)]">
-                    {mine.length} 行为{golden > 0 ? ` · ${golden} 黄金` : ""}
+                    {mine.length} 推进项{golden > 0 ? ` · ${golden} 优先` : ""}
                   </span>
                   <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-text-tertiary)]" />
                 </button>
@@ -585,7 +585,7 @@ export default function GoalResultsPanel({
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-[12px] font-semibold text-[var(--color-text-primary)]">
-                  未归属行为
+                  未归属推进项
                 </span>
                 <span className="block text-[9px] text-[var(--color-text-tertiary)]">
                   还有 {unassigned.length} 条需要决定服务于哪个结果
@@ -696,7 +696,7 @@ export default function GoalResultsPanel({
       <ConfirmDialog
         isOpen={deleteId !== null}
         title="删除这条关键结果？"
-        description="下面的行为不会删除，只会回到“未归属行为”，之后可以重新分组。"
+        description="下面的推进项不会删除，只会回到“未归属推进项”，之后可以重新分组。"
         confirmLabel="删除结果"
         onConfirm={() => {
           if (deleteId) onDelete(deleteId);

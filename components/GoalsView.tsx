@@ -72,6 +72,7 @@ type Props = {
   onUnscheduleBehavior: (cardId: string) => void;
   onSetBehaviorAxis: (id: string, patch: { impact?: number; feasibility?: number }) => void;
   onSetBehaviorSteps: (id: string, steps: BehaviorStep[]) => void;
+  onConvertBehaviorToTaskPackage: (id: string, steps: BehaviorStep[]) => void;
   onResetBehaviorAxes: (behaviorIds: string[]) => void;
   onSetWeeklyLimit: (aspirationId: string, limit: number | null) => void;
   onDeleteBehavior: (id: string) => void;
@@ -111,6 +112,7 @@ export default function GoalsView({
   onUnscheduleBehavior,
   onSetBehaviorAxis,
   onSetBehaviorSteps,
+  onConvertBehaviorToTaskPackage,
   onResetBehaviorAxes,
   onSetWeeklyLimit,
   onDeleteBehavior,
@@ -295,7 +297,7 @@ export default function GoalsView({
             {open ? open.title : "我的目标"}
           </h1>
           <p className="text-[var(--color-text-secondary)] text-[12px]">
-            {open ? `${KIND_LABEL[open.kind]} · 把它拆成能做的行为` : "所有任务和习惯的来源"}
+            {open ? `${KIND_LABEL[open.kind]} · 找到值得推进的行为与任务包` : "所有任务和习惯的来源"}
           </p>
         </div>
         {canUndo && (
@@ -371,16 +373,16 @@ export default function GoalsView({
             >
               <p className="text-[11px] font-semibold text-[var(--color-text-primary)]">
                 {openResults.length === 0
-                  ? "直接行为模式 · 所有行为共用一张图"
+                  ? "直接推进模式 · 所有推进项共用一张图"
                   : selectedResult
                     ? `正在比较：${selectedResult.title}`
-                    : "未归属行为 · 先决定它们服务于哪个结果"}
+                    : "未归属推进项 · 先决定它们服务于哪个结果"}
               </p>
               <p className="mt-0.5 text-[10px] leading-relaxed text-[var(--color-text-tertiary)]">
                 {selectedResult?.evidence ||
                   (openResults.length === 0
                     ? "目标变复杂时，再添加关键结果也来得及。"
-                    : "这张焦点地图只比较同一条结果下的行为。")}
+                    : "同一条结果下，可以比较独立行为，也可以比较带步骤的任务包。")}
               </p>
             </div>
 
@@ -395,6 +397,7 @@ export default function GoalsView({
               tasks={tasks}
               onSetAxis={onSetBehaviorAxis}
               onSetSteps={onSetBehaviorSteps}
+              onConvertToTaskPackage={onConvertBehaviorToTaskPackage}
               onResetAxes={() => onResetBehaviorAxes(focusCards.map((card) => card.id))}
               onDelete={onDeleteBehavior}
               onReplaceText={onShrinkBehavior}
@@ -668,7 +671,7 @@ export default function GoalsView({
           const target = deleteAspId ? aspirations.find((a) => a.id === deleteAspId) : undefined;
           const n = deleteAspId ? behaviors.filter((b) => b.aspirationId === deleteAspId).length : 0;
           return target
-            ? `「${target.title}」和它下面的 ${n} 个行为都会删掉，已排期但没做完的任务也会一起清掉。删错了可以点「撤回」`
+            ? `「${target.title}」和它下面的 ${n} 个推进项都会删掉，已排期但没做完的任务也会一起清掉。删错了可以点「撤回」`
             : undefined;
         })()}
         onConfirm={handleDeleteAspiration}

@@ -11,7 +11,7 @@ import type {
   Task,
 } from "@/components/todo/types";
 import { callBehaviorAPI, toPendingItems, type PendingItem } from "@/components/todo/behaviorApi";
-import { TYPE_LABEL, TYPE_STYLE, goldenScore, isGolden, isRepeatable, needsBreakdown } from "@/components/todo/behavior";
+import { TYPE_LABEL, TYPE_STYLE, goldenScore, isActionable, isGolden, isRepeatable, needsBreakdown } from "@/components/todo/behavior";
 import {
   buildAIHandoffPrompt,
   IMPORT_TYPE_OPTIONS,
@@ -53,7 +53,7 @@ type SortMode = "default" | "impact" | "score";
 type BehaviorReview = {
   forId: string;
   sourceText: string;
-  kind: "ready" | "expand" | "rewrite" | "error";
+  kind: "ready" | "expand" | "task-package" | "rewrite" | "error";
   issue?: string;
   suggestion?: string;
   message?: string;
@@ -91,6 +91,7 @@ type Props = {
   tasks: Task[];
   onSetAxis: (id: string, patch: AxisPatch) => void;
   onSetSteps: (id: string, steps: BehaviorStep[]) => void;
+  onConvertToTaskPackage: (id: string, steps: BehaviorStep[]) => void;
   onResetAxes: () => void;
   onDelete: (id: string) => void;
   onReplaceText: (id: string, text: string) => void;
@@ -160,6 +161,7 @@ export default function FocusMapView({
   tasks,
   onSetAxis,
   onSetSteps,
+  onConvertToTaskPackage,
   onResetAxes,
   onDelete,
   onReplaceText,
@@ -229,17 +231,18 @@ export default function FocusMapView({
   const [importItems, setImportItems] = useState<ImportCandidate[]>([]);
   const [importError, setImportError] = useState<string | null>(null);
 
-  const golden = cards
+  const actionableCards = cards.filter((card) => isActionable(card.type));
+  const golden = actionableCards
     .filter(isGolden)
     .slice()
     .sort((a, b) => goldenScore(b) - goldenScore(a));
   const goldenRank = new Map(golden.map((g, i) => [g.id, i + 1]));
-  const plotted = cards.filter((c) => c.impact != null && c.feasibility != null);
-  const rated = cards.filter((c) => c.impact != null || c.feasibility != null).length;
-  const rateable = cards.filter((c) => c.type !== "unsorted" && !needsBreakdown(c.type)).length;
+  const plotted = actionableCards.filter((c) => c.impact != null && c.feasibility != null);
+  const rated = actionableCards.filter((c) => c.impact != null || c.feasibility != null).length;
+  const rateable = actionableCards.length;
 
   // 影响力够高但做不到的——福格的解法是改小。单独拎出来，否则藏在几十行里根本找不着
-  const stuck = cards.filter((c) => (c.impact ?? 0) >= 50 && c.feasibility != null && c.feasibility < 50);
+  const stuck = actionableCards.filter((c) => (c.impact ?? 0) >= 50 && c.feasibility != null && c.feasibility < 50);
 
   // 新加的卡不在快照里（indexOf = -1），自然排到最前面——它本来就是没排的
   const ordered = [...cards].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
@@ -252,7 +255,9 @@ export default function FocusMapView({
       return;
     }
     const key: (c: BehaviorCard) => number =
-      mode === "impact" ? (c) => c.impact ?? -1 : goldenScore;
+      mode === "impact"
+        ? (c) => (isActionable(c.type) ? c.impact ?? -1 : -1)
+        : (c) => (isActionable(c.type) ? goldenScore(c) : -1);
     setOrder([...cards].sort((a, b) => key(b) - key(a)).map((c) => c.id));
   }
 
@@ -641,7 +646,7 @@ export default function FocusMapView({
       ? `关键结果 ${resultAdds ? `新增 ${resultAdds}` : ""}${resultAdds && resultReplaces ? "、" : ""}${resultReplaces ? `替换 ${resultReplaces}` : ""}`
       : "";
     const behaviorPart = chosenBehaviors.length > 0
-      ? `行为 ${behaviorAdds ? `新增 ${behaviorAdds}` : ""}${behaviorAdds && behaviorReplaces ? "、" : ""}${behaviorReplaces ? `替换 ${behaviorReplaces}` : ""}${procedureChanges ? `（含固定流程 ${procedureChanges}）` : ""}`
+      ? `推进项 ${behaviorAdds ? `新增 ${behaviorAdds}` : ""}${behaviorAdds && behaviorReplaces ? "、" : ""}${behaviorReplaces ? `替换 ${behaviorReplaces}` : ""}${procedureChanges ? `（含步骤流程 ${procedureChanges}）` : ""}`
       : "";
     setBridgeNotice(`已${[resultPart, behaviorPart].filter(Boolean).join("；")}；可撤回本次导入`);
   }
@@ -700,7 +705,8 @@ export default function FocusMapView({
     setSingleSchedulingId(null);
   }
 
-  // seed 为空 = 从愿望本身发散；有 seed = 拆这一条愿望/成果
+  // seed 为空 = 从愿望本身发散；有 seed = 把这一条愿望/成果发散成“同级备选”。
+  // 真正的 AND 型任务步骤走 BehaviorStepsEditor，不能混到这里铺平。
   async function handleWand(seed?: BehaviorCard) {
     if (wandBusy) return;
     setWandBusy(seed ? seed.id : "root");
@@ -725,7 +731,7 @@ export default function FocusMapView({
     setWand({
       forId: seed?.id ?? null,
       note: seed
-        ? `把「${seed.text}」拆成能做的行为。勾掉你不要的：`
+        ? `把「${seed.text}」发散成互相独立的行为备选；它们会放在当前结果下，与原条目同级。勾掉你不要的：`
         : "假设毫不费力，这些是能实现它的行为。勾掉你不要的：",
       items,
     });
@@ -855,6 +861,10 @@ export default function FocusMapView({
       setBehaviorReview({ forId: card.id, sourceText: card.text, kind: "expand", issue });
       return;
     }
+    if (kind === "task_package" && issue) {
+      setBehaviorReview({ forId: card.id, sourceText: card.text, kind: "task-package", issue });
+      return;
+    }
 
     const suggestion = String(res.data.suggestion ?? "").trim();
     if (kind === "rewrite" && issue && suggestion) {
@@ -956,6 +966,24 @@ export default function FocusMapView({
               {wandBusy === card.id ? "发散中…" : "发散成多个行为"}
             </button>
             {wand?.forId === card.id && renderWandBox()}
+          </>
+        )}
+
+        {review.kind === "task-package" && (
+          <>
+            <p className="text-[11px] leading-relaxed text-[var(--color-text-secondary)]">
+              这更适合作为任务包：{review.issue}
+            </p>
+            <p className="text-[10px] leading-relaxed text-[var(--color-text-tertiary)]">
+              用上方“任务步骤”把完整流程留在这张卡里；步骤共同完成父任务，不会散成同级行为。
+            </p>
+            <button
+              type="button"
+              onClick={() => setBehaviorReview(null)}
+              className="self-end text-[10px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]"
+            >
+              知道了
+            </button>
           </>
         )}
 
@@ -1112,7 +1140,7 @@ export default function FocusMapView({
           <line x1={W / 2} y1={0} x2={W / 2} y2={H} stroke="var(--color-border)" strokeWidth={1} />
           <line x1={0} y1={H / 2} x2={W} y2={H / 2} stroke="var(--color-border)" strokeWidth={1} />
           <text x={W - 6} y={13} textAnchor="end" fontSize={10} fill="var(--color-primary)">
-            黄金行为
+            优先推进
           </text>
           {plotted.map((b) => {
             const cx = PAD + ((b.feasibility ?? 0) / 100) * (W - PAD * 2);
@@ -1200,7 +1228,7 @@ export default function FocusMapView({
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.nativeEvent.isComposing) submitAdd();
           }}
-          placeholder="想到一条就直接加，回车"
+          placeholder="想到一条推进项就直接加，回车"
           enterKeyHint="done"
           className="flex-1 min-w-0 px-3 py-2 rounded-[10px] border border-[var(--color-border)] text-[13px] placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)]"
         />
@@ -1505,7 +1533,7 @@ export default function FocusMapView({
                           <div className="mt-1.5 rounded-md border border-[#BFDBFE] bg-[#F8FAFF] px-2 py-1.5">
                             <div className="flex flex-wrap items-center justify-between gap-1">
                               <span className="text-[9px] font-semibold text-[var(--color-primary)]">
-                                固定流程
+                                {item.type === "onetime" ? "任务步骤" : "固定流程"}
                                 {item.operation === "replace" && original
                                   ? ` · ${original.steps?.length ?? 0} 步 → ${nextSteps.length} 步`
                                   : ` · ${nextSteps.length} 步`}
@@ -1696,7 +1724,7 @@ export default function FocusMapView({
               : "影响力占 60%，能做到占 40%；两边都重要，影响力略高的优先"}
         </span>
         <span className="w-full text-[10px] font-medium leading-relaxed text-[var(--color-text-secondary)]">
-          左边方框只用于多选；单条行为直接用卡片里的按钮。
+          左边方框只用于多选；单条推进项直接用卡片里的按钮。
         </span>
       </div>
 
@@ -1810,12 +1838,14 @@ export default function FocusMapView({
                     ? judgingIds.has(b.id)
                       ? "判定中…"
                       : "未判定"
-                    : TYPE_LABEL[b.type]}
+                    : b.type === "onetime" && b.steps?.length
+                      ? "任务包"
+                      : TYPE_LABEL[b.type]}
                 </button>
                 {b.steps && b.steps.length > 0 && (
                   <span
                     className="flex-shrink-0 text-[8px] font-medium text-[var(--color-primary)]"
-                    title={`固定流程 ${b.steps.length} 步`}
+                    title={`${b.type === "onetime" ? "任务步骤" : "固定流程"} ${b.steps.length} 步`}
                   >
                     {b.steps.length}步
                   </span>
@@ -1905,7 +1935,7 @@ export default function FocusMapView({
                   })}
                   </div>
                   <span className="text-[9px] text-[var(--color-text-tertiary)] leading-snug">
-                    判成愿望/成果的，用那行的「拆成行为」
+                    成果可以原地拆成任务包，也可以继续发散行为备选；愿望需要先发散。
                   </span>
                 </div>
               )}
@@ -1916,6 +1946,12 @@ export default function FocusMapView({
                     ? "AI 正在判它是不是行为，判完就能打分（也可以直接点上面的标签自己定）"
                     : "AI 没判出来（可能没连上）——点上面的标签自己定一个，就能打分了"}
                 </span>
+              ) : needsBreakdown(b.type) ? (
+                <span className="text-[10px] leading-relaxed text-[var(--color-text-tertiary)] py-1">
+                  {b.type === "outcome"
+                    ? "它现在还是成果，先选择拆成一个任务包，或发散成多条独立备选；确定执行单位后再评分。"
+                    : "愿望本身不能评分，先发散出可以执行的推进项。"}
+                </span>
               ) : (
                 <>
                   {renderSlider(b, "impact")}
@@ -1923,11 +1959,12 @@ export default function FocusMapView({
                 </>
               )}
 
-              {b.type !== "unsorted" && !needsBreakdown(b.type) && (
+              {isActionable(b.type) && (
                 <BehaviorStepsEditor
                   behaviorTitle={b.text}
                   goal={goalContext}
                   steps={b.steps ?? []}
+                  mode={b.type === "onetime" ? "task" : "procedure"}
                   onChange={(steps) => onSetSteps(b.id, steps)}
                 />
               )}
@@ -1977,6 +2014,17 @@ export default function FocusMapView({
                     >
                       <CalendarPlus className="h-3 w-3" />
                       排日程
+                    </button>
+                  )}
+                  {b.type === "onetime" && Boolean(b.steps?.length) && !inHabits && (
+                    <button
+                      type="button"
+                      onClick={() => onSetType(b.id, "habit")}
+                      className="flex items-center gap-1 rounded-md border border-[#BFDBFE] bg-white px-2 py-1 text-[10px] font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-primary-light)] hover:text-[var(--color-primary)]"
+                      title="这套步骤以后会重复执行时使用"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      改为重复流程
                     </button>
                   )}
                 </div>
@@ -2085,12 +2133,44 @@ export default function FocusMapView({
                     <div className="w-full flex items-start gap-1 text-[10px] text-[#B45309] leading-snug">
                       <AlertTriangle className="w-3 h-3 mt-[1px] flex-shrink-0" />
                       <span className="flex-1">
-                        <strong>{info.label}</strong>
-                        {b.reason ? `（${b.reason}）` : ""} —— {info.hint}
+                        {b.type === "outcome" ? (
+                          <>
+                            <strong>这是一项成果</strong>
+                            {b.reason ? `（${b.reason}）` : ""}
+                            {" —— "}如果它是你准备交付的一件事，就在原地拆成任务包；如果还不知道采用哪条路径，再发散备选。
+                          </>
+                        ) : (
+                          <>
+                            <strong>{info.label}</strong>
+                            {b.reason ? `（${b.reason}）` : ""} —— {info.hint}
+                          </>
+                        )}
                       </span>
                     </div>
 
-                    {info.action === "breakdown" && (
+                    {info.action === "breakdown" && b.type === "outcome" && (
+                      <div className="flex w-full flex-col gap-1.5">
+                        <BehaviorStepsEditor
+                          behaviorTitle={b.text}
+                          goal={goalContext}
+                          steps={b.steps ?? []}
+                          mode="task-package"
+                          onChange={(steps) => {
+                            if (steps.length > 0) onConvertToTaskPackage(b.id, steps);
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleWand(b)}
+                          disabled={wandBusy !== null}
+                          className="self-start flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-[var(--color-primary)] transition-colors hover:bg-[var(--color-primary-light)] disabled:opacity-50"
+                        >
+                          <Wand2 className="w-3 h-3" />
+                          {busy ? "发散中，10 秒左右…" : "不做任务包，发散行为备选"}
+                        </button>
+                      </div>
+                    )}
+                    {info.action === "breakdown" && b.type !== "outcome" && (
                       <button
                         type="button"
                         onClick={() => handleWand(b)}
@@ -2098,7 +2178,7 @@ export default function FocusMapView({
                         className="self-start flex items-center gap-1 px-2 py-1 rounded-md border border-[#B45309] text-[11px] font-medium text-[#B45309] hover:bg-[#FEF3C7] transition-colors disabled:opacity-50"
                       >
                         <Wand2 className="w-3 h-3" />
-                        {busy ? "拆解中，10 秒左右..." : "拆成行为"}
+                        {busy ? "发散中，10 秒左右…" : "发散成行为备选"}
                       </button>
                     )}
                     {info.action === "concrete" && (
@@ -2130,7 +2210,7 @@ export default function FocusMapView({
       </div>
 
       <p className="text-[11px] leading-relaxed text-[var(--color-text-tertiary)]">
-        右上角那几条才配占你的格子。福格建议一次只养 1-3 个，
+        右上角是当前最值得优先推进的项目。可重复行为一次只养 1-3 个；任务包则选少数排进日程，
         <strong>清单变短才说明这一步做对了</strong>。
       </p>
 

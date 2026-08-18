@@ -102,8 +102,9 @@ export type BehaviorType =
   | "stop";
 
 /**
- * 一条行为内部固定的执行流程。它是可复用的“做法模板”，不是拿来互相比较的候选行为，
- * 所以没有影响力/可行性，也没有完成状态。真正排成 Task 时才复制成可勾选的 SubTask。
+ * 一条推进项内部的执行步骤：可以是可重复行为的固定做法，也可以是一次性任务包的工作步骤。
+ * 它们共同完成父项，不是拿来互相比较的候选行为，所以没有影响力/可行性，也没有完成状态。
+ * 真正排成 Task 时才复制成可勾选的 SubTask。
  */
 export interface BehaviorStep {
   id: string;
@@ -137,7 +138,7 @@ export interface BehaviorCard {
   /** 焦点地图两轴（二期填）：影响力 / 我能不能做到 */
   impact?: number;
   feasibility?: number;
-  /** 这个行为有固定做法时的有序步骤；整体评分，步骤本身不单独评分。 */
+  /** 固定做法或任务包的有序步骤；整体评分，步骤本身不单独评分。 */
   steps?: BehaviorStep[];
   /** 一次性任务排进日视图之后，关联的那个 Task 的 id */
   taskId?: string;

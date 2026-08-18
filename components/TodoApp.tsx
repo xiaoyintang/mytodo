@@ -1089,6 +1089,33 @@ export default function TodoApp() {
     );
   }
 
+  /**
+   * AI 判成“成果”的条目，也可能其实是用户准备亲自交付的一次性项目。
+   * 写下第一批步骤时，把它原地转成任务包；步骤继续挂在父卡下面，
+   * 不散成同一关键结果下的一堆并列行为。
+   */
+  function convertBehaviorToTaskPackage(id: string, steps: BehaviorStep[]) {
+    if (steps.length === 0) return;
+    snapshotLab();
+    setBehaviorCards((prev) =>
+      prev.map((behavior) =>
+        behavior.id === id
+          ? {
+              ...behavior,
+              type: "onetime",
+              typeSource: "user",
+              steps,
+              reason: undefined,
+              blocker: undefined,
+              hasDecision: undefined,
+              impact: undefined,
+              feasibility: undefined,
+            }
+          : behavior,
+      ),
+    );
+  }
+
   // 重排只清当前结果路径里正在看的行为，不能误伤同一目标下的其他焦点地图。
   function resetBehaviorAxes(behaviorIds: string[]) {
     snapshotLab();
@@ -1194,6 +1221,7 @@ export default function TodoApp() {
           onUnscheduleBehavior={unscheduleBehavior}
           onSetBehaviorAxis={setBehaviorAxis}
           onSetBehaviorSteps={setBehaviorSteps}
+          onConvertBehaviorToTaskPackage={convertBehaviorToTaskPackage}
           onResetBehaviorAxes={resetBehaviorAxes}
           onSetWeeklyLimit={setWeeklyLimit}
           onDeleteBehavior={deleteBehavior}
