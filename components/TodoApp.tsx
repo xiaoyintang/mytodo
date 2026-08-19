@@ -54,6 +54,34 @@ const EMPTY_BEHAVIORS: BehaviorCard[] = [];
 const EMPTY_HABITS: Habit[] = [];
 const EMPTY_HABIT_LOGS: HabitLog[] = [];
 const EMPTY_DAY_PLANS: Record<string, DayPlan> = {};
+const APP_HISTORY_KEY = "mytodo.route.v1";
+
+type AppHistoryRoute =
+  | { view: "workspace" }
+  | { view: "goals"; aspirationId?: string; resultId?: string };
+
+function readAppHistoryRoute(state: unknown): AppHistoryRoute | null {
+  if (!state || typeof state !== "object") return null;
+  const route = (state as Record<string, unknown>)[APP_HISTORY_KEY];
+  if (!route || typeof route !== "object") return null;
+  const candidate = route as Record<string, unknown>;
+  if (candidate.view === "workspace") return { view: "workspace" };
+  if (candidate.view !== "goals") return null;
+  return {
+    view: "goals",
+    aspirationId:
+      typeof candidate.aspirationId === "string" ? candidate.aspirationId : undefined,
+    resultId: typeof candidate.resultId === "string" ? candidate.resultId : undefined,
+  };
+}
+
+function historyStateWith(route: AppHistoryRoute) {
+  const current = window.history.state;
+  return {
+    ...(current && typeof current === "object" ? current : {}),
+    [APP_HISTORY_KEY]: route,
+  };
+}
 
 function seedTasks(today: ISODate): Task[] {
   // Generate dates for the current week
@@ -166,6 +194,39 @@ export default function TodoApp() {
   const [goalEntryId, setGoalEntryId] = useState<string | null>(null);
   const [goalEntryResultId, setGoalEntryResultId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<ISODate>(todayIso);
+
+  // 把目标页写进浏览器自己的历史：Mac 触控板双指返回、浏览器返回键、
+  // 手机边缘返回都会先退 App 内部层级，不会从焦点地图直接离开网站。
+  useEffect(() => {
+    function applyRoute(route: AppHistoryRoute | null) {
+      if (route?.view === "goals") {
+        setGoalEntryId(route.aspirationId ?? null);
+        setGoalEntryResultId(route.resultId ?? null);
+        setGoalsOpen(true);
+        return;
+      }
+      setGoalsOpen(false);
+      setGoalEntryId(null);
+      setGoalEntryResultId(null);
+    }
+
+    const initial = readAppHistoryRoute(window.history.state);
+    if (initial) applyRoute(initial);
+    else {
+      window.history.replaceState(
+        historyStateWith({ view: "workspace" }),
+        "",
+        window.location.href,
+      );
+    }
+
+    function handlePopState(event: PopStateEvent) {
+      applyRoute(readAppHistoryRoute(event.state));
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   // 跨零点时，**只有当你正停在"昨天的今天"上**才跟着跳到新的今天。
   // 你自己翻到别的日期看，就别动——那是你主动选的
@@ -1174,11 +1235,42 @@ export default function TodoApp() {
     setSelectedDate(toISODate(newDate));
   }
 
-  /** 从执行现场直接回到这件事所属的焦点地图，而不是重新走一遍目标选择。 */
-  function openGoal(aspirationId: string, resultId?: string) {
-    setGoalEntryId(aspirationId);
+  function pushGoalRoute(aspirationId?: string, resultId?: string) {
+    const route: AppHistoryRoute = { view: "goals", aspirationId, resultId };
+    window.history.pushState(historyStateWith(route), "", window.location.href);
+    setGoalEntryId(aspirationId ?? null);
     setGoalEntryResultId(resultId ?? null);
     setGoalsOpen(true);
+  }
+
+  function openGoals() {
+    pushGoalRoute();
+  }
+
+  /** 有明确归属就直达关键结果；没有就停在这个目标的全局焦点地图。 */
+  function openGoal(aspirationId: string, resultId?: string) {
+    pushGoalRoute(aspirationId, resultId);
+  }
+
+  function selectGoalResult(aspirationId: string, resultId: string | null) {
+    const route: AppHistoryRoute = {
+      view: "goals",
+      aspirationId,
+      resultId: resultId ?? undefined,
+    };
+    window.history.replaceState(historyStateWith(route), "", window.location.href);
+    setGoalEntryId(aspirationId);
+    setGoalEntryResultId(resultId);
+  }
+
+  function backFromGoals() {
+    if (readAppHistoryRoute(window.history.state)?.view === "goals") {
+      window.history.back();
+      return;
+    }
+    setGoalsOpen(false);
+    setGoalEntryId(null);
+    setGoalEntryResultId(null);
   }
 
   return (
@@ -1199,11 +1291,9 @@ export default function TodoApp() {
           weekDates={Array.from({ length: 7 }).map(
             (_, i) => toISODate(addDays(startOfWeek(parseISODate(todayIso), true), i)) as ISODate,
           )}
-          onBack={() => {
-            setGoalsOpen(false);
-            setGoalEntryId(null);
-            setGoalEntryResultId(null);
-          }}
+          onBack={backFromGoals}
+          onOpenAspiration={openGoal}
+          onSelectResult={selectGoalResult}
           onCreateAspiration={createAspiration}
           onDeleteAspiration={deleteAspiration}
           onCreateGoalResult={createGoalResult}
@@ -1255,7 +1345,7 @@ export default function TodoApp() {
           behaviors={safeBehaviors}
           habits={safeHabits}
           dayPlans={safeDayPlans}
-          onOpenGoals={() => setGoalsOpen(true)}
+          onOpenGoals={openGoals}
           onOpenGoal={openGoal}
           running={timer.running}
           elapsedMs={timer.elapsedMs}
@@ -1289,7 +1379,7 @@ export default function TodoApp() {
           behaviors={safeBehaviors}
           habits={safeHabits}
           dayPlans={safeDayPlans}
-          onOpenGoals={() => setGoalsOpen(true)}
+          onOpenGoals={openGoals}
           onOpenGoal={openGoal}
           running={timer.running}
           elapsedMs={timer.elapsedMs}
@@ -1306,7 +1396,7 @@ export default function TodoApp() {
           behaviors={safeBehaviors}
           goalResults={safeGoalResults}
           dayPlans={safeDayPlans}
-          onOpenGoals={() => setGoalsOpen(true)}
+          onOpenGoals={openGoals}
           onOpenGoal={openGoal}
           running={timer.running}
           elapsedMs={timer.elapsedMs}
@@ -1344,7 +1434,7 @@ export default function TodoApp() {
           today={todayIso}
           aspirations={safeAspirations}
           dayPlans={safeDayPlans}
-          onOpenGoals={() => setGoalsOpen(true)}
+          onOpenGoals={openGoals}
           running={timer.running}
           elapsedMs={timer.elapsedMs}
           onStopTimer={timer.stop}

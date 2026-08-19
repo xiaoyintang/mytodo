@@ -41,7 +41,7 @@ type Props = {
   results: GoalResult[];
   cards: BehaviorCard[];
   activeResultId: string | null;
-  onSelect: (resultId: string) => void;
+  onSelect: (resultId: string | null) => void;
   onCreate: (title: string, evidence?: string) => string;
   onUpdate: (id: string, patch: { title?: string; evidence?: string }) => void;
   onDelete: (id: string) => void;
@@ -514,6 +514,34 @@ export default function GoalResultsPanel({
 
       {results.length > 0 && (
         <div className="flex flex-col gap-1.5">
+          <button
+            type="button"
+            onClick={() => onSelect(null)}
+            className={`flex items-center gap-2 rounded-[10px] border p-2 text-left transition-colors ${
+              activeResultId === null
+                ? "border-[var(--color-primary)] bg-white shadow-sm"
+                : "border-[var(--color-border)] bg-white/70"
+            }`}
+          >
+            <span
+              className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-[9px] font-bold ${
+                activeResultId === null
+                  ? "bg-[var(--color-primary)] text-white"
+                  : "bg-[var(--color-primary-light)] text-[var(--color-primary)]"
+              }`}
+            >
+              全部
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[12px] font-semibold text-[var(--color-text-primary)]">
+                目标全局
+              </span>
+              <span className="block text-[9px] text-[var(--color-text-tertiary)]">
+                查看全部 {cards.length} 条推进项
+              </span>
+            </span>
+            <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-text-tertiary)]" />
+          </button>
           {results.map((result, index) => {
             const mine = cards.filter((card) => card.resultId === result.id);
             const golden = mine.filter((card) => isActionable(card.type) && isGolden(card)).length;

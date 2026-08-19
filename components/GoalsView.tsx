@@ -45,6 +45,8 @@ type Props = {
   entries: TimeEntry[];
   weekDates: ISODate[];
   onBack: () => void;
+  onOpenAspiration: (aspirationId: string, resultId?: string) => void;
+  onSelectResult: (aspirationId: string, resultId: string | null) => void;
   onCreateAspiration: (title: string, kind: AspirationKind) => void;
   onDeleteAspiration: (id: string) => void;
   onCreateGoalResult: (aspirationId: string, title: string, evidence?: string) => string;
@@ -96,6 +98,8 @@ export default function GoalsView({
   entries,
   weekDates,
   onBack,
+  onOpenAspiration,
+  onSelectResult,
   onCreateAspiration,
   onDeleteAspiration,
   onCreateGoalResult,
@@ -132,6 +136,14 @@ export default function GoalsView({
   const [rejudging, setRejudging] = useState(false);
   const [rejudgeDone, setRejudgeDone] = useState(0);
 
+  useEffect(() => {
+    setOpenId(initialOpenId);
+  }, [initialOpenId]);
+
+  useEffect(() => {
+    setActiveResultId(initialOpenResultId);
+  }, [initialOpenResultId]);
+
   const open = openId ? aspirations.find((a) => a.id === openId) ?? null : null;
   const openCards = open ? behaviors.filter((b) => b.aspirationId === open.id) : [];
   const openResults = open ? goalResults.filter((result) => result.aspirationId === open.id) : [];
@@ -139,15 +151,15 @@ export default function GoalsView({
   const unassignedCards = openCards.filter(
     (card) => !card.resultId || !resultIds.has(card.resultId),
   );
-  const resolvedResultId =
+  const resolvedResultId: string | null =
     activeResultId === UNASSIGNED_RESULT_ID && unassignedCards.length > 0
       ? UNASSIGNED_RESULT_ID
       : openResults.some((result) => result.id === activeResultId)
         ? activeResultId
-        : openResults[0]?.id ?? null;
+        : null;
   const selectedResult = openResults.find((result) => result.id === resolvedResultId) ?? null;
   const focusCards =
-    openResults.length === 0
+    openResults.length === 0 || resolvedResultId === null
       ? openCards
       : resolvedResultId === UNASSIGNED_RESULT_ID
         ? unassignedCards
@@ -268,13 +280,20 @@ export default function GoalsView({
     setDeleteAspId(null);
   }
 
-  /** 与左上角返回键保持同一套层级：焦点地图先回目标列表，直达入口则回执行页。 */
+  function handleOpenAspiration(aspirationId: string) {
+    setOpenId(aspirationId);
+    setActiveResultId(null);
+    onOpenAspiration(aspirationId);
+  }
+
+  function handleSelectResult(resultId: string | null) {
+    if (!open) return;
+    setActiveResultId(resultId);
+    onSelectResult(open.id, resultId);
+  }
+
+  /** 浏览器历史决定上一层：列表进入先回列表，任务/习惯直达则回执行页。 */
   function handleBack() {
-    if (open && !initialOpenId) {
-      setOpenId(null);
-      setActiveResultId(null);
-      return;
-    }
     onBack();
   }
 
@@ -360,7 +379,7 @@ export default function GoalsView({
               results={openResults}
               cards={openCards}
               activeResultId={resolvedResultId}
-              onSelect={setActiveResultId}
+              onSelect={handleSelectResult}
               onCreate={(title, evidence) => onCreateGoalResult(open.id, title, evidence)}
               onUpdate={onUpdateGoalResult}
               onDelete={onDeleteGoalResult}
@@ -379,13 +398,17 @@ export default function GoalsView({
                   ? "直接推进模式 · 所有推进项共用一张图"
                   : selectedResult
                     ? `正在比较：${selectedResult.title}`
-                    : "未归属推进项 · 先决定它们服务于哪个结果"}
+                    : resolvedResultId === UNASSIGNED_RESULT_ID
+                      ? "未归属推进项 · 先决定它们服务于哪个结果"
+                      : "目标全局 · 先看全部推进项"}
               </p>
               <p className="mt-0.5 text-[10px] leading-relaxed text-[var(--color-text-tertiary)]">
                 {selectedResult?.evidence ||
                   (openResults.length === 0
                     ? "目标变复杂时，再添加关键结果也来得及。"
-                    : "同一条结果下，可以比较独立行为，也可以比较带步骤的任务包。")}
+                    : resolvedResultId === null
+                      ? "这里先看全部推进项；选择一条关键结果后，再比较同一路径下的选项。"
+                      : "同一条结果下，可以比较独立行为，也可以比较带步骤的任务包。")}
               </p>
             </div>
 
@@ -610,10 +633,7 @@ export default function GoalsView({
                       <div className="relative flex min-h-[54px] w-full items-center gap-1 py-2 pl-3.5 pr-2">
                         <button
                           type="button"
-                          onClick={() => {
-                            setOpenId(a.id);
-                            setActiveResultId(null);
-                          }}
+                          onClick={() => handleOpenAspiration(a.id)}
                           className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
                         >
                           <div className="flex min-w-0 flex-1 flex-col gap-1">

@@ -104,7 +104,6 @@ type Props = {
   behaviors: BehaviorCard[];
   habits: Habit[];
   onOpenGoal: (aspirationId: string, resultId?: string) => void;
-  focusMapIntent?: boolean;
   onAddSubtasks: (taskId: string, titles: string[], beforeSubtaskId?: string) => void;
   onToggleSubtask: (taskId: string, subId: string) => void;
   onDeleteSubtask: (taskId: string, subId: string) => void;
@@ -182,7 +181,6 @@ export default function TaskBottomSheet({
   behaviors,
   habits,
   onOpenGoal,
-  focusMapIntent = false,
   onAddSubtasks,
   onToggleSubtask,
   onDeleteSubtask,
@@ -213,9 +211,7 @@ export default function TaskBottomSheet({
   const [editSubText, setEditSubText] = useState("");
   const [draggingSubId, setDraggingSubId] = useState<string | null>(null);
   const [stepDropPlacement, setStepDropPlacement] = useState<StepDropPlacement | null>(null);
-  const [resultNeedsAttention, setResultNeedsAttention] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const resultSelectRef = useRef<HTMLSelectElement>(null);
   const timeEditorRef = useRef<HTMLDivElement>(null);
   const editStartTimeRef = useRef("");
   const editEndTimeRef = useRef("");
@@ -247,7 +243,6 @@ export default function TaskBottomSheet({
     setNextActionReview(null);
     setDraggingSubId(null);
     setStepDropPlacement(null);
-    setResultNeedsAttention(false);
     stepDragRef.current = null;
     clarifyRequestRef.current += 1;
   }, [task]);
@@ -256,30 +251,6 @@ export default function TaskBottomSheet({
     setReviewingFlow(false);
     setFlowReview(null);
   }, [task?.id]);
-
-  // 从任务列表直接点目标名进来时，如果来源不足以判断关键结果，
-  // 立即把唯一需要补的信息放到眼前；选过一次后不再打扰。
-  useEffect(() => {
-    if (!isOpen || !focusMapIntent || !task?.aspirationId) return;
-    const results = goalResults.filter((result) => result.aspirationId === task.aspirationId);
-    const directBehavior = behaviors.find((behavior) => behavior.taskId === task.id);
-    const habit = task.sourceHabitId
-      ? habits.find((candidate) => candidate.id === task.sourceHabitId)
-      : undefined;
-    const habitBehavior = habit?.behaviorId
-      ? behaviors.find((behavior) => behavior.id === habit.behaviorId)
-      : undefined;
-    const resultId = directBehavior
-      ? directBehavior.resultId
-      : habitBehavior
-        ? habitBehavior.resultId
-        : task.resultId;
-    if (results.length <= 1 || results.some((result) => result.id === resultId)) return;
-
-    setResultNeedsAttention(true);
-    const timer = window.setTimeout(() => resultSelectRef.current?.focus(), 0);
-    return () => window.clearTimeout(timer);
-  }, [behaviors, focusMapIntent, goalResults, habits, isOpen, task]);
 
   // Focus input when editing starts
   useEffect(() => {
@@ -333,14 +304,10 @@ export default function TaskBottomSheet({
   const habitSourceBehavior = sourceHabit?.behaviorId
     ? behaviors.find((behavior) => behavior.id === sourceHabit.behaviorId)
     : undefined;
-  const inferredResultId = directSourceBehavior
-    ? directSourceBehavior.resultId
-    : habitSourceBehavior
-      ? habitSourceBehavior.resultId
-      : task.resultId;
+  const inferredResultId =
+    directSourceBehavior?.resultId ?? habitSourceBehavior?.resultId ?? task.resultId;
   const selectedTaskResult = taskGoalResults.find((result) => result.id === inferredResultId);
-  const directResultId = selectedTaskResult?.id ||
-    (taskGoalResults.length === 1 ? taskGoalResults[0].id : undefined);
+  const directResultId = selectedTaskResult?.id;
 
   function handleSaveTitle() {
     if (!task) return;
@@ -403,13 +370,7 @@ export default function TaskBottomSheet({
 
   function handleOpenTaskFocusMap() {
     if (!task?.aspirationId) return;
-    if (directResultId || taskGoalResults.length === 0) {
-      onOpenGoal(task.aspirationId, directResultId);
-      return;
-    }
-    // 多条关键结果且无法从行为/习惯来源推断时，只在当前任务里补一次归属。
-    setResultNeedsAttention(true);
-    window.setTimeout(() => resultSelectRef.current?.focus(), 0);
+    onOpenGoal(task.aspirationId, directResultId);
   }
 
   // 拖动进度：同步手动进度 + 联动三态状态
@@ -699,7 +660,6 @@ export default function TaskBottomSheet({
                           aspirationId: on ? undefined : a.id,
                           resultId: undefined,
                         });
-                        setResultNeedsAttention(false);
                       }}
                       className="px-2.5 py-1 rounded-md border text-[12px] font-medium transition-colors max-w-full truncate"
                       data-full-text={a.title}
@@ -714,15 +674,8 @@ export default function TaskBottomSheet({
                   );
                 })}
               </div>
-              {task.aspirationId && taskGoalResults.length > 1 && (
-                <div
-                  className={[
-                    "mt-2 rounded-lg border px-2.5 py-2 transition-colors",
-                    resultNeedsAttention
-                      ? "border-[#FDBA74] bg-[#FFF7ED]"
-                      : "border-[var(--color-border)] bg-[var(--color-bg-gray-lighter)]",
-                  ].join(" ")}
-                >
+              {task.aspirationId && taskGoalResults.length > 0 && (
+                <div className="mt-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-gray-lighter)] px-2.5 py-2">
                   <label
                     htmlFor={`task-result-${task.id}`}
                     className="mb-1 block text-[11px] font-medium text-[var(--color-text-secondary)]"
@@ -730,13 +683,11 @@ export default function TaskBottomSheet({
                     这项任务推进哪条关键结果
                   </label>
                   <select
-                    ref={resultSelectRef}
                     id={`task-result-${task.id}`}
                     value={selectedTaskResult?.id ?? ""}
-                    onChange={(event) => {
-                      onUpdate(task.id, { resultId: event.target.value || undefined });
-                      setResultNeedsAttention(false);
-                    }}
+                    onChange={(event) =>
+                      onUpdate(task.id, { resultId: event.target.value || undefined })
+                    }
                     className="w-full rounded-md border border-[var(--color-border)] bg-white px-2.5 py-2 text-[12px] text-[var(--color-text-primary)] outline-none transition-colors focus:border-[var(--color-primary)] focus:ring-2 focus:ring-blue-100"
                   >
                     <option value="">请选择关键结果</option>
@@ -746,11 +697,6 @@ export default function TaskBottomSheet({
                       </option>
                     ))}
                   </select>
-                  {resultNeedsAttention && (
-                    <p className="mt-1.5 text-[11px] leading-4 text-[#C2410C]">
-                      这个目标有多条关键结果。选一次后，以后都能从任务直接抵达对应位置。
-                    </p>
-                  )}
                 </div>
               )}
               {!task.aspirationId && (

@@ -12,7 +12,7 @@ import type {
   TimeEntry,
 } from "@/components/todo/types";
 import { goldenScore } from "@/components/todo/behavior";
-import { goalColor, UNASSIGNED_RESULT_ID } from "@/components/todo/goal";
+import { goalColor } from "@/components/todo/goal";
 import { formatMinutes } from "@/components/todo/time";
 import { toISODate } from "@/components/todo/date";
 import {
@@ -534,7 +534,7 @@ export default function HabitTracker({
                               onClick={() =>
                                 onOpenGoal(
                                   group.aspiration!.id,
-                                  resultGroup.result?.id ?? UNASSIGNED_RESULT_ID,
+                                  resultGroup.result?.id,
                                 )
                               }
                               className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-[var(--color-primary)] transition-colors hover:bg-white"

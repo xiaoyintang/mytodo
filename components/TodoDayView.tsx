@@ -126,7 +126,6 @@ export default function TodoDayView({
 }: Props) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
-  const [focusMapIntent, setFocusMapIntent] = useState(false);
   const [offOpen, setOffOpen] = useState(false);        // 非主线任务默认折起来
   // 展开的任务（看子任务）。默认全收起——卡片列表要保持一眼扫得完
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -144,7 +143,6 @@ export default function TodoDayView({
   const selectedTask = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) ?? null : null;
   function handleStartEdit(e: React.MouseEvent, task: Task) {
     e.stopPropagation();
-    setFocusMapIntent(false);
     setSelectedTaskId(task.id);
     setIsBottomSheetOpen(true);
   }
@@ -161,28 +159,14 @@ export default function TodoDayView({
     const habitBehavior = sourceHabit?.behaviorId
       ? behaviors.find((behavior) => behavior.id === sourceHabit.behaviorId)
       : undefined;
-    const inferredResultId = directBehavior
-      ? directBehavior.resultId
-      : habitBehavior
-        ? habitBehavior.resultId
-        : task.resultId;
+    const inferredResultId = directBehavior?.resultId ?? habitBehavior?.resultId ?? task.resultId;
     const exactResult = results.find((result) => result.id === inferredResultId);
-
-    if (exactResult || results.length <= 1) {
-      onOpenGoal(task.aspirationId, exactResult?.id || results[0]?.id);
-      return;
-    }
-
-    // 目标下有多条结果、但这项手动任务还没归属时，在任务详情里补选一次。
-    setFocusMapIntent(true);
-    setSelectedTaskId(task.id);
-    setIsBottomSheetOpen(true);
+    onOpenGoal(task.aspirationId, exactResult?.id);
   }
 
   function handleCloseBottomSheet() {
     setIsBottomSheetOpen(false);
     setSelectedTaskId(null);
-    setFocusMapIntent(false);
   }
   const selected = parseISODate(selectedDate);
   const weekStart = startOfWeek(selected, true);
@@ -582,7 +566,6 @@ export default function TodoDayView({
         behaviors={behaviors}
         habits={habits}
         onOpenGoal={onOpenGoal}
-        focusMapIntent={focusMapIntent}
       />
 
     </AppShell>
