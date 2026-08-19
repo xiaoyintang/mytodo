@@ -24,6 +24,7 @@ import { formatMinutes } from "@/components/todo/time";
 import FocusMapView from "@/components/FocusMapView";
 import GoalResultsPanel from "@/components/GoalResultsPanel";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import EdgeSwipeBack from "@/components/EdgeSwipeBack";
 import { ArrowLeft, ChevronRight, Plus, Search, Trash2, Undo2, X } from "lucide-react";
 
 type Judgement = {
@@ -267,21 +268,23 @@ export default function GoalsView({
     setDeleteAspId(null);
   }
 
+  /** 与左上角返回键保持同一套层级：焦点地图先回目标列表，直达入口则回执行页。 */
+  function handleBack() {
+    if (open && !initialOpenId) {
+      setOpenId(null);
+      setActiveResultId(null);
+      return;
+    }
+    onBack();
+  }
+
   return (
     <div className="flex min-h-full w-full max-w-[460px] flex-col overflow-hidden bg-[var(--color-bg-white)] pb-14 sm:min-h-0 sm:rounded-[16px] sm:border sm:border-[var(--color-border)] sm:pb-0 md:min-h-[calc(100vh-48px)] md:max-w-[960px] lg:max-w-[1040px]">
+      <EdgeSwipeBack onBack={handleBack} />
       <div className="w-full flex items-center gap-2 px-6 pt-6 pb-4">
         <button
           type="button"
-          onClick={
-            open
-              ? initialOpenId
-                ? onBack
-                : () => {
-                    setOpenId(null);
-                    setActiveResultId(null);
-                  }
-              : onBack
-          }
+          onClick={handleBack}
           className="w-9 h-9 rounded-lg border-[1.5px] border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors flex-shrink-0"
           aria-label="返回"
         >
@@ -314,7 +317,7 @@ export default function GoalsView({
         {!open && (
           <button
             type="button"
-            onClick={onBack}
+            onClick={handleBack}
             className="w-8 h-8 flex items-center justify-center flex-shrink-0"
             aria-label="关闭"
           >
