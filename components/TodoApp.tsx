@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import TodoDayView from "@/components/TodoDayView";
 import TodoWeekView from "@/components/TodoWeekView";
 import TimeLogView from "@/components/TimeLogView";
@@ -55,6 +56,16 @@ const EMPTY_HABITS: Habit[] = [];
 const EMPTY_HABIT_LOGS: HabitLog[] = [];
 const EMPTY_DAY_PLANS: Record<string, DayPlan> = {};
 const APP_HISTORY_KEY = "mytodo.route.v1";
+const WORKSPACE_TABS: ViewMode[] = ["day", "week", "log", "habit"];
+
+function blocksTabSwipe(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return Boolean(
+    target.closest(
+      'input, textarea, select, [contenteditable="true"], [role="slider"], [role="dialog"], [draggable="true"], [data-no-tab-swipe]',
+    ),
+  );
+}
 
 type AppHistoryRoute =
   | { view: "workspace" }
@@ -190,6 +201,14 @@ export default function TodoApp() {
     useLocalStorageState<Record<string, DayPlan>>(DAY_PLANS_KEY, EMPTY_DAY_PLANS);
 
   const [viewMode, setViewMode] = useState<ViewMode>("day");
+  const [tabDirection, setTabDirection] = useState<"forward" | "backward">("forward");
+  const tabSwipeRef = useRef<{
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+    blocked: boolean;
+  } | null>(null);
   const [goalsOpen, setGoalsOpen] = useState(false); // 从常驻条进的目标管理页
   const [goalEntryId, setGoalEntryId] = useState<string | null>(null);
   const [goalEntryResultId, setGoalEntryResultId] = useState<string | null>(null);
@@ -1281,8 +1300,76 @@ export default function TodoApp() {
     setGoalEntryResultId(null);
   }
 
+  function handleWorkspacePointerDown(event: ReactPointerEvent<HTMLElement>) {
+    if (
+      goalsOpen ||
+      isModalOpen ||
+      isSyncOpen ||
+      window.innerWidth >= 640 ||
+      !event.isPrimary ||
+      event.button !== 0
+    ) {
+      tabSwipeRef.current = null;
+      return;
+    }
+    tabSwipeRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      blocked: blocksTabSwipe(event.target),
+    };
+  }
+
+  function changeViewMode(nextMode: ViewMode) {
+    if (nextMode === viewMode) return;
+    setTabDirection(
+      WORKSPACE_TABS.indexOf(nextMode) > WORKSPACE_TABS.indexOf(viewMode)
+        ? "forward"
+        : "backward",
+    );
+    setViewMode(nextMode);
+  }
+
+  function handleWorkspacePointerMove(event: ReactPointerEvent<HTMLElement>) {
+    const gesture = tabSwipeRef.current;
+    if (!gesture || !event.isPrimary) return;
+    gesture.lastX = event.clientX;
+    gesture.lastY = event.clientY;
+  }
+
+  function handleWorkspacePointerUp(event: ReactPointerEvent<HTMLElement>) {
+    const gesture = tabSwipeRef.current;
+    tabSwipeRef.current = null;
+    if (!gesture || gesture.blocked || goalsOpen || window.innerWidth >= 640) return;
+
+    const endX = event.clientX || gesture.lastX;
+    const endY = event.clientY || gesture.lastY;
+    const deltaX = endX - gesture.startX;
+    const deltaY = endY - gesture.startY;
+    const horizontal = Math.abs(deltaX);
+    const vertical = Math.abs(deltaY);
+    // 明确横滑才切页：轻微手抖和正常上下滚动都不响应。
+    if (horizontal < 56 || horizontal <= vertical * 1.25) return;
+
+    const current = WORKSPACE_TABS.indexOf(viewMode);
+    const next = deltaX < 0 ? current + 1 : current - 1;
+    if (next < 0 || next >= WORKSPACE_TABS.length) return;
+    changeViewMode(WORKSPACE_TABS[next]);
+  }
+
   return (
-    <main className="flex h-full w-full items-start justify-center overflow-auto bg-white p-0 sm:bg-[#F5F5F5] sm:p-6">
+    <main
+      data-testid="workspace-swipe-surface"
+      data-tab-direction={tabDirection}
+      onPointerDown={handleWorkspacePointerDown}
+      onPointerMove={handleWorkspacePointerMove}
+      onPointerUp={handleWorkspacePointerUp}
+      onPointerCancel={() => {
+        tabSwipeRef.current = null;
+      }}
+      className={`flex h-full w-full items-start justify-center overflow-auto bg-white p-0 sm:bg-[#F5F5F5] sm:p-6 ${goalsOpen ? "" : "touch-pan-y"}`}
+    >
       <FastTooltip />
       {goalsOpen ? (
         <GoalsView
@@ -1331,7 +1418,7 @@ export default function TodoApp() {
       ) : viewMode === "day" ? (
         <TodoDayView
           viewMode={viewMode}
-          onChangeViewMode={setViewMode}
+          onChangeViewMode={changeViewMode}
           selectedDate={selectedDate}
           onSelectDate={setSelectedDate}
           tasks={safeTasks}
@@ -1365,7 +1452,7 @@ export default function TodoApp() {
         <TodoWeekView
           onToggleMainline={toggleMainline}
           viewMode={viewMode}
-          onChangeViewMode={setViewMode}
+          onChangeViewMode={changeViewMode}
           selectedDate={selectedDate}
           onSelectDate={setSelectedDate}
           tasks={safeTasks}
@@ -1398,7 +1485,7 @@ export default function TodoApp() {
       ) : viewMode === "habit" ? (
         <HabitLabView
           viewMode={viewMode}
-          onChangeViewMode={setViewMode}
+          onChangeViewMode={changeViewMode}
           today={todayIso}
           aspirations={safeAspirations}
           behaviors={safeBehaviors}
@@ -1426,7 +1513,7 @@ export default function TodoApp() {
       ) : (
         <TimeLogView
           viewMode={viewMode}
-          onChangeViewMode={setViewMode}
+          onChangeViewMode={changeViewMode}
           selectedDate={selectedDate}
           onSelectDate={setSelectedDate}
           tasks={safeTasks}
@@ -1462,6 +1549,7 @@ export default function TodoApp() {
       {/* 手机避开页头新增按钮；桌面仍放在右上角。 */}
       <button
         type="button"
+        data-no-tab-swipe
         onClick={() => setIsSyncOpen(true)}
         aria-label="多设备同步"
         className="fixed bottom-4 right-4 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-[var(--color-border)] bg-white shadow-[0_2px_10px_rgba(0,0,0,0.12)] transition-colors hover:bg-[var(--color-bg-gray-light)] sm:bottom-auto sm:top-4"

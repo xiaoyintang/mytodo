@@ -15,6 +15,7 @@ import type {
 import { CN_WEEKDAY, addDays, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
 import { Check, Flag, Timer } from "lucide-react";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
+import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
 import TaskBottomSheet from "@/components/TaskBottomSheet";
 import QuickAddTask from "@/components/QuickAddTask";
 import MainlineBar from "@/components/MainlineBar";
@@ -60,11 +61,13 @@ function WeekTaskRow({
   task,
   entries,
   isMainline,
+  resultTitle,
   onClick,
 }: {
   task: Task;
   entries: TimeEntry[];
   isMainline: boolean;
+  resultTitle?: string;
   onClick: () => void;
 }) {
   const isDone = task.status === "done";
@@ -102,19 +105,29 @@ function WeekTaskRow({
         <span className="w-2 h-2 rounded-full border-2 border-[#A1A1AA] flex-shrink-0" />
       )}
 
-      {/* Title */}
-      <span
-        className={[
-          "text-[13px] font-medium truncate flex-1",
-          isDone
-            ? "text-[#16A34A] line-through"
-            : isInProgress
-              ? "text-[#2563EB]"
-              : "text-[var(--color-text-primary)]",
-        ].join(" ")}
-        data-full-text={task.title}
-      >
-        {task.title}
+      {/* 标题 + 所属关键结果。周视图也要能看出这件事在推进什么。 */}
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span
+          className={[
+            "truncate text-[13px] font-medium",
+            isDone
+              ? "text-[#16A34A] line-through"
+              : isInProgress
+                ? "text-[#2563EB]"
+                : "text-[var(--color-text-primary)]",
+          ].join(" ")}
+          data-full-text={task.title}
+        >
+          {task.title}
+        </span>
+        {resultTitle && (
+          <span
+            className="truncate text-[9px] font-medium leading-3 text-[var(--color-text-tertiary)]"
+            data-full-text={`关键结果：${resultTitle}`}
+          >
+            KR · {resultTitle}
+          </span>
+        )}
       </span>
 
       {task.sourceHabitId && !isDone && (
@@ -160,12 +173,18 @@ function DayRow({
   date,
   tasks,
   entries,
+  goalResults,
+  behaviors,
+  habits,
   mainlineIds,
   onTaskClick,
 }: {
   date: Date;
   tasks: Task[];
   entries: TimeEntry[];
+  goalResults: GoalResult[];
+  behaviors: BehaviorCard[];
+  habits: Habit[];
   mainlineIds: string[];
   onTaskClick: (task: Task) => void;
 }) {
@@ -226,6 +245,7 @@ function DayRow({
               task={task}
               entries={entries}
               isMainline={isMainlineTask(task)}
+              resultTitle={resolveTaskGoalResult(task, goalResults, behaviors, habits)?.title}
               onClick={() => onTaskClick(task)}
             />
           ))
@@ -351,6 +371,9 @@ export default function TodoWeekView({
                 date={d}
                 tasks={dayTasks}
                 entries={entries}
+                goalResults={goalResults}
+                behaviors={behaviors}
+                habits={habits}
                 mainlineIds={dayPlans[iso]?.primaryAspirationIds ?? []}
                 onTaskClick={handleTaskClick}
               />

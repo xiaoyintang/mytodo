@@ -19,6 +19,7 @@ import { X, Check, Calendar, Clock, Flag, Trash2, ChevronLeft, ChevronRight, Gri
 import { callBehaviorAPI } from "@/components/todo/behaviorApi";
 import TimePicker from "@/components/TimePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
 
 // 可拖动的完成进度滑块（0-100，指哪填哪）
 function ProgressSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
@@ -297,16 +298,7 @@ export default function TaskBottomSheet({
   const taskGoalResults = task.aspirationId
     ? goalResults.filter((result) => result.aspirationId === task.aspirationId)
     : [];
-  const directSourceBehavior = behaviors.find((behavior) => behavior.taskId === task.id);
-  const sourceHabit = task.sourceHabitId
-    ? habits.find((habit) => habit.id === task.sourceHabitId)
-    : undefined;
-  const habitSourceBehavior = sourceHabit?.behaviorId
-    ? behaviors.find((behavior) => behavior.id === sourceHabit.behaviorId)
-    : undefined;
-  const inferredResultId =
-    directSourceBehavior?.resultId ?? habitSourceBehavior?.resultId ?? task.resultId;
-  const selectedTaskResult = taskGoalResults.find((result) => result.id === inferredResultId);
+  const selectedTaskResult = resolveTaskGoalResult(task, goalResults, behaviors, habits);
   const directResultId = selectedTaskResult?.id;
 
   function handleSaveTitle() {
@@ -412,7 +404,7 @@ export default function TaskBottomSheet({
       />
 
       {/* Bottom Sheet */}
-      <div className="fixed bottom-0 left-0 right-0 z-[101] bg-white rounded-t-[20px] shadow-[0_-4px_24px_rgba(0,0,0,0.12)] animate-slide-up max-h-[85vh] flex flex-col">
+      <div data-no-tab-swipe className="fixed bottom-0 left-0 right-0 z-[101] bg-white rounded-t-[20px] shadow-[0_-4px_24px_rgba(0,0,0,0.12)] animate-slide-up max-h-[85vh] flex flex-col">
         {/* Handle */}
         <div className="flex justify-center pt-3 pb-2 flex-shrink-0">
           <div className="w-10 h-1 bg-[#E4E4E7] rounded-full" />

@@ -15,6 +15,7 @@ import type {
 import { CN_WEEKDAY, addDays, parseISODate, startOfWeek } from "@/components/todo/date";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
 import { goalColor } from "@/components/todo/goal";
+import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
 import { Check, ChevronDown, ListChecks, MoreHorizontal, Timer } from "lucide-react";
 import TaskBottomSheet from "@/components/TaskBottomSheet";
 import QuickAddTask from "@/components/QuickAddTask";
@@ -150,17 +151,7 @@ export default function TodoDayView({
   function handleOpenTaskGoal(e: React.MouseEvent, task: Task) {
     e.stopPropagation();
     if (!task.aspirationId) return;
-
-    const results = goalResults.filter((result) => result.aspirationId === task.aspirationId);
-    const directBehavior = behaviors.find((behavior) => behavior.taskId === task.id);
-    const sourceHabit = task.sourceHabitId
-      ? habits.find((habit) => habit.id === task.sourceHabitId)
-      : undefined;
-    const habitBehavior = sourceHabit?.behaviorId
-      ? behaviors.find((behavior) => behavior.id === sourceHabit.behaviorId)
-      : undefined;
-    const inferredResultId = directBehavior?.resultId ?? habitBehavior?.resultId ?? task.resultId;
-    const exactResult = results.find((result) => result.id === inferredResultId);
+    const exactResult = resolveTaskGoalResult(task, goalResults, behaviors, habits);
     onOpenGoal(task.aspirationId, exactResult?.id);
   }
 
@@ -215,6 +206,7 @@ export default function TodoDayView({
     const subDone = subs.filter((x) => x.done).length;
     const nextSubtask = subs.find((x) => !x.done);
     const isExpanded = expanded.has(t.id);
+    const taskResult = resolveTaskGoalResult(t, goalResults, behaviors, habits);
 
     const hasMeta =
       (showTime && !!time) ||
@@ -315,13 +307,22 @@ export default function TodoDayView({
                     <button
                       type="button"
                       onClick={(event) => handleOpenTaskGoal(event, t)}
-                      className="flex max-w-[126px] items-center gap-1 rounded-sm transition-opacity hover:opacity-70"
+                      className="flex min-w-0 max-w-[220px] items-center gap-1 rounded-sm transition-opacity hover:opacity-70"
                       style={{ color }}
-                      aria-label={`打开${aspirations[gi].title}的焦点地图`}
+                      aria-label={`打开${aspirations[gi].title}${taskResult ? `的关键结果：${taskResult.title}` : "的焦点地图"}`}
                     >
                       <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ backgroundColor: color }} />
-                      <span className="truncate font-medium" data-full-text={aspirations[gi].title}>
+                      <span
+                        className="truncate font-medium"
+                        data-full-text={taskResult ? `${aspirations[gi].title} › ${taskResult.title}` : aspirations[gi].title}
+                      >
                         {aspirations[gi].title}
+                        {taskResult && (
+                          <>
+                            <span className="mx-1 opacity-45">›</span>
+                            <span className="font-normal">{taskResult.title}</span>
+                          </>
+                        )}
                       </span>
                     </button>
                   );

@@ -14,7 +14,7 @@ const TABS: Array<[ViewMode, string]> = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-full w-full max-w-[460px] flex-col overflow-hidden bg-white pb-14 sm:min-h-0 sm:rounded-[16px] sm:border sm:border-[var(--color-border)] sm:pb-0 md:min-h-[calc(100vh-48px)] md:max-w-[960px] lg:max-w-[1040px]">
+    <div className="workspace-view-enter flex min-h-full w-full max-w-[460px] flex-col overflow-hidden bg-white pb-14 sm:min-h-0 sm:rounded-[16px] sm:border sm:border-[var(--color-border)] sm:pb-0 md:min-h-[calc(100vh-48px)] md:max-w-[960px] lg:max-w-[1040px]">
       {children}
     </div>
   );
