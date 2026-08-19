@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type {
   Aspiration,
   BehaviorCard,
@@ -49,7 +49,7 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import BehaviorStepsEditor from "@/components/BehaviorStepsEditor";
 
 type AxisPatch = { impact?: number; feasibility?: number };
-type SortMode = "default" | "impact" | "score";
+type SortMode = "score" | "impact";
 type BehaviorReview = {
   forId: string;
   sourceText: string;
@@ -122,17 +122,46 @@ type Props = {
 };
 
 const SORTS: Array<[SortMode, string]> = [
-  // 默认 = 没排的浮到最上面，其余保持收集顺序。全部排完之后它就等于收集顺序，
-  // 所以不需要再单独给一个"还没排的"
-  ["default", "默认"],
+  ["score", "综合分高→低"],
   ["impact", "影响力高→低"],
-  ["score", "最该先做"], // = 影响力 60% + 可行性 40%，影响力略占主导
 ];
 
-/** 没排完的排前面（两轴都没排 > 排了一半 > 排完），同档保持收集顺序 */
-function unratedFirst(cards: BehaviorCard[]): string[] {
-  const rank = (c: BehaviorCard) => (c.impact == null ? 2 : 0) + (c.feasibility == null ? 1 : 0);
-  return [...cards].sort((a, b) => rank(b) - rank(a)).map((c) => c.id);
+/** 默认先给结论：两轴都评完的按综合分降序；半成品和未评分统一沉底。 */
+function scoreFirst(cards: BehaviorCard[]): string[] {
+  const sourceIndex = new Map(cards.map((card, index) => [card.id, index]));
+  const fullyRated = (card: BehaviorCard) =>
+    isActionable(card.type) && card.impact != null && card.feasibility != null;
+
+  return [...cards]
+    .sort((a, b) => {
+      const aRated = fullyRated(a);
+      const bRated = fullyRated(b);
+      if (aRated !== bRated) return bRated ? 1 : -1;
+      if (aRated && bRated) {
+        const scoreGap = goldenScore(b) - goldenScore(a);
+        if (scoreGap !== 0) return scoreGap;
+      }
+      return (sourceIndex.get(a.id) ?? 0) - (sourceIndex.get(b.id) ?? 0);
+    })
+    .map((card) => card.id);
+}
+
+function impactFirst(cards: BehaviorCard[]): string[] {
+  const sourceIndex = new Map(cards.map((card, index) => [card.id, index]));
+  const hasImpact = (card: BehaviorCard) => isActionable(card.type) && card.impact != null;
+
+  return [...cards]
+    .sort((a, b) => {
+      const aRated = hasImpact(a);
+      const bRated = hasImpact(b);
+      if (aRated !== bRated) return bRated ? 1 : -1;
+      if (aRated && bRated) {
+        const impactGap = (b.impact ?? 0) - (a.impact ?? 0);
+        if (impactGap !== 0) return impactGap;
+      }
+      return (sourceIndex.get(a.id) ?? 0) - (sourceIndex.get(b.id) ?? 0);
+    })
+    .map((card) => card.id);
 }
 
 // 散点图尺寸
@@ -185,10 +214,12 @@ export default function FocusMapView({
 }: Props) {
   const goalContext = focusTitle?.trim() || aspiration.title;
   const [confirmReset, setConfirmReset] = useState(false);
-  const [sort, setSort] = useState<SortMode>("default");
+  const [sort, setSort] = useState<SortMode>("score");
+  const cardsRef = useRef(cards);
+  cardsRef.current = cards;
   // 排序是一个动作不是实时绑定——否则拖滑块时行会在手底下乱跳。
-  // 默认顺序也是进来时定一次：没排的浮上来，之后你怎么拖它都待在原地
-  const [order, setOrder] = useState<string[]>(() => unratedFirst(cards));
+  // 进入当前焦点地图时按综合分排一次，之后你怎么拖它都先待在原地。
+  const [order, setOrder] = useState<string[]>(() => scoreFirst(cards));
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [scheduling, setScheduling] = useState(false);
   const [singleSchedulingId, setSingleSchedulingId] = useState<string | null>(null);
@@ -244,21 +275,26 @@ export default function FocusMapView({
   // 影响力够高但做不到的——福格的解法是改小。单独拎出来，否则藏在几十行里根本找不着
   const stuck = actionableCards.filter((c) => (c.impact ?? 0) >= 50 && c.feasibility != null && c.feasibility < 50);
 
-  // 新加的卡不在快照里（indexOf = -1），自然排到最前面——它本来就是没排的
-  const ordered = [...cards].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+  // 新加的卡还没有评分，也不在排序快照里：统一沉到末尾，不挡住已排出的优先项。
+  const ordered = [...cards].sort((a, b) => {
+    const aIndex = order.indexOf(a.id);
+    const bIndex = order.indexOf(b.id);
+    return (aIndex < 0 ? Number.MAX_SAFE_INTEGER : aIndex) -
+      (bIndex < 0 ? Number.MAX_SAFE_INTEGER : bIndex);
+  });
   const list = onlyStuck ? ordered.filter((c) => stuck.includes(c)) : ordered;
 
   function applySort(mode: SortMode) {
     setSort(mode);
-    if (mode === "default") {
-      setOrder(unratedFirst(cards));
-      return;
-    }
-    const key: (c: BehaviorCard) => number =
-      mode === "impact"
-        ? (c) => (isActionable(c.type) ? c.impact ?? -1 : -1)
-        : (c) => (isActionable(c.type) ? goldenScore(c) : -1);
-    setOrder([...cards].sort((a, b) => key(b) - key(a)).map((c) => c.id));
+    setOrder(mode === "score" ? scoreFirst(cards) : impactFirst(cards));
+  }
+
+  function refreshCurrentSort() {
+    // 滑块拖动中不重排，避免卡片从手下跑掉；松手后再按最终分数落位。
+    window.requestAnimationFrame(() => {
+      const currentCards = cardsRef.current;
+      setOrder(sort === "score" ? scoreFirst(currentCards) : impactFirst(currentCards));
+    });
   }
 
   function submitAdd() {
@@ -1091,6 +1127,9 @@ export default function FocusMapView({
           step={5}
           value={value ?? 50}
           onChange={(e) => onSetAxis(b.id, { [axis]: Number(e.target.value) } as AxisPatch)}
+          onPointerUp={refreshCurrentSort}
+          onKeyUp={refreshCurrentSort}
+          onBlur={refreshCurrentSort}
           className={["flex-1 h-[20px] cursor-pointer accent-[var(--color-primary)]", placed ? "" : "opacity-40"].join(" ")}
           aria-label={`${b.text} 的${axis === "impact" ? "影响力" : "可行性"}`}
         />
@@ -1717,11 +1756,9 @@ export default function FocusMapView({
           </button>
         ))}
         <span className="w-full text-[10px] text-[var(--color-text-tertiary)] leading-relaxed">
-          {sort === "default"
-            ? "还没排的（虚线那些）浮在最上面，排完的按收集顺序排在后面。顺序进来时定一次，拖的时候行不会动"
-            : sort === "impact"
-              ? "想比较两条谁更重要？这样排一下它俩就挨着了。拖完想重排，再点一次这个按钮"
-              : "影响力占 60%，能做到占 40%；两边都重要，影响力略高的优先"}
+          {sort === "score"
+            ? "影响力占 60%，能做到占 40%；两轴都评完才参与排名，没评分的统一放最后。拖动时列表不乱跳，松手后自动按新分数落位"
+            : "按影响力从高到低比较；还没填写影响力的统一放最后。拖动时列表不乱跳，松手后自动按新分数落位"}
         </span>
         <span className="w-full text-[10px] font-medium leading-relaxed text-[var(--color-text-secondary)]">
           左边方框只用于多选；单条推进项直接用卡片里的按钮。
@@ -2306,7 +2343,7 @@ export default function FocusMapView({
           onResetAxes();
           setConfirmReset(false);
           setOrder(cards.map((c) => c.id));
-          setSort("default");
+          setSort("score");
         }}
         onCancel={() => setConfirmReset(false)}
       />
