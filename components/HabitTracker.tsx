@@ -14,7 +14,7 @@ import type {
 import { goldenScore } from "@/components/todo/behavior";
 import { goalColor } from "@/components/todo/goal";
 import { formatMinutes } from "@/components/todo/time";
-import { toISODate } from "@/components/todo/date";
+import { addDays, CN_WEEKDAY, parseISODate, toISODate } from "@/components/todo/date";
 import {
   Check,
   CalendarCheck2,
@@ -42,7 +42,7 @@ type Props = {
   tasks: Task[];
   today: ISODate;
   onLog: (habitId: string) => string;
-  onScheduleToday: (habitId: string) => void;
+  onScheduleDates: (habitId: string, dates: ISODate[]) => void;
   onSetLogImpact: (logId: string, impact: string) => void;
   onUndoLog: (habitId: string) => void;
   onSetAnchor: (habitId: string, anchor: string) => void;
@@ -71,6 +71,30 @@ type HabitResultGroup = {
   items: Habit[];
   hideHeader?: boolean;
 };
+
+type HabitScheduleOption = {
+  date: ISODate;
+  weekday: string;
+  dateLabel: string;
+};
+
+/** 本周只展示今天之后的日期；周日再顺延开放完整的下一周。 */
+function habitScheduleOptions(today: ISODate): HabitScheduleOption[] {
+  const current = parseISODate(today);
+  const remainingDays = current.getDay() === 0 ? 7 : 7 - current.getDay();
+  return Array.from({ length: remainingDays + 1 }).map((_, index) => {
+    const date = addDays(current, index);
+    const isNextWeek = current.getDay() === 0 && index > 0;
+    return {
+      date: toISODate(date),
+      weekday:
+        index === 0
+          ? "今天"
+          : `${isNextWeek ? "下周" : ""}${CN_WEEKDAY[date.getDay()].replace("周", "")}`,
+      dateLabel: `${date.getMonth() + 1}/${date.getDate()}`,
+    };
+  });
+}
 
 function celebrationCopy(total: number, todayCount: number, aspirationTitle?: string) {
   if (total === 1) {
@@ -167,7 +191,7 @@ export default function HabitTracker({
   tasks,
   today,
   onLog,
-  onScheduleToday,
+  onScheduleDates,
   onSetLogImpact,
   onUndoLog,
   onSetAnchor,
@@ -184,6 +208,8 @@ export default function HabitTracker({
   const [justTapped, setJustTapped] = useState<string | null>(null);
   const [celebration, setCelebration] = useState<Celebration | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<Habit | null>(null);
+  const [schedulingHabitId, setSchedulingHabitId] = useState<string | null>(null);
+  const [selectedScheduleDates, setSelectedScheduleDates] = useState<ISODate[]>([]);
   const celebrationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -194,6 +220,17 @@ export default function HabitTracker({
 
   const live = habits.filter((h) => !h.archived);
   if (live.length === 0) return null;
+  const scheduleOptions = habitScheduleOptions(today);
+  const schedulingHabit = schedulingHabitId
+    ? live.find((habit) => habit.id === schedulingHabitId) ?? null
+    : null;
+  const scheduledDates = new Set(
+    schedulingHabit
+      ? tasks
+          .filter((task) => task.sourceHabitId === schedulingHabit.id)
+          .map((task) => task.date)
+      : [],
+  );
 
   function behaviorOf(habit: Habit) {
     return habit.behaviorId ? behaviors.find((behavior) => behavior.id === habit.behaviorId) : undefined;
@@ -365,6 +402,34 @@ export default function HabitTracker({
   function saveAnchor(id: string) {
     onSetAnchor(id, draft.trim());
     setEditAnchor(null);
+  }
+
+  function openScheduler(habitId: string) {
+    setSchedulingHabitId(habitId);
+    setSelectedScheduleDates([]);
+  }
+
+  function closeScheduler() {
+    setSchedulingHabitId(null);
+    setSelectedScheduleDates([]);
+  }
+
+  function toggleScheduleDate(date: ISODate) {
+    if (scheduledDates.has(date)) return;
+    setSelectedScheduleDates((current) =>
+      current.includes(date) ? current.filter((item) => item !== date) : [...current, date],
+    );
+  }
+
+  function applyScheduleDates() {
+    if (!schedulingHabit || selectedScheduleDates.length === 0) return;
+    onScheduleDates(schedulingHabit.id, selectedScheduleDates);
+    try {
+      navigator.vibrate?.(8);
+    } catch {
+      /* ignore */
+    }
+    closeScheduler();
   }
 
   return (
@@ -555,9 +620,11 @@ export default function HabitTracker({
                 const count = isDuration
                   ? (ledger?.count ?? 0)
                   : logs.filter((l) => l.habitId === h.id && l.date === today).length;
-                const todayTask = tasks.find(
-                  (task) => task.sourceHabitId === h.id && task.date === today,
-                );
+                const scheduledCount = scheduleOptions.filter((option) =>
+                  tasks.some(
+                    (task) => task.sourceHabitId === h.id && task.date === option.date,
+                  ),
+                ).length;
                 const canUndoManual = logs.some(
                   (log) => log.habitId === h.id && log.date === today && !log.taskId,
                 );
@@ -730,37 +797,25 @@ export default function HabitTracker({
                     <div className="flex flex-shrink-0 items-center gap-0.5">
                       <button
                         type="button"
-                        onClick={() => {
-                          if (todayTask) return;
-                          onScheduleToday(h.id);
-                          try {
-                            navigator.vibrate?.(8);
-                          } catch {
-                            /* ignore */
-                          }
-                        }}
-                        disabled={Boolean(todayTask)}
+                        onClick={() => openScheduler(h.id)}
                         className={[
-                          "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
-                          todayTask?.status === "done"
-                            ? "bg-[#F0FDF4] text-[#15803D]"
-                            : todayTask
-                              ? "bg-[var(--color-bg-gray-lighter)] text-[var(--color-text-tertiary)]"
-                              : "text-[var(--color-primary)] hover:bg-[var(--color-primary-light)]",
+                          "relative flex h-7 w-7 items-center justify-center rounded-md transition-colors",
+                          scheduledCount > 0
+                            ? "bg-[var(--color-primary-light)] text-[var(--color-primary)]"
+                            : "text-[var(--color-primary)] hover:bg-[var(--color-primary-light)]",
                         ].join(" ")}
-                        aria-label={
-                          todayTask?.status === "done"
-                            ? `「${h.title}」的今日任务已完成`
-                            : todayTask
-                              ? `「${h.title}」已排到今天`
-                              : `把「${h.title}」排到今天`
-                        }
-                        title={todayTask ? "已排到今天" : "排到今天"}
+                        aria-label={`为「${h.title}」选择任务日期${scheduledCount > 0 ? `，已排 ${scheduledCount} 天` : ""}`}
+                        title="选择任务日期（可多选）"
                       >
-                        {todayTask ? (
+                        {scheduledCount > 0 ? (
                           <CalendarCheck2 className="h-3 w-3" />
                         ) : (
                           <CalendarPlus className="h-3 w-3" />
+                        )}
+                        {scheduledCount > 0 && (
+                          <span className="absolute -right-1 -top-1 flex h-3 min-w-3 items-center justify-center rounded-full bg-[var(--color-primary)] px-0.5 text-[7px] font-bold text-white">
+                            {scheduledCount}
+                          </span>
                         )}
                       </button>
                       {canUndoManual && !isDuration && (
@@ -801,6 +856,113 @@ export default function HabitTracker({
           );
         })}
       </div>
+
+      {schedulingHabit && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/20 p-0 sm:items-center sm:p-4"
+          onClick={closeScheduler}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="habit-schedule-title"
+            className="w-full max-w-[430px] rounded-t-[18px] border border-[var(--color-border)] bg-white p-4 shadow-[0_18px_50px_rgba(0,0,0,0.18)] sm:rounded-[16px]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="min-w-0 flex-1">
+                <p
+                  id="habit-schedule-title"
+                  className="text-[15px] font-bold text-[var(--color-text-primary)]"
+                >
+                  排到哪几天？
+                </p>
+                <p
+                  className="mt-0.5 truncate text-[11px] text-[var(--color-text-secondary)]"
+                  data-full-text={schedulingHabit.title}
+                >
+                  {schedulingHabit.title}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeScheduler}
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-[var(--color-text-tertiary)] hover:bg-[var(--color-bg-gray-lighter)]"
+                aria-label="关闭日期选择"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <p className="mt-3 text-[10px] leading-4 text-[var(--color-text-tertiary)]">
+              可多选；只安排本周剩余日期
+              {parseISODate(today).getDay() === 0 ? "，今天是周日，所以同时开放下周" : ""}。
+            </p>
+
+            <div className="mt-2.5 grid grid-cols-4 gap-2">
+              {scheduleOptions.map((option) => {
+                const alreadyScheduled = scheduledDates.has(option.date);
+                const selected = selectedScheduleDates.includes(option.date);
+                return (
+                  <button
+                    key={option.date}
+                    type="button"
+                    onClick={() => toggleScheduleDate(option.date)}
+                    disabled={alreadyScheduled}
+                    aria-pressed={selected}
+                    className={[
+                      "relative flex min-h-[58px] flex-col items-center justify-center rounded-[10px] border px-1 py-2 transition-all",
+                      alreadyScheduled
+                        ? "border-[#BBF7D0] bg-[#F0FDF4] text-[#15803D]"
+                        : selected
+                          ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white shadow-sm"
+                          : "border-[var(--color-border)] bg-white text-[var(--color-text-secondary)] hover:border-[var(--color-primary)] hover:bg-[var(--color-primary-light)]",
+                    ].join(" ")}
+                  >
+                    <span className="text-[11px] font-semibold">{option.weekday}</span>
+                    <span
+                      className={`mt-0.5 text-[9px] ${
+                        selected ? "text-white/80" : "text-[var(--color-text-tertiary)]"
+                      }`}
+                    >
+                      {option.dateLabel}
+                    </span>
+                    {alreadyScheduled && (
+                      <span className="mt-0.5 text-[8px] font-medium">已加入</span>
+                    )}
+                    {selected && (
+                      <Check className="absolute right-1.5 top-1.5 h-3 w-3" strokeWidth={3} />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 flex items-center gap-2 border-t border-[var(--color-border)] pt-3">
+              <span className="min-w-0 flex-1 text-[10px] text-[var(--color-text-tertiary)]">
+                {selectedScheduleDates.length > 0
+                  ? `已选 ${selectedScheduleDates.length} 天，将生成 ${selectedScheduleDates.length} 条 Todo`
+                  : "点选一个或多个日期"}
+              </span>
+              <button
+                type="button"
+                onClick={closeScheduler}
+                className="rounded-lg px-3 py-2 text-[12px] font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-gray-lighter)]"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={applyScheduleDates}
+                disabled={selectedScheduleDates.length === 0}
+                className="rounded-lg bg-[var(--color-primary)] px-3.5 py-2 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                加入任务
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {celebration && (
         <div

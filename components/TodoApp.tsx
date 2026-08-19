@@ -1043,23 +1043,31 @@ export default function TodoApp() {
     setHabits((prev) => [...prev, h]);
   }
 
-  /** 手动把一条习惯实例化成今天的 Todo；同一习惯当天只保留一个执行实例。 */
-  function scheduleHabitToday(habitId: string) {
+  /** 把一条习惯实例化到选中的日期；同一习惯同一天只保留一个执行实例。 */
+  function scheduleHabitDates(habitId: string, dates: ISODate[]) {
     const habit = habits.find((item) => item.id === habitId && !item.archived);
     if (!habit) return;
-    if (tasks.some((task) => task.sourceHabitId === habitId && task.date === todayIso)) return;
+    const existingDates = new Set(
+      tasks.filter((task) => task.sourceHabitId === habitId).map((task) => task.date),
+    );
+    const targetDates = Array.from(new Set(dates)).filter(
+      (date) => date >= todayIso && !existingDates.has(date),
+    );
+    if (targetDates.length === 0) return;
     const sourceBehavior = habit.behaviorId
       ? behaviorCards.find((behavior) => behavior.id === habit.behaviorId)
       : undefined;
-    createTask({
-      title: habit.title,
-      date: todayIso,
-      status: "todo",
-      aspirationId: habit.aspirationId,
-      resultId: sourceBehavior?.resultId,
-      sourceHabitId: habit.id,
-      subtasks: instantiateBehaviorSteps(sourceBehavior),
-    });
+    targetDates.forEach((date) =>
+      createTask({
+        title: habit.title,
+        date,
+        status: "todo",
+        aspirationId: habit.aspirationId,
+        resultId: sourceBehavior?.resultId,
+        sourceHabitId: habit.id,
+        subtasks: instantiateBehaviorSteps(sourceBehavior),
+      }),
+    );
   }
 
   /** 这个习惯有没有打卡记录（决定移出去时是归档还是真删） */
@@ -1408,7 +1416,7 @@ export default function TodoApp() {
           onAddHabit={addHabit}
           habitHasLogs={habitHasLogs}
           onLogHabit={logHabit}
-          onScheduleHabitToday={scheduleHabitToday}
+          onScheduleHabitDates={scheduleHabitDates}
           onSetHabitLogImpact={setHabitLogImpact}
           onUndoHabitLog={undoHabitLog}
           onSetHabitAnchor={setHabitAnchor}

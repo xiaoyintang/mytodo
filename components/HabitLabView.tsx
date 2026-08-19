@@ -38,7 +38,7 @@ type Props = {
   onAddHabit: (input: Omit<Habit, "id" | "createdAt">) => void;
   habitHasLogs: (habitId: string) => boolean;
   onLogHabit: (habitId: string) => string;
-  onScheduleHabitToday: (habitId: string) => void;
+  onScheduleHabitDates: (habitId: string, dates: ISODate[]) => void;
   onSetHabitLogImpact: (logId: string, impact: string) => void;
   onUndoHabitLog: (habitId: string) => void;
   onSetHabitAnchor: (habitId: string, anchor: string) => void;
@@ -50,7 +50,7 @@ type Props = {
  * 「习惯」tab。只剩打卡——「我的目标」已经搬到目标管理页（从常驻条进）。
  * 硬约束：习惯不受「今日主线」过滤，每天照常全部出现。
  * 默认仍是两套机制：任务靠日程、习惯靠锚点。
- * 只有用户主动点「排到今天」时，才把某一次习惯实例化成 Todo，完成后回写一次记录。
+ * 只有用户主动选日期时，才把习惯实例化成 Todo；完成后回写一次记录。
  */
 export default function HabitLabView({
   viewMode,
@@ -72,7 +72,7 @@ export default function HabitLabView({
   onAddHabit,
   habitHasLogs,
   onLogHabit,
-  onScheduleHabitToday,
+  onScheduleHabitDates,
   onSetHabitLogImpact,
   onUndoHabitLog,
   onSetHabitAnchor,
@@ -143,7 +143,7 @@ export default function HabitLabView({
             tasks={tasks}
             today={today}
             onLog={onLogHabit}
-            onScheduleToday={onScheduleHabitToday}
+            onScheduleDates={onScheduleHabitDates}
             onSetLogImpact={onSetHabitLogImpact}
             onUndoLog={onUndoHabitLog}
             onSetAnchor={onSetHabitAnchor}
