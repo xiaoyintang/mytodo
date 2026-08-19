@@ -27,6 +27,12 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import EdgeSwipeBack from "@/components/EdgeSwipeBack";
 import { ArrowLeft, ChevronRight, Plus, Search, Trash2, Undo2, X } from "lucide-react";
 
+function goalsScrollContainer(): HTMLElement | null {
+  const main = document.querySelector<HTMLElement>("main");
+  if (main && main.scrollHeight > main.clientHeight + 1) return main;
+  return document.scrollingElement as HTMLElement | null;
+}
+
 type Judgement = {
   id: string;
   type: BehaviorType;
@@ -135,6 +141,7 @@ export default function GoalsView({
   const [deleteAspId, setDeleteAspId] = useState<string | null>(null);
   const [rejudging, setRejudging] = useState(false);
   const [rejudgeDone, setRejudgeDone] = useState(0);
+  const resultScrollRestoreRef = useRef<number | null>(null);
 
   useEffect(() => {
     setOpenId(initialOpenId);
@@ -143,6 +150,23 @@ export default function GoalsView({
   useEffect(() => {
     setActiveResultId(initialOpenResultId);
   }, [initialOpenResultId]);
+
+  useEffect(() => {
+    const scrollTop = resultScrollRestoreRef.current;
+    if (scrollTop == null || scrollTop <= 0) return;
+    resultScrollRestoreRef.current = null;
+
+    const scrollContainer = goalsScrollContainer();
+    if (!scrollContainer) return;
+    const restore = () => scrollContainer.scrollTo({ top: scrollTop, behavior: "auto" });
+    const frame = window.requestAnimationFrame(restore);
+    // 焦点地图会按结果重新挂载；再补一次，避开浏览器后续的滚动锚定。
+    const timer = window.setTimeout(restore, 80);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [activeResultId]);
 
   const open = openId ? aspirations.find((a) => a.id === openId) ?? null : null;
   const openCards = open ? behaviors.filter((b) => b.aspirationId === open.id) : [];
@@ -288,6 +312,8 @@ export default function GoalsView({
 
   function handleSelectResult(resultId: string | null) {
     if (!open) return;
+    const scrollContainer = goalsScrollContainer();
+    resultScrollRestoreRef.current = scrollContainer?.scrollTop ?? null;
     setActiveResultId(resultId);
     onSelectResult(open.id, resultId);
   }
@@ -298,7 +324,7 @@ export default function GoalsView({
   }
 
   return (
-    <div className="flex min-h-full w-full max-w-[460px] flex-col overflow-hidden bg-[var(--color-bg-white)] pb-14 sm:min-h-0 sm:rounded-[16px] sm:border sm:border-[var(--color-border)] sm:pb-0 md:min-h-[calc(100vh-48px)] md:max-w-[960px] lg:max-w-[1040px]">
+    <div className="flex min-h-full w-full max-w-[460px] flex-col overflow-clip bg-[var(--color-bg-white)] pb-14 sm:min-h-0 sm:rounded-[16px] sm:border sm:border-[var(--color-border)] sm:pb-0 md:min-h-[calc(100vh-48px)] md:max-w-[960px] lg:max-w-[1040px]">
       <EdgeSwipeBack onBack={handleBack} />
       <div className="w-full flex items-center gap-2 px-6 pt-6 pb-4">
         <button
@@ -385,6 +411,77 @@ export default function GoalsView({
               onDelete={onDeleteGoalResult}
               onApplyStructure={(groups) => onApplyGoalResultStructure(open.id, groups)}
             />
+
+            {openResults.length > 0 && (
+              <nav
+                data-testid="sticky-result-nav"
+                className="sticky top-0 z-30 -mx-6 flex items-center gap-2 border-y border-[var(--color-border)] bg-white/95 px-6 py-2 shadow-[0_4px_12px_rgba(0,0,0,0.04)] backdrop-blur-md"
+                aria-label="快速切换关键结果"
+              >
+                <span className="flex-shrink-0 text-[10px] font-semibold text-[var(--color-text-tertiary)]">
+                  关键结果
+                </span>
+                <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectResult(null)}
+                    aria-pressed={resolvedResultId === null}
+                    className={[
+                      "flex h-7 flex-shrink-0 items-center rounded-full border px-2.5 text-[10px] font-medium transition-colors",
+                      resolvedResultId === null
+                        ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
+                        : "border-[var(--color-border)] bg-white text-[var(--color-text-secondary)] hover:border-[var(--color-primary)]",
+                    ].join(" ")}
+                  >
+                    全局
+                    <span className={resolvedResultId === null ? "ml-1 text-white/75" : "ml-1 text-[var(--color-text-tertiary)]"}>
+                      {openCards.length}
+                    </span>
+                  </button>
+                  {openResults.map((result, index) => {
+                    const active = resolvedResultId === result.id;
+                    const count = openCards.filter((card) => card.resultId === result.id).length;
+                    return (
+                      <button
+                        key={result.id}
+                        type="button"
+                        onClick={() => handleSelectResult(result.id)}
+                        aria-pressed={active}
+                        className={[
+                          "flex h-7 max-w-[220px] flex-shrink-0 items-center rounded-full border px-2.5 text-[10px] font-medium transition-colors",
+                          active
+                            ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
+                            : "border-[var(--color-border)] bg-white text-[var(--color-text-secondary)] hover:border-[var(--color-primary)]",
+                        ].join(" ")}
+                        data-full-text={`${index + 1}. ${result.title}`}
+                      >
+                        <span className="mr-1 flex-shrink-0 tabular-nums opacity-70">{index + 1}</span>
+                        <span className="truncate">{result.title}</span>
+                        <span className={active ? "ml-1 flex-shrink-0 text-white/75" : "ml-1 flex-shrink-0 text-[var(--color-text-tertiary)]"}>
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {unassignedCards.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleSelectResult(UNASSIGNED_RESULT_ID)}
+                      aria-pressed={resolvedResultId === UNASSIGNED_RESULT_ID}
+                      className={[
+                        "flex h-7 flex-shrink-0 items-center rounded-full border px-2.5 text-[10px] font-medium transition-colors",
+                        resolvedResultId === UNASSIGNED_RESULT_ID
+                          ? "border-[#EA580C] bg-[#EA580C] text-white"
+                          : "border-[#FDBA74] bg-white text-[#C2410C] hover:bg-[#FFF7ED]",
+                      ].join(" ")}
+                    >
+                      未归属
+                      <span className="ml-1 opacity-75">{unassignedCards.length}</span>
+                    </button>
+                  )}
+                </div>
+              </nav>
+            )}
 
             <div
               className={`rounded-[10px] border px-3 py-2 ${
