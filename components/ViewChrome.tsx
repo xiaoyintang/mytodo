@@ -95,7 +95,7 @@ export function ViewTabs({ value, onChange }: { value: ViewMode; onChange: (mode
           className={[
             "relative flex flex-1 items-center justify-center text-[13px] transition-colors",
             value === mode
-              ? "font-semibold text-[var(--color-text-primary)] after:absolute after:bottom-[-1px] after:h-0.5 after:w-5 after:rounded-full after:bg-[var(--color-primary)]"
+              ? "workspace-tab-active font-semibold text-[var(--color-text-primary)] after:absolute after:bottom-[-1px] after:h-0.5 after:w-5 after:rounded-full after:bg-[var(--color-primary)]"
               : "font-medium text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]",
           ].join(" ")}
         >

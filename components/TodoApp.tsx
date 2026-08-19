@@ -1349,8 +1349,9 @@ export default function TodoApp() {
     const deltaY = endY - gesture.startY;
     const horizontal = Math.abs(deltaX);
     const vertical = Math.abs(deltaY);
-    // 明确横滑才切页：轻微手抖和正常上下滚动都不响应。
-    if (horizontal < 56 || horizontal <= vertical * 1.25) return;
+    // 至少划过约五分之一屏，才算真的想换页；轻微手抖和上下滚动都不响应。
+    const minSwipeDistance = Math.max(68, window.innerWidth * 0.18);
+    if (horizontal < minSwipeDistance || horizontal <= vertical * 1.35) return;
 
     const current = WORKSPACE_TABS.indexOf(viewMode);
     const next = deltaX < 0 ? current + 1 : current - 1;
@@ -1368,7 +1369,7 @@ export default function TodoApp() {
       onPointerCancel={() => {
         tabSwipeRef.current = null;
       }}
-      className={`flex h-full w-full items-start justify-center overflow-auto bg-white p-0 sm:bg-[#F5F5F5] sm:p-6 ${goalsOpen ? "" : "touch-pan-y"}`}
+      className={`flex h-full w-full items-start justify-center overflow-x-hidden overflow-y-auto bg-white p-0 sm:bg-[#F5F5F5] sm:p-6 ${goalsOpen ? "" : "touch-pan-y"}`}
     >
       <FastTooltip />
       {goalsOpen ? (
