@@ -42,6 +42,7 @@ import {
   Scissors,
   Star,
   Trash2,
+  Undo2,
   Wand2,
   X,
 } from "lucide-react";
@@ -119,6 +120,9 @@ type Props = {
   rejudging: boolean;
   rejudgeProgress: number;
   rejudgeTotal: number;
+  /** 焦点地图的改动大多发生在行为区；撤回需要跟着操作区，而不是留在页面顶部。 */
+  onUndo: () => void;
+  canUndo: boolean;
 };
 
 const SORTS: Array<[SortMode, string]> = [
@@ -211,6 +215,8 @@ export default function FocusMapView({
   rejudging,
   rejudgeProgress,
   rejudgeTotal,
+  onUndo,
+  canUndo,
 }: Props) {
   const goalContext = focusTitle?.trim() || aspiration.title;
   const [confirmReset, setConfirmReset] = useState(false);
@@ -1147,15 +1153,31 @@ export default function FocusMapView({
 
   return (
     <div className="w-full flex flex-col gap-3">
-      <div className="w-full flex items-center gap-2">
-        <span className="flex-1 text-[12px] text-[var(--color-text-secondary)]">
-          先看全局；点开一条，再调整影响力和能不能做到
+      <div
+        data-testid="focus-behavior-toolbar"
+        className={[
+          "sticky z-20 -mx-1 flex w-[calc(100%+0.5rem)] items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-white/95 px-2 py-1.5 shadow-[0_3px_10px_rgba(15,23,42,0.06)] backdrop-blur",
+          resultOptions.length > 0 ? "top-[46px]" : "top-0",
+        ].join(" ")}
+      >
+        <span className="flex-1 truncate text-[11px] font-medium text-[var(--color-text-secondary)]">
+          行为操作
         </span>
+        <button
+          type="button"
+          onClick={onUndo}
+          disabled={!canUndo}
+          className="flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-semibold text-[var(--color-primary)] transition-colors hover:bg-[var(--color-primary-light)] disabled:cursor-default disabled:text-[var(--color-text-tertiary)] disabled:opacity-45 disabled:hover:bg-transparent"
+          title={canUndo ? "撤回上一步改动" : "还没有可撤回的改动"}
+        >
+          <Undo2 className="h-3.5 w-3.5" />
+          撤回
+        </button>
         <button
           type="button"
           onClick={onRejudgeAll}
           disabled={rejudging}
-          className="flex items-center gap-1 text-[12px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] disabled:opacity-50 flex-shrink-0"
+          className="flex h-7 flex-shrink-0 items-center gap-1 rounded-md px-1.5 text-[11px] text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-bg-gray-light)] hover:text-[var(--color-text-secondary)] disabled:opacity-50"
           title="全部重判一遍，开思考模式判得更准（慢一些）。你手动改判过的不动"
         >
           <RefreshCw className={["w-3 h-3", rejudging ? "animate-spin" : ""].join(" ")} />
@@ -1164,7 +1186,7 @@ export default function FocusMapView({
         <button
           type="button"
           onClick={() => setConfirmReset(true)}
-          className="flex items-center gap-1 text-[12px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] flex-shrink-0"
+          className="flex h-7 flex-shrink-0 items-center gap-1 rounded-md px-1.5 text-[11px] text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-bg-gray-light)] hover:text-[var(--color-text-secondary)]"
         >
           <RotateCcw className="w-3 h-3" />
           重排
@@ -2337,7 +2359,7 @@ export default function FocusMapView({
       <ConfirmDialog
         isOpen={confirmReset}
         title="重排？"
-        description={`会清空这 ${cards.length} 条的两轴位置，一根滑块都不留。清错了可以点上面的「撤回」找回`}
+        description={`会清空这 ${cards.length} 条的两轴位置，一根滑块都不留。清错了可以点行为操作栏的「撤回」找回`}
         confirmLabel="清空重排"
         onConfirm={() => {
           onResetAxes();

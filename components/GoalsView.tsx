@@ -25,7 +25,7 @@ import FocusMapView from "@/components/FocusMapView";
 import GoalResultsPanel from "@/components/GoalResultsPanel";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import EdgeSwipeBack from "@/components/EdgeSwipeBack";
-import { ArrowLeft, ChevronRight, Plus, Search, Trash2, Undo2, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, Plus, Search, Trash2, X } from "lucide-react";
 
 function goalsScrollContainer(): HTMLElement | null {
   const main = document.querySelector<HTMLElement>("main");
@@ -348,17 +348,6 @@ export default function GoalsView({
             {open ? `${KIND_LABEL[open.kind]} · 找到值得推进的行为与任务包` : "所有任务和习惯的来源"}
           </p>
         </div>
-        {canUndo && (
-          <button
-            type="button"
-            onClick={onUndo}
-            className="flex items-center gap-1 px-2 py-1 rounded-md text-[12px] font-semibold text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] transition-colors flex-shrink-0"
-            title="撤回上一步"
-          >
-            <Undo2 className="w-3.5 h-3.5" />
-            撤回
-          </button>
-        )}
         {!open && (
           <button
             type="button"
@@ -543,6 +532,8 @@ export default function GoalsView({
               rejudging={rejudging}
               rejudgeProgress={rejudgeDone}
               rejudgeTotal={focusCards.length}
+              onUndo={onUndo}
+              canUndo={canUndo}
             />
           </>
         ) : (
