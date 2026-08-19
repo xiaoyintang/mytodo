@@ -1,7 +1,7 @@
 // 目标（Aspiration）的通用工具：配色 + 主线读写
 // 「主线」不是新实体，就是 DayPlan 里挂了哪几个目标 id。
 
-import type { Aspiration, DayPlan, ISODate } from "./types";
+import type { Aspiration, DayPlan, GoalResult, ISODate } from "./types";
 
 /** 有关键结果时，焦点地图中“仍直接服务目标”的行为分组。 */
 export const UNASSIGNED_RESULT_ID = "__unassigned__";
@@ -26,6 +26,22 @@ export function goalColor(a: Aspiration | undefined, index = 0): string {
 export function nextGoalColor(existing: Aspiration[]): string {
   const used = new Set(existing.map((a, i) => a.color ?? GOAL_COLORS[i % GOAL_COLORS.length]));
   return GOAL_COLORS.find((c) => !used.has(c)) ?? GOAL_COLORS[existing.length % GOAL_COLORS.length];
+}
+
+/**
+ * 关键结果的显式优先级。只要用户排过一次，已排项就按 order 展示；
+ * 后来新加、还没排过的项自然落在末尾。老数据完全没有 order 时仍按创建顺序。
+ */
+export function sortGoalResults(results: GoalResult[]): GoalResult[] {
+  const sourceIndex = new Map(results.map((result, index) => [result.id, index]));
+  return [...results].sort((a, b) => {
+    const aOrdered = Number.isFinite(a.order);
+    const bOrdered = Number.isFinite(b.order);
+    if (aOrdered !== bOrdered) return aOrdered ? -1 : 1;
+    if (aOrdered && bOrdered && a.order !== b.order) return (a.order ?? 0) - (b.order ?? 0);
+    return a.createdAt - b.createdAt ||
+      (sourceIndex.get(a.id) ?? 0) - (sourceIndex.get(b.id) ?? 0);
+  });
 }
 
 /** 某天的主线目标（按目标列表顺序返回，保证颜色和顺序稳定） */

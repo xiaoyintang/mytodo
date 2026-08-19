@@ -73,6 +73,8 @@ export interface GoalResult {
   title: string;
   /** 可验证的达成证据；允许先留空，避免把个人目标做成填表负担。 */
   evidence?: string;
+  /** 同一目标下的优先顺序，数字越小越靠前；旧数据没有时按创建顺序兼容。 */
+  order?: number;
   createdAt: number;
 }
 

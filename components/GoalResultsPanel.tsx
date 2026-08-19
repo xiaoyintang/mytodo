@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Aspiration, BehaviorCard, GoalResult } from "@/components/todo/types";
 import { isActionable, isGolden } from "@/components/todo/behavior";
 import { UNASSIGNED_RESULT_ID } from "@/components/todo/goal";
@@ -10,6 +10,7 @@ import {
   Check,
   ChevronRight,
   FolderTree,
+  GripVertical,
   Pencil,
   Plus,
   Sparkles,
@@ -35,6 +36,7 @@ type DraftReview = {
   suggestionTitle?: string;
   suggestionEvidence?: string;
 };
+type DropPlacement = { targetId: string; edge: "before" | "after" };
 
 type Props = {
   aspiration: Aspiration;
@@ -44,6 +46,7 @@ type Props = {
   onSelect: (resultId: string | null) => void;
   onCreate: (title: string, evidence?: string) => string;
   onUpdate: (id: string, patch: { title?: string; evidence?: string }) => void;
+  onReorder: (orderedIds: string[]) => void;
   onDelete: (id: string) => void;
   onApplyStructure: (
     groups: Array<{ title: string; evidence?: string; behaviorIds: string[] }>,
@@ -52,6 +55,23 @@ type Props = {
 
 function normalized(value: string) {
   return value.toLowerCase().replace(/[\s，。！？、,.!?;；:：'"“”‘’（）()_-]+/g, "");
+}
+
+function reorderResults(
+  results: GoalResult[],
+  sourceId: string,
+  targetId: string,
+  edge: "before" | "after",
+): GoalResult[] {
+  if (sourceId === targetId) return results;
+  const sourceIndex = results.findIndex((result) => result.id === sourceId);
+  if (sourceIndex < 0) return results;
+  const next = [...results];
+  const [source] = next.splice(sourceIndex, 1);
+  const targetIndex = next.findIndex((result) => result.id === targetId);
+  if (targetIndex < 0) return results;
+  next.splice(targetIndex + (edge === "after" ? 1 : 0), 0, source);
+  return next;
 }
 
 function parseSuggestions(
@@ -106,6 +126,7 @@ export default function GoalResultsPanel({
   onSelect,
   onCreate,
   onUpdate,
+  onReorder,
   onDelete,
   onApplyStructure,
 }: Props) {
@@ -120,6 +141,9 @@ export default function GoalResultsPanel({
   const [clarifying, setClarifying] = useState(false);
   const [draftReview, setDraftReview] = useState<DraftReview | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropPlacement, setDropPlacement] = useState<DropPlacement | null>(null);
+  const dragRef = useRef<{ sourceId: string; placement: DropPlacement | null } | null>(null);
 
   const resultIds = new Set(results.map((result) => result.id));
   const unassigned = cards.filter((card) => !card.resultId || !resultIds.has(card.resultId));
@@ -157,6 +181,66 @@ export default function GoalResultsPanel({
       onSelect(editingId);
     }
     cancelEdit();
+  }
+
+  function commitOrder(next: GoalResult[]) {
+    if (next.every((result, index) => result.id === results[index]?.id)) return;
+    onReorder(next.map((result) => result.id));
+  }
+
+  function beginDrag(event: React.PointerEvent<HTMLButtonElement>, sourceId: string) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const placement = { targetId: sourceId, edge: "before" as const };
+    dragRef.current = { sourceId, placement };
+    setDraggingId(sourceId);
+    setDropPlacement(placement);
+  }
+
+  function moveDrag(event: React.PointerEvent<HTMLButtonElement>) {
+    const drag = dragRef.current;
+    if (!drag) return;
+    event.preventDefault();
+    const hit = document
+      .elementFromPoint(event.clientX, event.clientY)
+      ?.closest<HTMLElement>("[data-goal-result-id]");
+    const targetId = hit?.dataset.goalResultId;
+    if (!hit || !targetId) return;
+    const rect = hit.getBoundingClientRect();
+    const placement: DropPlacement = {
+      targetId,
+      edge: event.clientY < rect.top + rect.height / 2 ? "before" : "after",
+    };
+    if (
+      drag.placement?.targetId === placement.targetId &&
+      drag.placement.edge === placement.edge
+    ) return;
+    drag.placement = placement;
+    setDropPlacement(placement);
+  }
+
+  function endDrag(event: React.PointerEvent<HTMLButtonElement>) {
+    const drag = dragRef.current;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      /* pointer capture may already be gone */
+    }
+    if (drag?.placement) {
+      commitOrder(
+        reorderResults(results, drag.sourceId, drag.placement.targetId, drag.placement.edge),
+      );
+    }
+    dragRef.current = null;
+    setDraggingId(null);
+    setDropPlacement(null);
+  }
+
+  function cancelDrag() {
+    dragRef.current = null;
+    setDraggingId(null);
+    setDropPlacement(null);
   }
 
   async function requestSuggestions(mode: SuggestMode) {
@@ -307,7 +391,7 @@ export default function GoalResultsPanel({
             </span>
           </div>
           <p className="mt-0.5 text-[10px] leading-relaxed text-[var(--color-text-tertiary)]">
-            先说明什么变化算推进，再在每条结果下面比较推进项
+            先说明什么变化算推进；越靠前优先级越高，可拖动调整
           </p>
         </div>
         <button
@@ -546,15 +630,27 @@ export default function GoalResultsPanel({
             const mine = cards.filter((card) => card.resultId === result.id);
             const golden = mine.filter((card) => isActionable(card.type) && isGolden(card)).length;
             const active = activeResultId === result.id;
+            const isDragging = draggingId === result.id;
+            const isTarget = dropPlacement?.targetId === result.id && draggingId !== null;
             return (
               <div
                 key={result.id}
-                className={`flex items-center gap-1.5 rounded-[10px] border p-2 transition-colors ${
+                data-goal-result-id={result.id}
+                className={[
+                  "relative flex items-center gap-1.5 rounded-[10px] border p-2 transition-[opacity,box-shadow,border-color,background-color]",
                   active
                     ? "border-[var(--color-primary)] bg-white shadow-sm"
-                    : "border-[var(--color-border)] bg-white/70"
-                }`}
+                    : "border-[var(--color-border)] bg-white/70",
+                  isDragging ? "opacity-45" : "",
+                  isTarget ? "shadow-[0_3px_10px_rgba(37,99,235,0.14)]" : "",
+                ].join(" ")}
               >
+                {isTarget && dropPlacement?.edge === "before" && (
+                  <span className="pointer-events-none absolute -top-[2px] left-2 right-2 h-[2px] rounded-full bg-[var(--color-primary)]" />
+                )}
+                {isTarget && dropPlacement?.edge === "after" && (
+                  <span className="pointer-events-none absolute -bottom-[2px] left-2 right-2 h-[2px] rounded-full bg-[var(--color-primary)]" />
+                )}
                 <button
                   type="button"
                   onClick={() => onSelect(result.id)}
@@ -588,6 +684,31 @@ export default function GoalResultsPanel({
                   </span>
                   <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-text-tertiary)]" />
                 </button>
+                {results.length > 1 && (
+                  <button
+                    type="button"
+                    onPointerDown={(event) => beginDrag(event, result.id)}
+                    onPointerMove={moveDrag}
+                    onPointerUp={endDrag}
+                    onPointerCancel={cancelDrag}
+                    onKeyDown={(event) => {
+                      if (event.key === "ArrowUp" && index > 0) {
+                        event.preventDefault();
+                        commitOrder(reorderResults(results, result.id, results[index - 1].id, "before"));
+                      }
+                      if (event.key === "ArrowDown" && index < results.length - 1) {
+                        event.preventDefault();
+                        commitOrder(reorderResults(results, result.id, results[index + 1].id, "after"));
+                      }
+                    }}
+                    className="flex h-6 w-6 flex-shrink-0 touch-none select-none items-center justify-center rounded-md cursor-grab hover:bg-white active:cursor-grabbing"
+                    aria-label={`拖动调整「${result.title}」优先级`}
+                    title="拖动调整优先级"
+                    data-no-tab-swipe
+                  >
+                    <GripVertical className="h-3.5 w-3.5 text-[var(--color-text-tertiary)]" />
+                  </button>
+                )}
                 <button type="button" onClick={() => beginEdit(result)} aria-label={`编辑${result.title}`}>
                   <Pencil className="h-3.5 w-3.5 text-[var(--color-text-tertiary)]" />
                 </button>

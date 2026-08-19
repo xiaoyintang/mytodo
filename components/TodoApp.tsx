@@ -664,6 +664,19 @@ export default function TodoApp() {
     );
   }
 
+  function reorderGoalResults(aspirationId: string, orderedIds: string[]) {
+    const orderById = new Map(orderedIds.map((id, index) => [id, index]));
+    if (orderById.size === 0) return;
+    snapshotLab();
+    setGoalResults((prev) =>
+      prev.map((result) =>
+        result.aspirationId === aspirationId && orderById.has(result.id)
+          ? { ...result, order: orderById.get(result.id) }
+          : result,
+      ),
+    );
+  }
+
   /** 删除结果只解除分组；行为是用户已经想过的，不跟着丢。 */
   function deleteGoalResult(id: string) {
     snapshotLab();
@@ -1394,6 +1407,7 @@ export default function TodoApp() {
           onDeleteAspiration={deleteAspiration}
           onCreateGoalResult={createGoalResult}
           onUpdateGoalResult={updateGoalResult}
+          onReorderGoalResults={reorderGoalResults}
           onDeleteGoalResult={deleteGoalResult}
           onAssignBehaviorResult={assignBehaviorResult}
           onApplyGoalResultStructure={applyGoalResultStructure}

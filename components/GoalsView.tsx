@@ -19,7 +19,7 @@ import type {
   AIBehaviorImportApply,
   AIResultImportApply,
 } from "@/components/todo/aiBridge";
-import { goalColor, UNASSIGNED_RESULT_ID } from "@/components/todo/goal";
+import { goalColor, sortGoalResults, UNASSIGNED_RESULT_ID } from "@/components/todo/goal";
 import { formatMinutes } from "@/components/todo/time";
 import FocusMapView from "@/components/FocusMapView";
 import GoalResultsPanel from "@/components/GoalResultsPanel";
@@ -57,6 +57,7 @@ type Props = {
   onDeleteAspiration: (id: string) => void;
   onCreateGoalResult: (aspirationId: string, title: string, evidence?: string) => string;
   onUpdateGoalResult: (id: string, patch: { title?: string; evidence?: string }) => void;
+  onReorderGoalResults: (aspirationId: string, orderedIds: string[]) => void;
   onDeleteGoalResult: (id: string) => void;
   onAssignBehaviorResult: (behaviorId: string, resultId?: string) => void;
   onApplyGoalResultStructure: (
@@ -110,6 +111,7 @@ export default function GoalsView({
   onDeleteAspiration,
   onCreateGoalResult,
   onUpdateGoalResult,
+  onReorderGoalResults,
   onDeleteGoalResult,
   onAssignBehaviorResult,
   onApplyGoalResultStructure,
@@ -170,7 +172,9 @@ export default function GoalsView({
 
   const open = openId ? aspirations.find((a) => a.id === openId) ?? null : null;
   const openCards = open ? behaviors.filter((b) => b.aspirationId === open.id) : [];
-  const openResults = open ? goalResults.filter((result) => result.aspirationId === open.id) : [];
+  const openResults = open
+    ? sortGoalResults(goalResults.filter((result) => result.aspirationId === open.id))
+    : [];
   const resultIds = new Set(openResults.map((result) => result.id));
   const unassignedCards = openCards.filter(
     (card) => !card.resultId || !resultIds.has(card.resultId),
@@ -397,6 +401,7 @@ export default function GoalsView({
               onSelect={handleSelectResult}
               onCreate={(title, evidence) => onCreateGoalResult(open.id, title, evidence)}
               onUpdate={onUpdateGoalResult}
+              onReorder={(orderedIds) => onReorderGoalResults(open.id, orderedIds)}
               onDelete={onDeleteGoalResult}
               onApplyStructure={(groups) => onApplyGoalResultStructure(open.id, groups)}
             />

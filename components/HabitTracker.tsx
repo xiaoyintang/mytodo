@@ -12,7 +12,7 @@ import type {
   TimeEntry,
 } from "@/components/todo/types";
 import { goldenScore } from "@/components/todo/behavior";
-import { goalColor } from "@/components/todo/goal";
+import { goalColor, sortGoalResults } from "@/components/todo/goal";
 import { formatMinutes } from "@/components/todo/time";
 import { addDays, CN_WEEKDAY, parseISODate, toISODate } from "@/components/todo/date";
 import {
@@ -261,7 +261,9 @@ export default function HabitTracker({
       return [{ key: "__direct__", title: "", items, hideHeader: true }];
     }
 
-    const results = goalResults.filter((result) => result.aspirationId === aspiration.id);
+    const results = sortGoalResults(
+      goalResults.filter((result) => result.aspirationId === aspiration.id),
+    );
     // 简单目标没有关键结果时，不凭空增加一层“直接服务目标”。
     if (results.length === 0) {
       return [{ key: "__direct__", title: "", items, hideHeader: true }];

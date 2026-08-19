@@ -13,7 +13,7 @@ import type {
   TimeEntry,
 } from "@/components/todo/types";
 import { parseISODate, toISODate, startOfWeek, addDays, CN_WEEKDAY } from "@/components/todo/date";
-import { goalColor } from "@/components/todo/goal";
+import { goalColor, sortGoalResults } from "@/components/todo/goal";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
 import { X, Check, Calendar, Clock, Flag, Trash2, ChevronLeft, ChevronRight, GripVertical, Target, Timer, Plus, Gauge, ListChecks, Wand2 } from "lucide-react";
 import { callBehaviorAPI } from "@/components/todo/behaviorApi";
@@ -296,7 +296,7 @@ export default function TaskBottomSheet({
   const statusButtonConfig = STATUS_BUTTON_CONFIG[task.status];
   const isHigh = task.priority === "high";
   const taskGoalResults = task.aspirationId
-    ? goalResults.filter((result) => result.aspirationId === task.aspirationId)
+    ? sortGoalResults(goalResults.filter((result) => result.aspirationId === task.aspirationId))
     : [];
   const selectedTaskResult = resolveTaskGoalResult(task, goalResults, behaviors, habits);
   const directResultId = selectedTaskResult?.id;
