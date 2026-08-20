@@ -563,7 +563,7 @@ export default function TimeLogView({
         onNext={onNextWeek}
       />
       <MainlineBar
-        today={today}
+        date={selectedDate}
         aspirations={aspirations}
         dayPlans={dayPlans}
         onOpenGoals={onOpenGoals}

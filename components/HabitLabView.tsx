@@ -93,7 +93,7 @@ export default function HabitLabView({
     <AppShell>
       <AppHeader title="习惯" subtitle="靠锚点触发，让重复自然发生" />
       <MainlineBar
-        today={today}
+        date={today}
         aspirations={aspirations}
         dayPlans={dayPlans}
         onOpenGoals={onOpenGoals}

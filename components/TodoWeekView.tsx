@@ -325,7 +325,7 @@ export default function TodoWeekView({
       <AppShell>
         <AppHeader title="本周" subtitle={rangeLabel} onPrev={onPrevWeek} onNext={onNextWeek} onAdd={onOpenAddModal} />
         <MainlineBar
-          today={today}
+          date={today}
           aspirations={aspirations}
           dayPlans={dayPlans}
           onOpenGoals={onOpenGoals}

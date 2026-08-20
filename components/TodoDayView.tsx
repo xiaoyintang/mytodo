@@ -428,7 +428,7 @@ export default function TodoDayView({
         onAdd={onOpenAddModal}
       />
       <MainlineBar
-        today={today}
+        date={selectedDate}
         aspirations={aspirations}
         dayPlans={dayPlans}
         onOpenGoals={onOpenGoals}
@@ -518,7 +518,7 @@ export default function TodoDayView({
                   ].join(" ")}
                 />
                 <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">
-                  不是今天主线的 {offTasks.length} 项
+                  不是{selectedDate === today ? "今天" : "当天"}主线的 {offTasks.length} 项
                 </span>
                 <div className="flex-1" />
                 <span className="flex items-center gap-1 flex-shrink-0">

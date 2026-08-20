@@ -6,7 +6,8 @@ import type { RunningTimer } from "@/components/todo/useTimer";
 import { ChevronRight, Square } from "lucide-react";
 
 type Props = {
-  today: ISODate;
+  /** 当前页面正在表达的日期；日视图/记录跟随所选日期，其余页面传今天。 */
+  date: ISODate;
   aspirations: Aspiration[];
   dayPlans: Record<string, DayPlan>;
   onOpenGoals: () => void;
@@ -29,11 +30,11 @@ function fmt(ms: number): string {
 
 /**
  * 常驻作用域条：标题下方、tab 栏上方，四个 tab 通用。
- * 两重身份：今日主线的日常露出（**只读**）+ 目标管理的入口。
+ * 两重身份：当前日期主线的日常露出（**只读**）+ 目标管理的入口。
  * 展示部分故意不可编辑——改主线只能去周视图，决策集中在周规划，日常执行零决策。
  */
 export default function MainlineBar({
-  today,
+  date,
   aspirations,
   dayPlans,
   onOpenGoals,
@@ -41,7 +42,7 @@ export default function MainlineBar({
   elapsedMs,
   onStopTimer,
 }: Props) {
-  const mains = mainlinesOf(today, dayPlans, aspirations);
+  const mains = mainlinesOf(date, dayPlans, aspirations);
 
   return (
     <div className="flex w-full flex-col gap-1.5 px-[18px] pb-2">
