@@ -162,8 +162,15 @@ function instantiateStartAction(
   subtasks: SubTask[] | undefined,
 ): StartAction | undefined {
   if (!card?.startAction?.title.trim()) return undefined;
+  const targetBehaviorStep = card.startAction.targetStepId
+    ? card.steps?.find((step) => step.id === card.startAction?.targetStepId)
+    : undefined;
   const targetSubtask = card.startAction.targetStepId
-    ? subtasks?.find((subtask) => subtask.sourceBehaviorStepId === card.startAction?.targetStepId)
+    ? subtasks?.find(
+        (subtask) =>
+          subtask.sourceBehaviorStepId === card.startAction?.targetStepId ||
+          (targetBehaviorStep ? subtask.title === targetBehaviorStep.title : false),
+      )
     : undefined;
   return {
     kind: card.startAction.kind,
@@ -1268,19 +1275,37 @@ export default function TodoApp() {
 
   /** 起步动作只改变执行设计，不改变父行为的影响力或可行性评分。 */
   function setBehaviorStartAction(id: string, startAction?: StartAction) {
-    snapshotLab();
+    const card = behaviorCards.find((behavior) => behavior.id === id);
+    const normalized = startAction
+      ? { ...startAction, title: startAction.title.trim(), done: undefined }
+      : undefined;
+    const derivedTasks = tasks.filter(
+      (task) =>
+        task.status !== "done" &&
+        (task.id === card?.taskId || task.sourceBehaviorId === id),
+    );
+    snapshotLab(derivedTasks);
     setBehaviorCards((prev) =>
       prev.map((behavior) =>
         behavior.id === id
           ? {
               ...behavior,
-              startAction: startAction
-                ? { ...startAction, title: startAction.title.trim(), done: undefined }
-                : undefined,
+              startAction: normalized,
             }
           : behavior,
       ),
     );
+    if (card && derivedTasks.length > 0) {
+      const nextCard = { ...card, startAction: normalized };
+      setTasks((prev) =>
+        prev.map((task) =>
+          task.status !== "done" &&
+          (task.id === card.taskId || task.sourceBehaviorId === id)
+            ? { ...task, startAction: instantiateStartAction(nextCard, task.subtasks) }
+            : task,
+        ),
+      );
+    }
   }
 
   /**
