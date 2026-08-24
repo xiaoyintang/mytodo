@@ -39,7 +39,6 @@ import {
   Pencil,
   RefreshCw,
   RotateCcw,
-  Scissors,
   Star,
   Trash2,
   Undo2,
@@ -229,7 +228,6 @@ export default function FocusMapView({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [scheduling, setScheduling] = useState(false);
   const [singleSchedulingId, setSingleSchedulingId] = useState<string | null>(null);
-  const [onlyStuck, setOnlyStuck] = useState(false);
   // 点上去看是哪条：hover 是鼠标预览，pinned 是点/触摸钉住（手机没有 hover）
   const [draft, setDraft] = useState("");           // 顶上直接加一条
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -278,9 +276,6 @@ export default function FocusMapView({
   const rated = actionableCards.filter((c) => c.impact != null || c.feasibility != null).length;
   const rateable = actionableCards.length;
 
-  // 影响力够高但做不到的——福格的解法是改小。单独拎出来，否则藏在几十行里根本找不着
-  const stuck = actionableCards.filter((c) => (c.impact ?? 0) >= 50 && c.feasibility != null && c.feasibility < 50);
-
   // 新加的卡还没有评分，也不在排序快照里：统一沉到末尾，不挡住已排出的优先项。
   const ordered = [...cards].sort((a, b) => {
     const aIndex = order.indexOf(a.id);
@@ -288,7 +283,7 @@ export default function FocusMapView({
     return (aIndex < 0 ? Number.MAX_SAFE_INTEGER : aIndex) -
       (bIndex < 0 ? Number.MAX_SAFE_INTEGER : bIndex);
   });
-  const list = onlyStuck ? ordered.filter((c) => stuck.includes(c)) : ordered;
+  const list = ordered;
 
   function applySort(mode: SortMode) {
     setSort(mode);
@@ -1788,27 +1783,6 @@ export default function FocusMapView({
           左边方框只用于多选；单条推进项直接用卡片里的按钮。
         </span>
       </div>
-
-      {/* 这条**不是 AI 判的**，是你自己拖的两根滑块算出来的，所以不会误报，留着。
-          但不再替你开药方——怎么变简单（改小 / 拆开做）你自己定 */}
-      {stuck.length > 0 && (
-        <button
-          type="button"
-          onClick={() => setOnlyStuck((v) => !v)}
-          className={[
-            "w-full flex items-center gap-1.5 px-3 py-2 rounded-[10px] border text-left transition-colors",
-            onlyStuck
-              ? "bg-[#B45309] border-[#B45309] text-white"
-              : "bg-[#FFFBEB] border-[#FDE68A] text-[#B45309]",
-          ].join(" ")}
-        >
-          <Scissors className="w-3.5 h-3.5 flex-shrink-0" />
-          <span className="flex-1 text-[12px] font-medium">
-            {stuck.length} 条<strong>影响力高但你做不到</strong> —— 别删，想想怎么变简单
-          </span>
-          <span className="text-[11px] flex-shrink-0">{onlyStuck ? "看全部" : "只看这几条"}</span>
-        </button>
-      )}
 
       {/* 默认是鸟瞰清单；一次只展开一条，评分表单不再永久撑高每个行为。 */}
       <div className="w-full flex flex-col gap-1">
