@@ -136,6 +136,12 @@ function WeekTaskRow({
         </span>
       )}
 
+      {task.sourceBehaviorId && !task.sourceHabitId && !isDone && (
+        <span className="flex-shrink-0 rounded bg-[#EEF2FF] px-1.5 py-0.5 text-[10px] font-medium text-[#4F46E5]">
+          重复
+        </span>
+      )}
+
       {isMainline && !isDone && (
         <span className="flex-shrink-0 rounded bg-[var(--color-primary-light)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-primary)]">
           主线

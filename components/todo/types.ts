@@ -30,8 +30,10 @@ export interface Task {
   aspirationId?: string;
   /** 在推进该目标的哪条关键结果；用于从执行现场一键回到对应焦点地图。 */
   resultId?: string;
-  /** 从哪条习惯手动排到今天。可选；用于完成 Todo 时自动回写习惯记录。 */
+  /** 从哪条习惯手动排到日程。可选；用于完成 Todo 时自动回写习惯记录。 */
   sourceHabitId?: string;
+  /** 从焦点地图的哪条可重复行为排出来；用于同日去重、回溯和同步改名。 */
+  sourceBehaviorId?: string;
   startTime?: string; // "HH:mm"
   endTime?: string; // "HH:mm"
   status: TaskStatus;

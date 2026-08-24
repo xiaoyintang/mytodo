@@ -32,6 +32,7 @@ import { toISODate, parseISODate, addDays, startOfWeek, useToday } from "@/compo
 import { useLocalStorageState } from "@/components/todo/storage";
 import { useCloudSync } from "@/components/todo/sync";
 import { nextGoalColor } from "@/components/todo/goal";
+import { isRepeatable } from "@/components/todo/behavior";
 import type {
   AIBehaviorImportApply,
   AIResultImportApply,
@@ -749,10 +750,16 @@ export default function TodoApp() {
 
   // 删愿望连它下面的行为一起删，不留孤儿卡片
   function deleteAspiration(id: string) {
+    const aspirationBehaviors = behaviorCards.filter((behavior) => behavior.aspirationId === id);
+    const behaviorIds = new Set(aspirationBehaviors.map((behavior) => behavior.id));
     const taskIds = new Set(
-      behaviorCards.filter((b) => b.aspirationId === id && b.taskId).map((b) => b.taskId!),
+      aspirationBehaviors.filter((behavior) => behavior.taskId).map((behavior) => behavior.taskId!),
     );
-    const gone = tasks.filter((t) => taskIds.has(t.id) && t.status !== "done");
+    const gone = tasks.filter(
+      (task) =>
+        task.status !== "done" &&
+        (taskIds.has(task.id) || Boolean(task.sourceBehaviorId && behaviorIds.has(task.sourceBehaviorId))),
+    );
     snapshotLab(gone);
     if (gone.length > 0) {
       const ids = new Set(gone.map((t) => t.id));
@@ -975,33 +982,56 @@ export default function TodoApp() {
   function renameDerived(behaviorId: string, text: string) {
     setHabits((prev) => prev.map((h) => (h.behaviorId === behaviorId ? { ...h, title: text } : h)));
     const card = behaviorCards.find((b) => b.id === behaviorId);
-    if (card?.taskId) {
-      setTasks((prev) =>
-        prev.map((t) => (t.id === card.taskId && t.status !== "done" ? { ...t, title: text } : t)),
-      );
-    }
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.status !== "done" && (t.id === card?.taskId || t.sourceBehaviorId === behaviorId)
+          ? { ...t, title: text }
+          : t,
+      ),
+    );
   }
 
-  // 一次性任务 → 排进日视图。行为卡记下 taskId，别重复排
+  // 推进项 → 排进日视图。一次性任务只排一次；可重复行为可以排多天，但同一天只留一个实例。
   function scheduleBehavior(cardId: string, title: string, date: ISODate) {
-    const taskId = `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     // 继承那条行为所属的目标——这样它才会被"今天主线"认出来
     const card = behaviorCards.find((b) => b.id === cardId);
-    const aspirationId = card?.aspirationId;
-    setTasks((prev) => [
-      ...prev,
-      {
-        id: taskId,
-        title,
-        date,
-        status: "todo" as TaskStatus,
-        aspirationId,
-        resultId: card?.resultId,
-        subtasks: instantiateBehaviorSteps(card),
-      },
-    ]);
-    snapshotLab();
-    setBehaviorCards((prev) => prev.map((b) => (b.id === cardId ? { ...b, taskId } : b)));
+    if (!card) return;
+    const repeatable = isRepeatable(card.type);
+    if (!repeatable && (card.type !== "onetime" || card.taskId)) return;
+
+    const liveHabit = repeatable
+      ? habits.find((habit) => !habit.archived && habit.behaviorId === cardId)
+      : undefined;
+    const taskId = `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setTasks((prev) => {
+      const alreadyScheduled = repeatable && prev.some(
+        (task) =>
+          task.date === date &&
+          (task.sourceBehaviorId === cardId ||
+            (liveHabit ? task.sourceHabitId === liveHabit.id : false)),
+      );
+      if (alreadyScheduled) return prev;
+      return [
+        ...prev,
+        {
+          id: taskId,
+          title,
+          date,
+          status: "todo" as TaskStatus,
+          aspirationId: card.aspirationId,
+          resultId: card.resultId,
+          sourceBehaviorId: repeatable ? cardId : undefined,
+          sourceHabitId: liveHabit?.id,
+          subtasks: instantiateBehaviorSteps(card),
+        },
+      ];
+    });
+
+    // 一次性任务在卡片上记住唯一实例；重复行为保留原类型，之后还能再排其他日期。
+    if (!repeatable) {
+      snapshotLab();
+      setBehaviorCards((prev) => prev.map((b) => (b.id === cardId ? { ...b, taskId } : b)));
+    }
   }
 
   // 撤回排期：连带把日视图里那个任务删掉
@@ -1080,7 +1110,13 @@ export default function TodoApp() {
     const habit = habits.find((item) => item.id === habitId && !item.archived);
     if (!habit) return;
     const existingDates = new Set(
-      tasks.filter((task) => task.sourceHabitId === habitId).map((task) => task.date),
+      tasks
+        .filter(
+          (task) =>
+            task.sourceHabitId === habitId ||
+            (habit.behaviorId ? task.sourceBehaviorId === habit.behaviorId : false),
+        )
+        .map((task) => task.date),
     );
     const targetDates = Array.from(new Set(dates)).filter(
       (date) => date >= todayIso && !existingDates.has(date),
@@ -1097,6 +1133,7 @@ export default function TodoApp() {
         aspirationId: habit.aspirationId,
         resultId: sourceBehavior?.resultId,
         sourceHabitId: habit.id,
+        sourceBehaviorId: habit.behaviorId,
         subtasks: instantiateBehaviorSteps(sourceBehavior),
       }),
     );
@@ -1232,9 +1269,11 @@ export default function TodoApp() {
   // 已完成的任务留着——那是历史，不该被抹掉。
   function deleteBehavior(id: string) {
     const card = behaviorCards.find((b) => b.id === id);
-    const gone = card?.taskId
-      ? tasks.filter((t) => t.id === card.taskId && t.status !== "done")
-      : [];
+    const gone = tasks.filter(
+      (task) =>
+        task.status !== "done" &&
+        (task.id === card?.taskId || task.sourceBehaviorId === id),
+    );
     snapshotLab(gone);
     if (gone.length > 0) {
       const ids = new Set(gone.map((t) => t.id));

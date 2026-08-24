@@ -214,6 +214,7 @@ export default function TodoDayView({
       subs.length > 0 ||
       isMainlineTask(t) ||
       !!t.sourceHabitId ||
+      !!t.sourceBehaviorId ||
       !!t.tag ||
       isHigh;
 
@@ -343,6 +344,9 @@ export default function TodoDayView({
                 )}
                 {isMainlineTask(t) && !isDone && <span className="font-semibold text-[var(--color-primary)]">主线</span>}
                 {t.sourceHabitId && !isDone && <span className="font-medium text-[#7C3AED]">习惯</span>}
+                {t.sourceBehaviorId && !t.sourceHabitId && !isDone && (
+                  <span className="font-medium text-[#4F46E5]">重复</span>
+                )}
                 {t.tag && !isDone && !isInProgress && <span className="text-[var(--color-text-secondary)]">{t.tag}</span>}
                 {isHigh && !isDone && <span className="font-medium text-[var(--color-danger)]">高优</span>}
               </div>

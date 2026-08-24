@@ -729,7 +729,9 @@ export default function FocusMapView({
 
   const chosen = cards.filter((c) => selected.has(c.id));
   const chosenHabits = chosen.filter((c) => isRepeatable(c.type) && !habitBehaviorIds.has(c.id));
-  const chosenOnetime = chosen.filter((c) => c.type === "onetime" && !c.taskId);
+  const chosenSchedulable = chosen.filter(
+    (card) => isRepeatable(card.type) || (card.type === "onetime" && !card.taskId),
+  );
 
   function batchAddHabits() {
     chosenHabits.forEach(onAddHabit);
@@ -737,7 +739,7 @@ export default function FocusMapView({
   }
 
   function batchSchedule(date: ISODate) {
-    chosenOnetime.forEach((c) => onSchedule(c.id, c.text, date));
+    chosenSchedulable.forEach((c) => onSchedule(c.id, c.text, date));
     setSelected(new Set());
     setScheduling(false);
   }
@@ -1815,6 +1817,9 @@ export default function FocusMapView({
           const st = TYPE_STYLE[b.type];
           const picked = selected.has(b.id);
           const task = b.taskId ? tasks.find((t) => t.id === b.taskId) : undefined;
+          const repeatTasks = isRepeatable(b.type)
+            ? tasks.filter((candidate) => candidate.sourceBehaviorId === b.id)
+            : [];
           const inHabits = habitBehaviorIds.has(b.id);
           const issueKind = blockerOf(b);
           const isExpanded = expandedId === b.id;
@@ -1909,8 +1914,17 @@ export default function FocusMapView({
                     {b.steps.length}步
                   </span>
                 )}
-                {(task || inHabits) && (
-                  <span className="flex-shrink-0" title={task ? "已排日程" : "已在习惯"}>
+                {(task || repeatTasks.length > 0 || inHabits) && (
+                  <span
+                    className="flex-shrink-0"
+                    title={
+                      task
+                        ? "已排日程"
+                        : repeatTasks.length > 0
+                          ? `已排 ${repeatTasks.length} 天`
+                          : "已在习惯"
+                    }
+                  >
                     <Check className="h-3 w-3 text-[var(--color-success)]" />
                   </span>
                 )}
@@ -1951,6 +1965,11 @@ export default function FocusMapView({
                     </button>
                     <span className="flex-1" />
                     {task && <span className="text-[9px] font-medium text-[var(--color-success)]">已排日程</span>}
+                    {repeatTasks.length > 0 && (
+                      <span className="text-[9px] font-medium text-[var(--color-success)]">
+                        已排 {repeatTasks.length} 天
+                      </span>
+                    )}
                     {inHabits && <span className="text-[9px] font-medium text-[var(--color-success)]">已在习惯</span>}
                     <button
                       type="button"
@@ -2050,7 +2069,7 @@ export default function FocusMapView({
               )}
 
               {/* 单条行为有自己的快路径；左上方框只负责多选和批量操作。 */}
-              {((isRepeatable(b.type) && !inHabits) || (b.type === "onetime" && !task)) && (
+              {(isRepeatable(b.type) || (b.type === "onetime" && !task)) && (
                 <div className="mt-0.5 flex w-full items-center gap-1.5">
                   {isRepeatable(b.type) && !inHabits && (
                     <button
@@ -2062,7 +2081,7 @@ export default function FocusMapView({
                       加入习惯
                     </button>
                   )}
-                  {b.type === "onetime" && !task && (
+                  {(isRepeatable(b.type) || (b.type === "onetime" && !task)) && (
                     <button
                       type="button"
                       onClick={() =>
@@ -2089,20 +2108,30 @@ export default function FocusMapView({
                 </div>
               )}
 
-              {singleSchedulingId === b.id && b.type === "onetime" && !task && (
+              {singleSchedulingId === b.id &&
+                (isRepeatable(b.type) || (b.type === "onetime" && !task)) && (
                 <div className="mt-0.5 grid w-full grid-cols-4 gap-1.5 rounded-lg bg-[var(--color-bg-gray-lighter)] p-2">
                   {Array.from({ length: 7 }).map((_, i) => {
                     const date = addDays(new Date(), i);
                     const iso = toISODate(date) as ISODate;
                     const label = i === 0 ? "今天" : i === 1 ? "明天" : CN_WEEKDAY[date.getDay()];
+                    const alreadyScheduled = repeatTasks.some((candidate) => candidate.date === iso);
                     return (
                       <button
                         key={iso}
                         type="button"
                         onClick={() => scheduleOne(b, iso)}
-                        className="flex flex-col items-center rounded-md border border-[#C7D2FE] bg-white py-1 text-[#4F46E5] transition-colors hover:bg-[#EEF2FF]"
+                        disabled={alreadyScheduled}
+                        className={[
+                          "flex flex-col items-center rounded-md border py-1 transition-colors",
+                          alreadyScheduled
+                            ? "cursor-default border-[#BBF7D0] bg-[#F0FDF4] text-[#16A34A]"
+                            : "border-[#C7D2FE] bg-white text-[#4F46E5] hover:bg-[#EEF2FF]",
+                        ].join(" ")}
                       >
-                        <span className="text-[10px] font-semibold leading-tight">{label}</span>
+                        <span className="text-[10px] font-semibold leading-tight">
+                          {alreadyScheduled ? "已排" : label}
+                        </span>
                         <span className="text-[9px] leading-tight opacity-70">
                           {date.getMonth() + 1}/{date.getDate()}
                         </span>
@@ -2162,6 +2191,21 @@ export default function FocusMapView({
                     <X className="w-3 h-3" />
                     撤回排期
                   </button>
+                </div>
+              )}
+              {repeatTasks.length > 0 && (
+                <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-success)]">
+                  <Check className="h-3 w-3" />
+                  已排进日程 ·{" "}
+                  {
+                    repeatTasks
+                      .slice()
+                      .sort((left, right) => left.date.localeCompare(right.date))
+                      .slice(0, 3)
+                      .map((candidate) => cnDate(candidate.date))
+                      .join("、")
+                  }
+                  {repeatTasks.length > 3 ? ` 等 ${repeatTasks.length} 天` : ""}
                 </div>
               )}
               {inHabits && (
@@ -2296,7 +2340,7 @@ export default function FocusMapView({
           {scheduling ? (
             /* 七天按钮，不用原生 date input——它在 iOS 上放固定定位条里选完常常不生效 */
             <div className="w-full flex flex-col gap-1.5">
-              <span className="text-[11px] text-[var(--color-text-secondary)]">一次性行为安排到哪天？</span>
+              <span className="text-[11px] text-[var(--color-text-secondary)]">选中的推进项安排到哪天？</span>
               <div className="w-full grid grid-cols-4 gap-1.5">
                 {Array.from({ length: 7 }).map((_, i) => {
                   const d = addDays(new Date(), i);
@@ -2337,16 +2381,16 @@ export default function FocusMapView({
                   加入习惯（{chosenHabits.length}）
                 </button>
               )}
-              {chosenOnetime.length > 0 && (
+              {chosenSchedulable.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setScheduling(true)}
                   className="flex-1 py-2 rounded-lg bg-[#4F46E5] text-white text-[13px] font-semibold"
                 >
-                  安排一次性任务（{chosenOnetime.length}）
+                  安排到日程（{chosenSchedulable.length}）
                 </button>
               )}
-              {chosenHabits.length === 0 && chosenOnetime.length === 0 && (
+              {chosenHabits.length === 0 && chosenSchedulable.length === 0 && (
                 <span className="flex-1 text-[12px] text-[var(--color-text-tertiary)] py-2 text-center">
                   选中的都已经有去处了
                 </span>
