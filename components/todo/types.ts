@@ -20,6 +20,22 @@ export interface SubTask {
   id: string;
   title: string;
   done: boolean;
+  /** 从焦点地图固定流程的哪一步实例化而来；用于把起步动作挂回正确步骤。 */
+  sourceBehaviorStepId?: string;
+}
+
+/**
+ * 起步动作不等于任务完成条件：
+ * - next：真正推进工作的第一下
+ * - minimum：只负责跨过启动门槛，做完后可以继续，也可以先停
+ * targetStepId 可选；行为模板里指向 BehaviorStep，排成任务后会换成对应 SubTask id。
+ */
+export interface StartAction {
+  kind: "next" | "minimum";
+  title: string;
+  targetStepId?: string;
+  /** 只在 Task 执行实例中使用；BehaviorCard 模板不记录完成状态。 */
+  done?: boolean;
 }
 
 export interface Task {
@@ -43,6 +59,8 @@ export interface Task {
   targetMinutes?: number;
   /** 拆出来的子步骤。**不要求拆完**——加一条做一条也行，GTD 的省力点就在这 */
   subtasks?: SubTask[];
+  /** 为这次任务设计的起步动作；完成它只代表已经启动，不自动完成父任务。 */
+  startAction?: StartAction;
   /** 手动完成进度 0-100（非时长目标任务用；与状态联动：0=待办 100=已完成 其余=进行中） */
   progress?: number;
 }
@@ -144,6 +162,8 @@ export interface BehaviorCard {
   feasibility?: number;
   /** 固定做法或任务包的有序步骤；整体评分，步骤本身不单独评分。 */
   steps?: BehaviorStep[];
+  /** 完整行为/任务包的起步设计；不作为独立候选进入焦点地图评分。 */
+  startAction?: StartAction;
   /** 一次性任务排进日视图之后，关联的那个 Task 的 id */
   taskId?: string;
 }

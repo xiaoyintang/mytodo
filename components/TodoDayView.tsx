@@ -205,6 +205,16 @@ export default function TodoDayView({
     const subs = t.subtasks ?? [];
     const subDone = subs.filter((x) => x.done).length;
     const nextSubtask = subs.find((x) => !x.done);
+    const startActionTarget = t.startAction?.targetStepId
+      ? subs.find((subtask) => subtask.id === t.startAction?.targetStepId)
+      : undefined;
+    const startActionWaiting = Boolean(
+      startActionTarget && nextSubtask && startActionTarget.id !== nextSubtask.id,
+    );
+    const activeStartAction =
+      t.startAction && !t.startAction.done && !startActionTarget?.done && !startActionWaiting
+        ? t.startAction
+        : undefined;
     const isExpanded = expanded.has(t.id);
     const taskResult = resolveTaskGoalResult(t, goalResults, behaviors, habits);
 
@@ -242,7 +252,38 @@ export default function TodoDayView({
               {t.title}
             </span>
 
-            {nextSubtask && !isExpanded && (
+            {activeStartAction && !isExpanded && (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onUpdateTask(t.id, {
+                    startAction: { ...activeStartAction, done: true },
+                    ...(t.status === "todo" ? { status: "in_progress" as const } : {}),
+                  });
+                }}
+                className={[
+                  "mt-1 flex w-full items-start gap-1.5 rounded-md px-2 py-1.5 text-left transition-colors",
+                  activeStartAction.kind === "minimum"
+                    ? "bg-[#FAF5FF] hover:bg-[#F3E8FF]"
+                    : "bg-[#EEF2FF] hover:bg-[#E0E7FF]",
+                ].join(" ")}
+                aria-label={`做完${activeStartAction.kind === "minimum" ? "最小启动" : "起步动作"}：${activeStartAction.title}`}
+              >
+                <span className="mt-[2px] h-3 w-3 flex-shrink-0 rounded-full border border-[#4F46E5] bg-white" />
+                <span
+                  className="min-w-0 flex-1 truncate text-[11px] leading-4 text-[var(--color-text-primary)]"
+                  data-full-text={activeStartAction.title}
+                >
+                  <strong className="mr-1 font-semibold text-[#4F46E5]">
+                    {activeStartAction.kind === "minimum" ? "最小启动" : "先做这一下"}
+                  </strong>
+                  {activeStartAction.title}
+                </span>
+              </button>
+            )}
+
+            {nextSubtask && !isExpanded && !activeStartAction && (
               <button
                 type="button"
                 onClick={(e) => {

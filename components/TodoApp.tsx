@@ -22,6 +22,7 @@ import type {
   HabitLog,
   EntryCategory,
   ISODate,
+  StartAction,
   SubTask,
   Task,
   TimeEntry,
@@ -151,7 +152,25 @@ function instantiateBehaviorSteps(card?: BehaviorCard): SubTask[] | undefined {
     id: `st-${stamp}-${index}-${Math.random().toString(36).slice(2, 6)}`,
     title: step.title,
     done: false,
+    sourceBehaviorStepId: step.id,
   }));
+}
+
+/** 起步动作跟着这次执行实例走；若它针对固定流程某一步，换成对应的 SubTask id。 */
+function instantiateStartAction(
+  card: BehaviorCard | undefined,
+  subtasks: SubTask[] | undefined,
+): StartAction | undefined {
+  if (!card?.startAction?.title.trim()) return undefined;
+  const targetSubtask = card.startAction.targetStepId
+    ? subtasks?.find((subtask) => subtask.sourceBehaviorStepId === card.startAction?.targetStepId)
+    : undefined;
+  return {
+    kind: card.startAction.kind,
+    title: card.startAction.title,
+    targetStepId: targetSubtask?.id,
+    done: false,
+  };
 }
 
 function importBehaviorSteps(
@@ -424,7 +443,12 @@ export default function TodoApp() {
           : subtasks.length > 0
             ? Math.round((subtasks.filter((x) => x.done).length / subtasks.length) * 100)
             : t.progress;
-        return { ...t, subtasks, status, progress };
+        const startAction =
+          t.startAction?.targetStepId &&
+          !subtasks.some((subtask) => subtask.id === t.startAction?.targetStepId)
+            ? { ...t.startAction, targetStepId: undefined }
+            : t.startAction;
+        return { ...t, subtasks, startAction, status, progress };
       }),
     );
   }
@@ -1003,6 +1027,8 @@ export default function TodoApp() {
       ? habits.find((habit) => !habit.archived && habit.behaviorId === cardId)
       : undefined;
     const taskId = `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const subtasks = instantiateBehaviorSteps(card);
+    const startAction = instantiateStartAction(card, subtasks);
     setTasks((prev) => {
       const alreadyScheduled = repeatable && prev.some(
         (task) =>
@@ -1022,7 +1048,8 @@ export default function TodoApp() {
           resultId: card.resultId,
           sourceBehaviorId: repeatable ? cardId : undefined,
           sourceHabitId: liveHabit?.id,
-          subtasks: instantiateBehaviorSteps(card),
+          subtasks,
+          startAction,
         },
       ];
     });
@@ -1125,7 +1152,8 @@ export default function TodoApp() {
     const sourceBehavior = habit.behaviorId
       ? behaviorCards.find((behavior) => behavior.id === habit.behaviorId)
       : undefined;
-    targetDates.forEach((date) =>
+    targetDates.forEach((date) => {
+      const subtasks = instantiateBehaviorSteps(sourceBehavior);
       createTask({
         title: habit.title,
         date,
@@ -1134,9 +1162,10 @@ export default function TodoApp() {
         resultId: sourceBehavior?.resultId,
         sourceHabitId: habit.id,
         sourceBehaviorId: habit.behaviorId,
-        subtasks: instantiateBehaviorSteps(sourceBehavior),
-      }),
-    );
+        subtasks,
+        startAction: instantiateStartAction(sourceBehavior, subtasks),
+      });
+    });
   }
 
   /** 这个习惯有没有打卡记录（决定移出去时是归档还是真删） */
@@ -1222,7 +1251,34 @@ export default function TodoApp() {
     snapshotLab();
     setBehaviorCards((prev) =>
       prev.map((behavior) =>
-        behavior.id === id ? { ...behavior, steps: steps.length > 0 ? steps : undefined } : behavior,
+        behavior.id === id
+          ? {
+              ...behavior,
+              steps: steps.length > 0 ? steps : undefined,
+              startAction:
+                behavior.startAction?.targetStepId &&
+                !steps.some((step) => step.id === behavior.startAction?.targetStepId)
+                  ? { ...behavior.startAction, targetStepId: undefined }
+                  : behavior.startAction,
+            }
+          : behavior,
+      ),
+    );
+  }
+
+  /** 起步动作只改变执行设计，不改变父行为的影响力或可行性评分。 */
+  function setBehaviorStartAction(id: string, startAction?: StartAction) {
+    snapshotLab();
+    setBehaviorCards((prev) =>
+      prev.map((behavior) =>
+        behavior.id === id
+          ? {
+              ...behavior,
+              startAction: startAction
+                ? { ...startAction, title: startAction.title.trim(), done: undefined }
+                : undefined,
+            }
+          : behavior,
       ),
     );
   }
@@ -1460,6 +1516,7 @@ export default function TodoApp() {
           onUnscheduleBehavior={unscheduleBehavior}
           onSetBehaviorAxis={setBehaviorAxis}
           onSetBehaviorSteps={setBehaviorSteps}
+          onSetBehaviorStartAction={setBehaviorStartAction}
           onConvertBehaviorToTaskPackage={convertBehaviorToTaskPackage}
           onResetBehaviorAxes={resetBehaviorAxes}
           onSetWeeklyLimit={setWeeklyLimit}

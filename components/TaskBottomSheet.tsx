@@ -20,6 +20,7 @@ import { callBehaviorAPI } from "@/components/todo/behaviorApi";
 import TimePicker from "@/components/TimePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
+import StartActionEditor from "@/components/StartActionEditor";
 
 // 可拖动的完成进度滑块（0-100，指哪填哪）
 function ProgressSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
@@ -414,6 +415,7 @@ export default function TaskBottomSheet({
         <button
           type="button"
           onClick={onClose}
+          aria-label="关闭任务详情"
           className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full hover:bg-[var(--color-bg-gray-light)] transition-colors z-10"
         >
           <X className="w-5 h-5 text-[var(--color-text-tertiary)]" />
@@ -698,6 +700,26 @@ export default function TaskBottomSheet({
               )}
             </div>
           )}
+
+          <div className="mb-3">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <span className="text-[11px] font-semibold text-[var(--color-text-secondary)]">起步动作</span>
+              <span className="text-[9px] text-[var(--color-text-tertiary)]">只负责开始，不改变完成标准</span>
+            </div>
+            <StartActionEditor
+              value={task.startAction}
+              steps={task.subtasks ?? []}
+              executable
+              onChange={(startAction) =>
+                onUpdate(task.id, {
+                  startAction,
+                  ...(startAction?.done && task.status === "todo"
+                    ? { status: "in_progress" as const }
+                    : {}),
+                })
+              }
+            />
+          </div>
 
           {/* 成果可以作为父任务，但执行现场要明确当前下一步。 */}
           {(() => {

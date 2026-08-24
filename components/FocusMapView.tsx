@@ -8,6 +8,7 @@ import type {
   BehaviorType,
   GoalResult,
   ISODate,
+  StartAction,
   Task,
 } from "@/components/todo/types";
 import { callBehaviorAPI, toPendingItems, type PendingItem } from "@/components/todo/behaviorApi";
@@ -47,6 +48,7 @@ import {
 } from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import BehaviorStepsEditor from "@/components/BehaviorStepsEditor";
+import StartActionEditor from "@/components/StartActionEditor";
 
 type AxisPatch = { impact?: number; feasibility?: number };
 type SortMode = "score" | "impact";
@@ -91,6 +93,7 @@ type Props = {
   tasks: Task[];
   onSetAxis: (id: string, patch: AxisPatch) => void;
   onSetSteps: (id: string, steps: BehaviorStep[]) => void;
+  onSetStartAction: (id: string, startAction?: StartAction) => void;
   onConvertToTaskPackage: (id: string, steps: BehaviorStep[]) => void;
   onResetAxes: () => void;
   onDelete: (id: string) => void;
@@ -193,6 +196,7 @@ export default function FocusMapView({
   tasks,
   onSetAxis,
   onSetSteps,
+  onSetStartAction,
   onConvertToTaskPackage,
   onResetAxes,
   onDelete,
@@ -1888,6 +1892,14 @@ export default function FocusMapView({
                     {b.steps.length}步
                   </span>
                 )}
+                {b.startAction && (
+                  <span
+                    className="flex-shrink-0 rounded bg-[#EEF2FF] px-1 py-[1px] text-[8px] font-medium text-[#4F46E5]"
+                    title={`${b.startAction.kind === "minimum" ? "最小启动" : "下一步"}：${b.startAction.title}`}
+                  >
+                    已设起步
+                  </span>
+                )}
                 {(task || repeatTasks.length > 0 || inHabits) && (
                   <span
                     className="flex-shrink-0"
@@ -2012,13 +2024,20 @@ export default function FocusMapView({
               )}
 
               {isActionable(b.type) && (
-                <BehaviorStepsEditor
-                  behaviorTitle={b.text}
-                  goal={goalContext}
-                  steps={b.steps ?? []}
-                  mode={b.type === "onetime" ? "task" : "procedure"}
-                  onChange={(steps) => onSetSteps(b.id, steps)}
-                />
+                <>
+                  <BehaviorStepsEditor
+                    behaviorTitle={b.text}
+                    goal={goalContext}
+                    steps={b.steps ?? []}
+                    mode={b.type === "onetime" ? "task" : "procedure"}
+                    onChange={(steps) => onSetSteps(b.id, steps)}
+                  />
+                  <StartActionEditor
+                    value={b.startAction}
+                    steps={b.steps ?? []}
+                    onChange={(startAction) => onSetStartAction(b.id, startAction)}
+                  />
+                </>
               )}
 
               {resultOptions.length > 0 && onAssignResult && (

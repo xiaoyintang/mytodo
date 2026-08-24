@@ -11,6 +11,7 @@ import type {
   GoalResult,
   Habit,
   ISODate,
+  StartAction,
   Task,
 } from "@/components/todo/types";
 import { guessMeasure, pendingJudgement } from "@/components/todo/behavior";
@@ -82,6 +83,7 @@ type Props = {
   onUnscheduleBehavior: (cardId: string) => void;
   onSetBehaviorAxis: (id: string, patch: { impact?: number; feasibility?: number }) => void;
   onSetBehaviorSteps: (id: string, steps: BehaviorStep[]) => void;
+  onSetBehaviorStartAction: (id: string, startAction?: StartAction) => void;
   onConvertBehaviorToTaskPackage: (id: string, steps: BehaviorStep[]) => void;
   onResetBehaviorAxes: (behaviorIds: string[]) => void;
   onSetWeeklyLimit: (aspirationId: string, limit: number | null) => void;
@@ -125,6 +127,7 @@ export default function GoalsView({
   onUnscheduleBehavior,
   onSetBehaviorAxis,
   onSetBehaviorSteps,
+  onSetBehaviorStartAction,
   onConvertBehaviorToTaskPackage,
   onResetBehaviorAxes,
   onSetWeeklyLimit,
@@ -514,6 +517,7 @@ export default function GoalsView({
               tasks={tasks}
               onSetAxis={onSetBehaviorAxis}
               onSetSteps={onSetBehaviorSteps}
+              onSetStartAction={onSetBehaviorStartAction}
               onConvertToTaskPackage={onConvertBehaviorToTaskPackage}
               onResetAxes={() => onResetBehaviorAxes(focusCards.map((card) => card.id))}
               onDelete={onDeleteBehavior}
