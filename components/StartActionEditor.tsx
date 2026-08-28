@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { StartAction } from "@/components/todo/types";
-import { Check, Pencil, Play, Trash2, X } from "lucide-react";
+import { Check, Pencil, Play, Sparkles, Trash2, X } from "lucide-react";
 
 type StepOption = {
   id: string;
@@ -12,39 +12,32 @@ type StepOption = {
 
 type Props = {
   value?: StartAction;
-  steps?: StepOption[];
+  /** 最小启动只依附于某个真实步骤；没有步骤时依附父任务本身。 */
+  targetStep?: StepOption;
   onChange: (value?: StartAction) => void;
-  /** 任务执行现场可以把起步动作标为完成；焦点地图只保存模板。 */
+  /** 任务执行现场可以记录“已经启动”；焦点地图只保存启动提示。 */
   executable?: boolean;
-};
-
-const KIND_INFO: Record<StartAction["kind"], { label: string; hint: string }> = {
-  next: { label: "下一步", hint: "真正推进工作的第一下" },
-  minimum: { label: "最小启动", hint: "只负责让自己开始，不代表完成任务" },
+  /** 从某一步上的入口打开时，直接进入输入态，避免再点第二次。 */
+  autoEdit?: boolean;
 };
 
 export default function StartActionEditor({
   value,
-  steps = [],
+  targetStep,
   onChange,
   executable = false,
+  autoEdit = false,
 }: Props) {
-  const [editing, setEditing] = useState(false);
-  const [kind, setKind] = useState<StartAction["kind"]>(value?.kind ?? "next");
+  const [editing, setEditing] = useState(autoEdit);
   const [title, setTitle] = useState(value?.title ?? "");
-  const [targetStepId, setTargetStepId] = useState(value?.targetStepId ?? "");
 
   useEffect(() => {
     if (editing) return;
-    setKind(value?.kind ?? "next");
     setTitle(value?.title ?? "");
-    setTargetStepId(value?.targetStepId ?? "");
-  }, [editing, value?.kind, value?.targetStepId, value?.title]);
+  }, [editing, value?.title]);
 
   function beginEdit() {
-    setKind(value?.kind ?? "next");
     setTitle(value?.title ?? "");
-    setTargetStepId(value?.targetStepId ?? (steps[0]?.id ?? ""));
     setEditing(true);
   }
 
@@ -52,78 +45,43 @@ export default function StartActionEditor({
     const nextTitle = title.trim();
     if (!nextTitle) return;
     onChange({
-      kind,
+      kind: "minimum",
       title: nextTitle,
-      targetStepId: targetStepId || undefined,
+      targetStepId: targetStep?.id,
       done: executable ? value?.done : undefined,
     });
     setEditing(false);
   }
-
-  const targetStep = value?.targetStepId
-    ? steps.find((step) => step.id === value.targetStepId)
-    : undefined;
-  const targetAlreadyDone = Boolean(targetStep?.done);
-  const firstOpenStep = steps.find((step) => !step.done);
-  const targetWaiting = Boolean(
-    targetStep && firstOpenStep && targetStep.id !== firstOpenStep.id && !targetAlreadyDone,
-  );
 
   if (!value && !editing) {
     return (
       <button
         type="button"
         onClick={beginEdit}
-        className="mt-0.5 flex items-center gap-1 rounded-md border border-dashed border-[#A5B4FC] bg-[#F8FAFF] px-2 py-1 text-[10px] font-medium text-[#4F46E5] transition-colors hover:bg-[#EEF2FF]"
+        className="mt-0.5 flex items-center gap-1 rounded-md px-1.5 py-1 text-[9px] font-medium text-[var(--color-text-tertiary)] transition-colors hover:bg-[#FAF5FF] hover:text-[#6D28D9]"
       >
-        <Play className="h-3 w-3" />
-        设计起步
+        <Sparkles className="h-3 w-3" />
+        {targetStep ? "这一步难开始？再缩小" : "难开始？设一个最小启动"}
       </button>
     );
   }
 
   if (editing) {
     return (
-      <div className="mt-0.5 rounded-lg border border-[#C7D2FE] bg-[#F8FAFF] p-2">
-        <div className="flex items-stretch gap-1.5">
-          {(["next", "minimum"] as const).map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => setKind(option)}
-              className={[
-                "flex-1 rounded-md border px-2 py-1.5 text-left transition-colors",
-                kind === option
-                  ? "border-[#6366F1] bg-[#EEF2FF] text-[#4338CA]"
-                  : "border-[var(--color-border)] bg-white text-[var(--color-text-secondary)]",
-              ].join(" ")}
-            >
-              <span className="block text-[10px] font-semibold">{KIND_INFO[option].label}</span>
-              <span className="block text-[8px] leading-snug opacity-75">{KIND_INFO[option].hint}</span>
-            </button>
-          ))}
+      <div className="mt-1 rounded-lg border border-[#DDD6FE] bg-[#FAF5FF] p-2">
+        <div className="mb-1.5 flex items-start gap-1.5">
+          <Sparkles className="mt-[1px] h-3 w-3 flex-shrink-0 text-[#7C3AED]" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-semibold text-[#6D28D9]">最小启动</p>
+            <p className="text-[8px] leading-snug text-[var(--color-text-tertiary)]">
+              {targetStep
+                ? `只负责让「${targetStep.title}」开始，不替代这一步`
+                : "只负责让大脑愿意开始，不改变任务的完成标准"}
+            </p>
+          </div>
         </div>
 
-        {steps.length > 0 && (
-          <label className="mt-1.5 flex items-center gap-2 rounded-md bg-white px-2 py-1.5">
-            <span className="flex-shrink-0 text-[9px] text-[var(--color-text-tertiary)]">针对步骤</span>
-            <select
-              value={targetStepId}
-              onChange={(event) => setTargetStepId(event.target.value)}
-              className="min-w-0 flex-1 bg-transparent text-[10px] font-medium text-[var(--color-text-secondary)] outline-none"
-              aria-label="起步动作针对的流程步骤"
-            >
-              <option value="">整个任务包</option>
-              {steps.map((step, index) => (
-                <option key={step.id} value={step.id}>
-                  {index + 1}. {step.title}{step.done ? "（已完成）" : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-
-        <div className="mt-1.5 flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5">
           <input
             type="text"
             value={title}
@@ -134,14 +92,14 @@ export default function StartActionEditor({
               if (event.key === "Escape") setEditing(false);
             }}
             autoFocus
-            placeholder={kind === "next" ? "现在真正要做的第一下" : "小到几乎不会拒绝的启动动作"}
-            className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-white px-2 py-1.5 text-[11px] outline-none focus:border-[#6366F1]"
+            placeholder="例如：打开文档，只写下标题"
+            className="min-w-0 flex-1 rounded-md border border-[#DDD6FE] bg-white px-2 py-1.5 text-[11px] outline-none focus:border-[#8B5CF6]"
           />
           <button
             type="button"
             onClick={save}
             disabled={!title.trim()}
-            className="rounded-md bg-[#4F46E5] px-2.5 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
+            className="rounded-md bg-[#7C3AED] px-2.5 py-1.5 text-[10px] font-semibold text-white disabled:opacity-40"
           >
             保存
           </button>
@@ -149,83 +107,72 @@ export default function StartActionEditor({
             type="button"
             onClick={() => setEditing(false)}
             className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--color-text-tertiary)]"
-            aria-label="取消编辑起步动作"
+            aria-label="取消编辑最小启动"
           >
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
-        {!executable && (
-          <p className="mt-1 text-[8px] leading-snug text-[var(--color-text-tertiary)]">
-            起步动作不单独评分；影响力和能做到仍然评价完整行为或任务包。
-          </p>
-        )}
       </div>
     );
   }
 
+  const started = Boolean(value?.done || targetStep?.done);
+
   return (
     <div
       className={[
-        "mt-0.5 flex items-start gap-2 rounded-lg border px-2 py-1.5",
-        value?.done || targetAlreadyDone
-          ? "border-[#BBF7D0] bg-[#F0FDF4]"
-          : targetWaiting
-            ? "border-[var(--color-border)] bg-[var(--color-bg-gray-lighter)]"
-          : value?.kind === "minimum"
-            ? "border-[#DDD6FE] bg-[#FAF5FF]"
-            : "border-[#BFDBFE] bg-[#F8FAFF]",
+        "mt-1 flex items-start gap-2 rounded-lg border px-2 py-1.5",
+        started ? "border-[#BBF7D0] bg-[#F0FDF4]" : "border-[#DDD6FE] bg-[#FAF5FF]",
       ].join(" ")}
     >
       <span
         className={[
           "mt-[1px] flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full",
-          value?.done || targetAlreadyDone ? "bg-[#16A34A] text-white" : "bg-[#E0E7FF] text-[#4F46E5]",
+          started ? "bg-[#16A34A] text-white" : "bg-[#EDE9FE] text-[#7C3AED]",
         ].join(" ")}
       >
-        {value?.done || targetAlreadyDone ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : <Play className="h-2.5 w-2.5" />}
+        {started ? (
+          <Check className="h-2.5 w-2.5" strokeWidth={3} />
+        ) : (
+          <Play className="h-2.5 w-2.5" />
+        )}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-          <span className="text-[9px] font-semibold text-[#4F46E5]">{KIND_INFO[value!.kind].label}</span>
-          {targetStep && (
-            <span className="truncate text-[8px] text-[var(--color-text-tertiary)]">
-              针对「{targetStep.title}」
-            </span>
-          )}
-          {targetWaiting && (
-            <span className="text-[8px] text-[var(--color-text-tertiary)]">到这一步时出现</span>
-          )}
-        </div>
-        <p className={[
-          "text-[11px] leading-snug text-[var(--color-text-primary)]",
-          value?.done || targetAlreadyDone ? "line-through opacity-60" : "",
-        ].join(" ")}>
+        <span className="text-[9px] font-semibold text-[#6D28D9]">
+          {started ? "已经启动" : "先只做"}
+        </span>
+        <p
+          className={[
+            "text-[11px] leading-snug text-[var(--color-text-primary)]",
+            started ? "opacity-60" : "",
+          ].join(" ")}
+        >
           {value!.title}
         </p>
       </div>
-      {executable && !value?.done && !targetAlreadyDone && !targetWaiting && (
+      {executable && !started && (
         <button
           type="button"
-          onClick={() => onChange({ ...value!, done: true })}
-          className="flex-shrink-0 rounded-md bg-[#4F46E5] px-2 py-1 text-[9px] font-semibold text-white"
+          onClick={() => onChange({ ...value!, kind: "minimum", done: true })}
+          className="flex-shrink-0 rounded-md bg-[#7C3AED] px-2 py-1 text-[9px] font-semibold text-white"
         >
-          做完这一下
+          我开始了
         </button>
       )}
       {executable && value?.done && (
         <button
           type="button"
-          onClick={() => onChange({ ...value, done: false })}
+          onClick={() => onChange({ ...value, kind: "minimum", done: false })}
           className="flex-shrink-0 px-1 py-1 text-[9px] text-[var(--color-text-tertiary)]"
         >
-          撤回
+          重置
         </button>
       )}
       <button
         type="button"
         onClick={beginEdit}
         className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-[var(--color-text-tertiary)]"
-        aria-label="修改起步动作"
+        aria-label="修改最小启动"
       >
         <Pencil className="h-3 w-3" />
       </button>
@@ -233,7 +180,7 @@ export default function StartActionEditor({
         type="button"
         onClick={() => onChange(undefined)}
         className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-[var(--color-text-tertiary)] hover:text-[var(--color-danger)]"
-        aria-label="删除起步动作"
+        aria-label="删除最小启动"
       >
         <Trash2 className="h-3 w-3" />
       </button>

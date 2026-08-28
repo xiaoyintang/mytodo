@@ -106,7 +106,7 @@ type Props = {
   onAddHabit: (card: BehaviorCard) => void;
   onRemoveHabit: (behaviorId: string) => void;
   onSchedule: (cardId: string, title: string, date: ISODate) => void;
-  onUnschedule: (cardId: string) => void;
+  onUnschedule: (cardId: string, date?: ISODate) => void;
   /** 就地增删改，省得为了加一条/改个错字还要切回行为集群 */
   onAdd: (text: string) => void;
   onEditText: (id: string, text: string) => void;
@@ -1895,9 +1895,9 @@ export default function FocusMapView({
                 {b.startAction && (
                   <span
                     className="flex-shrink-0 rounded bg-[#EEF2FF] px-1 py-[1px] text-[8px] font-medium text-[#4F46E5]"
-                    title={`${b.startAction.kind === "minimum" ? "最小启动" : "下一步"}：${b.startAction.title}`}
+                    title={`最小启动：${b.startAction.title}`}
                   >
-                    已设起步
+                    有最小启动
                   </span>
                 )}
                 {(task || repeatTasks.length > 0 || inHabits) && (
@@ -2031,12 +2031,15 @@ export default function FocusMapView({
                     steps={b.steps ?? []}
                     mode={b.type === "onetime" ? "task" : "procedure"}
                     onChange={(steps) => onSetSteps(b.id, steps)}
+                    startAction={b.startAction}
+                    onStartActionChange={(startAction) => onSetStartAction(b.id, startAction)}
                   />
-                  <StartActionEditor
-                    value={b.startAction}
-                    steps={b.steps ?? []}
-                    onChange={(startAction) => onSetStartAction(b.id, startAction)}
-                  />
+                  {!(b.steps?.length) && (
+                    <StartActionEditor
+                      value={b.startAction}
+                      onChange={(startAction) => onSetStartAction(b.id, startAction)}
+                    />
+                  )}
                 </>
               )}
 
@@ -2113,17 +2116,19 @@ export default function FocusMapView({
                       <button
                         key={iso}
                         type="button"
-                        onClick={() => scheduleOne(b, iso)}
-                        disabled={alreadyScheduled}
+                        onClick={() =>
+                          alreadyScheduled ? onUnschedule(b.id, iso) : scheduleOne(b, iso)
+                        }
                         className={[
                           "flex flex-col items-center rounded-md border py-1 transition-colors",
                           alreadyScheduled
-                            ? "cursor-default border-[#BBF7D0] bg-[#F0FDF4] text-[#16A34A]"
+                            ? "border-[#BBF7D0] bg-[#F0FDF4] text-[#16A34A] hover:border-[#FCA5A5] hover:bg-[#FEF2F2] hover:text-[var(--color-danger)]"
                             : "border-[#C7D2FE] bg-white text-[#4F46E5] hover:bg-[#EEF2FF]",
                         ].join(" ")}
+                        title={alreadyScheduled ? "点击撤回这一天的排期" : `安排到${label}`}
                       >
                         <span className="text-[10px] font-semibold leading-tight">
-                          {alreadyScheduled ? "已排" : label}
+                          {alreadyScheduled ? "已排 · 撤回" : label}
                         </span>
                         <span className="text-[9px] leading-tight opacity-70">
                           {date.getMonth() + 1}/{date.getDate()}
@@ -2187,18 +2192,24 @@ export default function FocusMapView({
                 </div>
               )}
               {repeatTasks.length > 0 && (
-                <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-success)]">
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--color-success)]">
                   <Check className="h-3 w-3" />
-                  已排进日程 ·{" "}
-                  {
-                    repeatTasks
-                      .slice()
-                      .sort((left, right) => left.date.localeCompare(right.date))
-                      .slice(0, 3)
-                      .map((candidate) => cnDate(candidate.date))
-                      .join("、")
-                  }
-                  {repeatTasks.length > 3 ? ` 等 ${repeatTasks.length} 天` : ""}
+                  <span>已排进日程</span>
+                  {repeatTasks
+                    .slice()
+                    .sort((left, right) => left.date.localeCompare(right.date))
+                    .map((candidate) => (
+                      <button
+                        key={candidate.id}
+                        type="button"
+                        onClick={() => onUnschedule(b.id, candidate.date)}
+                        className="flex items-center gap-0.5 rounded-md border border-[#BBF7D0] bg-[#F0FDF4] px-1.5 py-0.5 text-[9px] text-[#15803D] transition-colors hover:border-[#FCA5A5] hover:bg-[#FEF2F2] hover:text-[var(--color-danger)]"
+                        aria-label={`撤回 ${cnDate(candidate.date)} 的排期`}
+                      >
+                        {cnDate(candidate.date)}
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    ))}
                 </div>
               )}
               {inHabits && (

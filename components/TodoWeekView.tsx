@@ -335,6 +335,7 @@ export default function TodoWeekView({
           aspirations={aspirations}
           dayPlans={dayPlans}
           onOpenGoals={onOpenGoals}
+          onOpenGoal={onOpenGoal}
           running={running}
           elapsedMs={elapsedMs}
           onStopTimer={onStopTimer}

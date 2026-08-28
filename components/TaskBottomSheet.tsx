@@ -701,26 +701,6 @@ export default function TaskBottomSheet({
             </div>
           )}
 
-          <div className="mb-3">
-            <div className="mb-1 flex items-center justify-between gap-2">
-              <span className="text-[11px] font-semibold text-[var(--color-text-secondary)]">起步动作</span>
-              <span className="text-[9px] text-[var(--color-text-tertiary)]">只负责开始，不改变完成标准</span>
-            </div>
-            <StartActionEditor
-              value={task.startAction}
-              steps={task.subtasks ?? []}
-              executable
-              onChange={(startAction) =>
-                onUpdate(task.id, {
-                  startAction,
-                  ...(startAction?.done && task.status === "todo"
-                    ? { status: "in_progress" as const }
-                    : {}),
-                })
-              }
-            />
-          </div>
-
           {/* 成果可以作为父任务，但执行现场要明确当前下一步。 */}
           {(() => {
             const taskId = task.id;
@@ -1056,10 +1036,24 @@ export default function TaskBottomSheet({
                 </div>
 
                 {subs.length === 0 && (
-                  <p className="text-[11px] leading-relaxed text-[var(--color-text-tertiary)] mb-1.5">
-                    标题本身能直接做，就不用拆；如果它表达的是一个成果，先写下现在能做的第一步。
-                    不用一次拆完，加一步、做一步也可以。
-                  </p>
+                  <div className="mb-1.5">
+                    <p className="text-[11px] leading-relaxed text-[var(--color-text-tertiary)]">
+                      标题本身能直接做，就不用拆；如果它表达的是一个成果，先写下现在能做的第一步。
+                      不用一次拆完，加一步、做一步也可以。
+                    </p>
+                    <StartActionEditor
+                      value={task.startAction}
+                      executable
+                      onChange={(startAction) =>
+                        onUpdate(task.id, {
+                          startAction,
+                          ...(startAction?.done && task.status === "todo"
+                            ? { status: "in_progress" as const }
+                            : {}),
+                        })
+                      }
+                    />
+                  </div>
                 )}
 
                 {flowReview?.taskId === task.id && (
@@ -1283,6 +1277,27 @@ export default function TaskBottomSheet({
                     )}
 
                     {renderSubtaskRow(nextSubtask, true, 0)}
+
+                    <div className="ml-2">
+                      <StartActionEditor
+                        value={
+                          !task.startAction?.targetStepId ||
+                          task.startAction.targetStepId === nextSubtask.id
+                            ? task.startAction
+                            : undefined
+                        }
+                        targetStep={nextSubtask}
+                        executable
+                        onChange={(startAction) =>
+                          onUpdate(task.id, {
+                            startAction,
+                            ...(startAction?.done && task.status === "todo"
+                              ? { status: "in_progress" as const }
+                              : {}),
+                          })
+                        }
+                      />
+                    </div>
 
                     {nextActionReview?.taskId === task.id &&
                       nextActionReview.subtaskId === nextSubtask.id && (

@@ -161,7 +161,7 @@ function instantiateStartAction(
   card: BehaviorCard | undefined,
   subtasks: SubTask[] | undefined,
 ): StartAction | undefined {
-  if (!card?.startAction?.title.trim()) return undefined;
+  if (!card?.startAction?.title.trim() || card.startAction.kind !== "minimum") return undefined;
   const targetBehaviorStep = card.startAction.targetStepId
     ? card.steps?.find((step) => step.id === card.startAction?.targetStepId)
     : undefined;
@@ -173,11 +173,68 @@ function instantiateStartAction(
       )
     : undefined;
   return {
-    kind: card.startAction.kind,
+    kind: "minimum",
     title: card.startAction.title,
     targetStepId: targetSubtask?.id,
     done: false,
   };
+}
+
+/**
+ * 旧版把“下一步”和“最小启动”存进了同一个字段。现在下一步只由步骤列表决定：
+ * 旧的 next 自动落成真实步骤，minimum 则继续作为当前步骤的启动提示。
+ */
+function migrateBehaviorStartAction(card: BehaviorCard): BehaviorCard {
+  const startAction = card.startAction;
+  if (!startAction) return card;
+  const steps = card.steps ?? [];
+
+  if (startAction.kind === "minimum") {
+    if (steps.length === 0 || startAction.targetStepId) return card;
+    return { ...card, startAction: { ...startAction, targetStepId: steps[0].id, done: undefined } };
+  }
+
+  const title = startAction.title.trim();
+  if (!title || steps.some((step) => step.title.trim() === title)) {
+    return { ...card, startAction: undefined };
+  }
+  const targetIndex = startAction.targetStepId
+    ? steps.findIndex((step) => step.id === startAction.targetStepId)
+    : 0;
+  const insertAt = targetIndex >= 0 ? targetIndex : 0;
+  const nextSteps = [...steps];
+  nextSteps.splice(insertAt, 0, { id: `bs-start-${card.id}`, title });
+  return { ...card, steps: nextSteps, startAction: undefined };
+}
+
+function migrateTaskStartAction(task: Task): Task {
+  const startAction = task.startAction;
+  if (!startAction) return task;
+  const subtasks = task.subtasks ?? [];
+
+  if (startAction.kind === "minimum") {
+    if (subtasks.length === 0 || startAction.targetStepId) return task;
+    return { ...task, startAction: { ...startAction, targetStepId: subtasks[0].id } };
+  }
+
+  const title = startAction.title.trim();
+  if (!title || subtasks.some((step) => step.title.trim() === title)) {
+    return { ...task, startAction: undefined };
+  }
+  const targetIndex = startAction.targetStepId
+    ? subtasks.findIndex((step) => step.id === startAction.targetStepId)
+    : 0;
+  const insertAt = targetIndex >= 0 ? targetIndex : 0;
+  const nextSubtasks = [...subtasks];
+  nextSubtasks.splice(insertAt, 0, {
+    id: `st-start-${task.id}`,
+    title,
+    done: Boolean(startAction.done),
+    sourceBehaviorStepId: task.sourceBehaviorId
+      ? `bs-start-${task.sourceBehaviorId}`
+      : undefined,
+  });
+  return { ...task, subtasks: nextSubtasks, startAction: undefined };
 }
 
 function importBehaviorSteps(
@@ -226,6 +283,34 @@ export default function TodoApp() {
   // 每天的安排（主线/必做）。按日期做 key，不建 MainLine 实体
   const { value: dayPlans, setValue: setDayPlans, hydrated: plansHydrated } =
     useLocalStorageState<Record<string, DayPlan>>(DAY_PLANS_KEY, EMPTY_DAY_PLANS);
+
+  const startActionMigrationDone = useRef(false);
+  useEffect(() => {
+    if (!hydrated || !behHydrated || startActionMigrationDone.current) return;
+    startActionMigrationDone.current = true;
+    if (
+      tasks.some(
+        (task) =>
+          task.startAction?.kind === "next" ||
+          (task.startAction?.kind === "minimum" &&
+            Boolean(task.subtasks?.length) &&
+            !task.startAction.targetStepId),
+      )
+    ) {
+      setTasks((prev) => prev.map(migrateTaskStartAction));
+    }
+    if (
+      behaviorCards.some(
+        (card) =>
+          card.startAction?.kind === "next" ||
+          (card.startAction?.kind === "minimum" &&
+            Boolean(card.steps?.length) &&
+            !card.startAction.targetStepId),
+      )
+    ) {
+      setBehaviorCards((prev) => prev.map(migrateBehaviorStartAction));
+    }
+  }, [behaviorCards, behHydrated, hydrated, setBehaviorCards, setTasks, tasks]);
 
   const [viewMode, setViewMode] = useState<ViewMode>("day");
   const [tabDirection, setTabDirection] = useState<"forward" | "backward">("forward");
@@ -324,12 +409,12 @@ export default function TodoApp() {
     entries,
     lab,
     timer: timer.state,
-    setTasks,
+    setTasks: (incoming) => setTasks(incoming.map(migrateTaskStartAction)),
     setEntries,
     setLab: (patch) => {
       if (patch.aspirations) setAspirations(patch.aspirations);
       if (patch.goalResults) setGoalResults(patch.goalResults);
-      if (patch.behaviors) setBehaviorCards(patch.behaviors);
+      if (patch.behaviors) setBehaviorCards(patch.behaviors.map(migrateBehaviorStartAction));
       if (patch.habits) setHabits(patch.habits);
       if (patch.habitLogs) setHabitLogs(patch.habitLogs);
       if (patch.dayPlans) setDayPlans(patch.dayPlans);
@@ -1068,13 +1153,26 @@ export default function TodoApp() {
     }
   }
 
-  // 撤回排期：连带把日视图里那个任务删掉
-  function unscheduleBehavior(cardId: string) {
+  // 撤回排期：一次性任务撤唯一实例；可重复行为可按某一天就地撤回。
+  function unscheduleBehavior(cardId: string, date?: ISODate) {
     const card = behaviorCards.find((b) => b.id === cardId);
-    const gone = card?.taskId ? tasks.filter((t) => t.id === card.taskId) : [];
+    if (!card) return;
+    const gone = tasks.filter((task) => {
+      if (card.taskId && task.id === card.taskId) return !date || task.date === date;
+      if (task.sourceBehaviorId !== cardId) return false;
+      return !date || task.date === date;
+    });
+    if (gone.length === 0) return;
+    const goneIds = new Set(gone.map((task) => task.id));
     snapshotLab(gone);
-    if (gone.length > 0) setTasks((prev) => prev.filter((t) => t.id !== card!.taskId));
-    setBehaviorCards((prev) => prev.map((b) => (b.id === cardId ? { ...b, taskId: undefined } : b)));
+    setTasks((prev) => prev.filter((task) => !goneIds.has(task.id)));
+    if (card.taskId && goneIds.has(card.taskId)) {
+      setBehaviorCards((prev) =>
+        prev.map((behavior) =>
+          behavior.id === cardId ? { ...behavior, taskId: undefined } : behavior,
+        ),
+      );
+    }
   }
 
   /**
@@ -1262,22 +1360,29 @@ export default function TodoApp() {
           ? {
               ...behavior,
               steps: steps.length > 0 ? steps : undefined,
-              startAction:
-                behavior.startAction?.targetStepId &&
-                !steps.some((step) => step.id === behavior.startAction?.targetStepId)
-                  ? { ...behavior.startAction, targetStepId: undefined }
-                  : behavior.startAction,
+              startAction: behavior.startAction
+                ? {
+                    ...behavior.startAction,
+                    kind: "minimum" as const,
+                    targetStepId:
+                      steps.length > 0
+                        ? steps.some((step) => step.id === behavior.startAction?.targetStepId)
+                          ? behavior.startAction.targetStepId
+                          : steps[0].id
+                        : undefined,
+                  }
+                : undefined,
             }
           : behavior,
       ),
     );
   }
 
-  /** 起步动作只改变执行设计，不改变父行为的影响力或可行性评分。 */
+  /** 最小启动只改变执行设计，不改变父行为的影响力或可行性评分。 */
   function setBehaviorStartAction(id: string, startAction?: StartAction) {
     const card = behaviorCards.find((behavior) => behavior.id === id);
     const normalized = startAction
-      ? { ...startAction, title: startAction.title.trim(), done: undefined }
+      ? { ...startAction, kind: "minimum" as const, title: startAction.title.trim(), done: undefined }
       : undefined;
     const derivedTasks = tasks.filter(
       (task) =>
@@ -1666,6 +1771,7 @@ export default function TodoApp() {
           aspirations={safeAspirations}
           dayPlans={safeDayPlans}
           onOpenGoals={openGoals}
+          onOpenGoal={openGoal}
           running={timer.running}
           elapsedMs={timer.elapsedMs}
           onStopTimer={timer.stop}

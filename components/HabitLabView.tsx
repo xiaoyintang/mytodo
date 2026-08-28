@@ -97,6 +97,7 @@ export default function HabitLabView({
         aspirations={aspirations}
         dayPlans={dayPlans}
         onOpenGoals={onOpenGoals}
+        onOpenGoal={onOpenGoal}
         running={running}
         elapsedMs={elapsedMs}
         onStopTimer={onStopTimer}

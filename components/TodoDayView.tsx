@@ -252,42 +252,11 @@ export default function TodoDayView({
               {t.title}
             </span>
 
-            {activeStartAction && !isExpanded && (
+            {nextSubtask && !isExpanded && (
               <button
                 type="button"
                 onClick={(event) => {
                   event.stopPropagation();
-                  onUpdateTask(t.id, {
-                    startAction: { ...activeStartAction, done: true },
-                    ...(t.status === "todo" ? { status: "in_progress" as const } : {}),
-                  });
-                }}
-                className={[
-                  "mt-1 flex w-full items-start gap-1.5 rounded-md px-2 py-1.5 text-left transition-colors",
-                  activeStartAction.kind === "minimum"
-                    ? "bg-[#FAF5FF] hover:bg-[#F3E8FF]"
-                    : "bg-[#EEF2FF] hover:bg-[#E0E7FF]",
-                ].join(" ")}
-                aria-label={`做完${activeStartAction.kind === "minimum" ? "最小启动" : "起步动作"}：${activeStartAction.title}`}
-              >
-                <span className="mt-[2px] h-3 w-3 flex-shrink-0 rounded-full border border-[#4F46E5] bg-white" />
-                <span
-                  className="min-w-0 flex-1 truncate text-[11px] leading-4 text-[var(--color-text-primary)]"
-                  data-full-text={activeStartAction.title}
-                >
-                  <strong className="mr-1 font-semibold text-[#4F46E5]">
-                    {activeStartAction.kind === "minimum" ? "最小启动" : "先做这一下"}
-                  </strong>
-                  {activeStartAction.title}
-                </span>
-              </button>
-            )}
-
-            {nextSubtask && !isExpanded && !activeStartAction && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
                   onToggleSubtask(t.id, nextSubtask.id);
                 }}
                 className="mt-1 flex w-full items-start gap-1.5 rounded-md bg-[var(--color-primary-light)] px-2 py-1.5 text-left transition-colors hover:bg-[#DBEAFE]"
@@ -300,6 +269,30 @@ export default function TodoDayView({
                 >
                   <strong className="mr-1 font-semibold text-[var(--color-primary)]">下一步</strong>
                   {nextSubtask.title}
+                </span>
+              </button>
+            )}
+
+            {activeStartAction && !isExpanded && (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onUpdateTask(t.id, {
+                    startAction: { ...activeStartAction, kind: "minimum", done: true },
+                    ...(t.status === "todo" ? { status: "in_progress" as const } : {}),
+                  });
+                }}
+                className="mt-1 flex w-full items-start gap-1.5 rounded-md bg-[#FAF5FF] px-2 py-1.5 text-left transition-colors hover:bg-[#F3E8FF]"
+                aria-label={`完成最小启动：${activeStartAction.title}`}
+              >
+                <span className="mt-[2px] h-3 w-3 flex-shrink-0 rounded-full border border-[#7C3AED] bg-white" />
+                <span
+                  className="min-w-0 flex-1 truncate text-[11px] leading-4 text-[var(--color-text-primary)]"
+                  data-full-text={activeStartAction.title}
+                >
+                  <strong className="mr-1 font-semibold text-[#7C3AED]">先只做</strong>
+                  {activeStartAction.title}
                 </span>
               </button>
             )}
@@ -477,6 +470,7 @@ export default function TodoDayView({
         aspirations={aspirations}
         dayPlans={dayPlans}
         onOpenGoals={onOpenGoals}
+        onOpenGoal={onOpenGoal}
         running={running}
         elapsedMs={elapsedMs}
         onStopTimer={onStopTimer}

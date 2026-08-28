@@ -48,6 +48,7 @@ type Props = {
   aspirations: Aspiration[];
   dayPlans: Record<string, DayPlan>;
   onOpenGoals: () => void;
+  onOpenGoal: (aspirationId: string) => void;
   running: { title: string; startedAt: number } | null;
   elapsedMs: number;
   onStopTimer: () => void;
@@ -129,6 +130,7 @@ export default function TimeLogView({
   aspirations,
   dayPlans,
   onOpenGoals,
+  onOpenGoal,
   running,
   elapsedMs,
   onStopTimer,
@@ -567,6 +569,7 @@ export default function TimeLogView({
         aspirations={aspirations}
         dayPlans={dayPlans}
         onOpenGoals={onOpenGoals}
+        onOpenGoal={onOpenGoal}
         running={running}
         elapsedMs={elapsedMs}
         onStopTimer={onStopTimer}
