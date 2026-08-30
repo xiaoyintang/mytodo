@@ -234,7 +234,9 @@ export default function FocusMapView({
   const [order, setOrder] = useState<string[]>(() => scoreFirst(cards));
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [scheduling, setScheduling] = useState(false);
+  const [batchScheduleDates, setBatchScheduleDates] = useState<Set<ISODate>>(new Set());
   const [singleSchedulingId, setSingleSchedulingId] = useState<string | null>(null);
+  const [singleScheduleDates, setSingleScheduleDates] = useState<Set<ISODate>>(new Set());
   // 点上去看是哪条：hover 是鼠标预览，pinned 是点/触摸钉住（手机没有 hover）
   const [draft, setDraft] = useState("");           // 顶上直接加一条
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -749,21 +751,93 @@ export default function FocusMapView({
         Boolean(task.sourceBehaviorId && selected.has(task.sourceBehaviorId))),
   ).length;
   const chosenActiveHabitCount = chosen.filter((card) => habitBehaviorIds.has(card.id)).length;
+  const chosenRepeatables = chosenSchedulable.filter((card) => isRepeatable(card.type));
+  const chosenOneTimes = chosenSchedulable.filter((card) => card.type === "onetime");
+  const upcomingScheduleDates = Array.from({ length: 7 }).map((_, index) => {
+    const date = addDays(new Date(), index);
+    return {
+      date,
+      iso: toISODate(date) as ISODate,
+      label: index === 0 ? "今天" : index === 1 ? "明天" : CN_WEEKDAY[date.getDay()],
+    };
+  });
 
   function batchAddHabits() {
     chosenHabits.forEach(onAddHabit);
     setSelected(new Set());
   }
 
-  function batchSchedule(date: ISODate) {
-    chosenSchedulable.forEach((c) => onSchedule(c.id, c.text, date));
-    setSelected(new Set());
-    setScheduling(false);
+  function toggleBatchScheduleDate(date: ISODate) {
+    setBatchScheduleDates((current) => {
+      // 只有一次性任务时仍保持单选；只要包含可重复行为，就可以铺到多天。
+      if (chosenRepeatables.length === 0) return new Set([date]);
+      const next = new Set(current);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      return next;
+    });
   }
 
-  function scheduleOne(card: BehaviorCard, date: ISODate) {
+  function confirmBatchSchedule() {
+    const dates = upcomingScheduleDates
+      .map((item) => item.iso)
+      .filter((date) => batchScheduleDates.has(date));
+    if (dates.length === 0) return;
+    chosenRepeatables.forEach((card) => {
+      dates.forEach((date) => onSchedule(card.id, card.text, date));
+    });
+    // 一次性任务不能复制七份；混选时统一落在所选日期里最早的一天。
+    chosenOneTimes.forEach((card) => onSchedule(card.id, card.text, dates[0]));
+    setSelected(new Set());
+    setScheduling(false);
+    setBatchScheduleDates(new Set());
+  }
+
+  function scheduleOneTime(card: BehaviorCard, date: ISODate) {
     onSchedule(card.id, card.text, date);
     setSingleSchedulingId(null);
+    setSingleScheduleDates(new Set());
+  }
+
+  function openSingleSchedule(card: BehaviorCard, repeatTasks: Task[]) {
+    if (singleSchedulingId === card.id) {
+      setSingleSchedulingId(null);
+      setSingleScheduleDates(new Set());
+      return;
+    }
+    setSingleSchedulingId(card.id);
+    setSingleScheduleDates(
+      isRepeatable(card.type)
+        ? new Set(
+            repeatTasks
+              .map((task) => task.date)
+              .filter((date) => upcomingScheduleDates.some((item) => item.iso === date)),
+          )
+        : new Set(),
+    );
+  }
+
+  function toggleSingleScheduleDate(date: ISODate) {
+    setSingleScheduleDates((current) => {
+      const next = new Set(current);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      return next;
+    });
+  }
+
+  function saveRepeatSchedule(card: BehaviorCard, repeatTasks: Task[]) {
+    const original = new Set(
+      repeatTasks
+        .map((task) => task.date)
+        .filter((date) => upcomingScheduleDates.some((item) => item.iso === date)),
+    );
+    upcomingScheduleDates.forEach(({ iso }) => {
+      if (original.has(iso) && !singleScheduleDates.has(iso)) onUnschedule(card.id, iso);
+      if (!original.has(iso) && singleScheduleDates.has(iso)) onSchedule(card.id, card.text, iso);
+    });
+    setSingleSchedulingId(null);
+    setSingleScheduleDates(new Set());
   }
 
   // seed 为空 = 从愿望本身发散；有 seed = 把这一条愿望/成果发散成“同级备选”。
@@ -1820,6 +1894,10 @@ export default function FocusMapView({
           const repeatTasks = isRepeatable(b.type)
             ? tasks.filter((candidate) => candidate.sourceBehaviorId === b.id)
             : [];
+          const originalRepeatDates = new Set(repeatTasks.map((candidate) => candidate.date));
+          const repeatScheduleChanged = upcomingScheduleDates.some(
+            ({ iso }) => originalRepeatDates.has(iso) !== singleScheduleDates.has(iso),
+          );
           const inHabits = habitBehaviorIds.has(b.id);
           const issueKind = blockerOf(b);
           const isExpanded = expandedId === b.id;
@@ -2102,9 +2180,7 @@ export default function FocusMapView({
                   {(isRepeatable(b.type) || (b.type === "onetime" && !task)) && (
                     <button
                       type="button"
-                      onClick={() =>
-                        setSingleSchedulingId((current) => (current === b.id ? null : b.id))
-                      }
+                      onClick={() => openSingleSchedule(b, repeatTasks)}
                       className="flex items-center gap-1 rounded-md border border-[#C7D2FE] bg-[#EEF2FF] px-2 py-1 text-[10px] font-semibold text-[#4F46E5] transition-colors hover:bg-[#E0E7FF]"
                       aria-expanded={singleSchedulingId === b.id}
                     >
@@ -2128,43 +2204,102 @@ export default function FocusMapView({
 
               {singleSchedulingId === b.id &&
                 (isRepeatable(b.type) || (b.type === "onetime" && !task)) && (
-                <div className="mt-0.5 grid w-full grid-cols-4 gap-1.5 rounded-lg bg-[var(--color-bg-gray-lighter)] p-2">
-                  {Array.from({ length: 7 }).map((_, i) => {
-                    const date = addDays(new Date(), i);
-                    const iso = toISODate(date) as ISODate;
-                    const label = i === 0 ? "今天" : i === 1 ? "明天" : CN_WEEKDAY[date.getDay()];
-                    const alreadyScheduled = repeatTasks.some((candidate) => candidate.date === iso);
-                    return (
+                <div className="mt-0.5 flex w-full flex-col gap-1.5 rounded-lg bg-[var(--color-bg-gray-lighter)] p-2">
+                  <div className="grid w-full grid-cols-4 gap-1.5">
+                    {upcomingScheduleDates.map(({ date, iso, label }) => {
+                      const alreadyScheduled = originalRepeatDates.has(iso);
+                      const pickedDate = singleScheduleDates.has(iso);
+                      const pendingRemoval = alreadyScheduled && !pickedDate;
+                      return (
+                        <button
+                          key={iso}
+                          type="button"
+                          onClick={() =>
+                            isRepeatable(b.type)
+                              ? toggleSingleScheduleDate(iso)
+                              : scheduleOneTime(b, iso)
+                          }
+                          className={[
+                            "flex flex-col items-center rounded-md border py-1 transition-colors",
+                            pendingRemoval
+                              ? "border-[#FCA5A5] bg-[#FEF2F2] text-[var(--color-danger)]"
+                              : pickedDate
+                                ? "border-[#818CF8] bg-[#EEF2FF] text-[#4F46E5]"
+                                : "border-[#C7D2FE] bg-white text-[#4F46E5] hover:bg-[#EEF2FF]",
+                          ].join(" ")}
+                          title={
+                            isRepeatable(b.type)
+                              ? pickedDate
+                                ? `取消${label}的安排`
+                                : `选中${label}`
+                              : `安排到${label}`
+                          }
+                        >
+                          <span className="text-[10px] font-semibold leading-tight">
+                            {pendingRemoval
+                              ? "将移除"
+                              : alreadyScheduled && pickedDate
+                                ? "已排"
+                                : pickedDate
+                                  ? "已选"
+                                  : label}
+                          </span>
+                          <span className="text-[9px] leading-tight opacity-70">
+                            {date.getMonth() + 1}/{date.getDate()}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {isRepeatable(b.type) ? (
+                    <div className="flex w-full items-center gap-1.5">
                       <button
-                        key={iso}
                         type="button"
                         onClick={() =>
-                          alreadyScheduled ? onUnschedule(b.id, iso) : scheduleOne(b, iso)
+                          setSingleScheduleDates(
+                            singleScheduleDates.size === upcomingScheduleDates.length
+                              ? new Set()
+                              : new Set(upcomingScheduleDates.map((item) => item.iso)),
+                          )
                         }
-                        className={[
-                          "flex flex-col items-center rounded-md border py-1 transition-colors",
-                          alreadyScheduled
-                            ? "border-[#BBF7D0] bg-[#F0FDF4] text-[#16A34A] hover:border-[#FCA5A5] hover:bg-[#FEF2F2] hover:text-[var(--color-danger)]"
-                            : "border-[#C7D2FE] bg-white text-[#4F46E5] hover:bg-[#EEF2FF]",
-                        ].join(" ")}
-                        title={alreadyScheduled ? "点击撤回这一天的排期" : `安排到${label}`}
+                        className="rounded-md border border-[var(--color-border)] bg-white px-2 py-1 text-[10px] font-medium text-[var(--color-text-secondary)]"
                       >
-                        <span className="text-[10px] font-semibold leading-tight">
-                          {alreadyScheduled ? "已排 · 撤回" : label}
-                        </span>
-                        <span className="text-[9px] leading-tight opacity-70">
-                          {date.getMonth() + 1}/{date.getDate()}
-                        </span>
+                        {singleScheduleDates.size === upcomingScheduleDates.length ? "清空" : "整周"}
                       </button>
-                    );
-                  })}
-                  <button
-                    type="button"
-                    onClick={() => setSingleSchedulingId(null)}
-                    className="rounded-md py-1 text-[10px] text-[var(--color-text-tertiary)]"
-                  >
-                    取消
-                  </button>
+                      <span className="flex-1 text-[9px] text-[var(--color-text-tertiary)]">
+                        已选 {singleScheduleDates.size} 天
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSingleSchedulingId(null);
+                          setSingleScheduleDates(new Set());
+                        }}
+                        className="px-2 py-1 text-[10px] text-[var(--color-text-tertiary)]"
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!repeatScheduleChanged}
+                        onClick={() => saveRepeatSchedule(b, repeatTasks)}
+                        className="rounded-md bg-[#4F46E5] px-2.5 py-1 text-[10px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {singleScheduleDates.size === 0 ? "清空安排" : "保存安排"}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSingleSchedulingId(null);
+                        setSingleScheduleDates(new Set());
+                      }}
+                      className="self-end px-2 py-1 text-[10px] text-[var(--color-text-tertiary)]"
+                    >
+                      取消
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -2365,6 +2500,7 @@ export default function FocusMapView({
               onClick={() => {
                 setSelected(new Set());
                 setScheduling(false);
+                setBatchScheduleDates(new Set());
               }}
               className="text-[12px] text-[var(--color-text-tertiary)]"
             >
@@ -2375,32 +2511,77 @@ export default function FocusMapView({
           {scheduling ? (
             /* 七天按钮，不用原生 date input——它在 iOS 上放固定定位条里选完常常不生效 */
             <div className="w-full flex flex-col gap-1.5">
-              <span className="text-[11px] text-[var(--color-text-secondary)]">选中的推进项安排到哪天？</span>
+              <div className="flex items-center gap-2">
+                <span className="flex-1 text-[11px] text-[var(--color-text-secondary)]">
+                  {chosenRepeatables.length > 0 ? "可以连续选多天，再统一安排" : "一次性任务只能选择一天"}
+                </span>
+                {chosenRepeatables.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setBatchScheduleDates(
+                        batchScheduleDates.size === upcomingScheduleDates.length
+                          ? new Set()
+                          : new Set(upcomingScheduleDates.map((item) => item.iso)),
+                      )
+                    }
+                    className="text-[11px] font-semibold text-[#4F46E5]"
+                  >
+                    {batchScheduleDates.size === upcomingScheduleDates.length ? "清空" : "整周"}
+                  </button>
+                )}
+              </div>
               <div className="w-full grid grid-cols-4 gap-1.5">
-                {Array.from({ length: 7 }).map((_, i) => {
-                  const d = addDays(new Date(), i);
-                  const iso = toISODate(d) as ISODate;
-                  const label = i === 0 ? "今天" : i === 1 ? "明天" : CN_WEEKDAY[d.getDay()];
+                {upcomingScheduleDates.map(({ date, iso, label }) => {
+                  const pickedDate = batchScheduleDates.has(iso);
                   return (
                     <button
                       key={iso}
                       type="button"
-                      onClick={() => batchSchedule(iso)}
-                      className="flex flex-col items-center py-1.5 rounded-lg bg-[#EEF2FF] border border-[#C7D2FE] text-[#4F46E5] hover:bg-[#E0E7FF] transition-colors"
+                      onClick={() => toggleBatchScheduleDate(iso)}
+                      className={[
+                        "flex flex-col items-center rounded-lg border py-1.5 transition-colors",
+                        pickedDate
+                          ? "border-[#818CF8] bg-[#4F46E5] text-white"
+                          : "border-[#C7D2FE] bg-[#EEF2FF] text-[#4F46E5] hover:bg-[#E0E7FF]",
+                      ].join(" ")}
                     >
-                      <span className="text-[11px] font-semibold leading-tight">{label}</span>
+                      <span className="text-[11px] font-semibold leading-tight">
+                        {pickedDate ? "已选" : label}
+                      </span>
                       <span className="text-[10px] opacity-70 leading-tight">
-                        {d.getMonth() + 1}/{d.getDate()}
+                        {date.getMonth() + 1}/{date.getDate()}
                       </span>
                     </button>
                   );
                 })}
+              </div>
+              {chosenRepeatables.length > 0 && chosenOneTimes.length > 0 && batchScheduleDates.size > 1 && (
+                <span className="text-[9px] leading-relaxed text-[#B45309]">
+                  可重复行为会铺到全部所选日期；{chosenOneTimes.length} 条一次性任务只排在最早的一天。
+                </span>
+              )}
+              <div className="flex items-center gap-2">
+                <span className="flex-1 text-[10px] text-[var(--color-text-tertiary)]">
+                  已选 {batchScheduleDates.size} 天
+                </span>
                 <button
                   type="button"
-                  onClick={() => setScheduling(false)}
-                  className="flex items-center justify-center py-1.5 rounded-lg text-[11px] text-[var(--color-text-tertiary)]"
+                  onClick={() => {
+                    setScheduling(false);
+                    setBatchScheduleDates(new Set());
+                  }}
+                  className="px-2 py-1.5 text-[11px] text-[var(--color-text-tertiary)]"
                 >
                   取消
+                </button>
+                <button
+                  type="button"
+                  disabled={batchScheduleDates.size === 0}
+                  onClick={confirmBatchSchedule}
+                  className="rounded-lg bg-[#4F46E5] px-3 py-1.5 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  确认安排
                 </button>
               </div>
             </div>
@@ -2419,7 +2600,10 @@ export default function FocusMapView({
               {chosenSchedulable.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => setScheduling(true)}
+                  onClick={() => {
+                    setScheduling(true);
+                    setBatchScheduleDates(new Set());
+                  }}
                   className="flex-1 py-2 rounded-lg bg-[#4F46E5] text-white text-[13px] font-semibold"
                 >
                   安排到日程（{chosenSchedulable.length}）
@@ -2452,6 +2636,7 @@ export default function FocusMapView({
           onDeleteMany(Array.from(selected));
           setSelected(new Set());
           setScheduling(false);
+          setBatchScheduleDates(new Set());
           setConfirmBatchDelete(false);
         }}
         onCancel={() => setConfirmBatchDelete(false)}
