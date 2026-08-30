@@ -642,31 +642,34 @@ export default function TaskBottomSheet({
               {/* 目标名可能很长（"把小红书店铺做起来"），必须能换行、能截断，
                   否则整个弹窗被顶到横向溢出，别处的文字就被切掉 */}
               <div className="w-full flex items-center gap-1.5 flex-wrap">
-                {aspirations.map((a, i) => {
-                  const on = task.aspirationId === a.id;
-                  const c = goalColor(a, i);
-                  return (
-                    <button
-                      key={a.id}
-                      type="button"
-                      onClick={() => {
-                        onUpdate(task.id, {
-                          aspirationId: on ? undefined : a.id,
-                          resultId: undefined,
-                        });
-                      }}
-                      className="px-2.5 py-1 rounded-md border text-[12px] font-medium transition-colors max-w-full truncate"
-                      data-full-text={a.title}
-                      style={{
-                        backgroundColor: on ? c : "#fff",
-                        borderColor: c,
-                        color: on ? "#fff" : c,
-                      }}
-                    >
-                      {a.title}
-                    </button>
-                  );
-                })}
+                {aspirations
+                  .filter((a) => !a.archived || task.aspirationId === a.id)
+                  .map((a) => {
+                    const on = task.aspirationId === a.id;
+                    const i = aspirations.findIndex((aspiration) => aspiration.id === a.id);
+                    const c = goalColor(a, i);
+                    return (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => {
+                          onUpdate(task.id, {
+                            aspirationId: on ? undefined : a.id,
+                            resultId: undefined,
+                          });
+                        }}
+                        className="px-2.5 py-1 rounded-md border text-[12px] font-medium transition-colors max-w-full truncate"
+                        data-full-text={a.title}
+                        style={{
+                          backgroundColor: on ? c : "#fff",
+                          borderColor: c,
+                          color: on ? "#fff" : c,
+                        }}
+                      >
+                        {a.title}
+                      </button>
+                    );
+                  })}
               </div>
               {task.aspirationId && taskGoalResults.length > 0 && (
                 <div className="mt-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-gray-lighter)] px-2.5 py-2">

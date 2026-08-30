@@ -22,6 +22,7 @@ type Props = {
 export default function MainlinePlanner({ days, today, aspirations, dayPlans, onToggle }: Props) {
   const [editing, setEditing] = useState<ISODate | null>(null);
   const weekDates = days.map((d) => toISODate(d) as ISODate);
+  const activeAspirations = aspirations.filter((aspiration) => !aspiration.archived);
   const rootRef = useRef<HTMLDivElement>(null);
 
   // 点空白处收起来。原来只能再点一次那个框才关得掉，很别扭
@@ -41,7 +42,7 @@ export default function MainlinePlanner({ days, today, aspirations, dayPlans, on
     };
   }, [editing]);
 
-  if (aspirations.length === 0) {
+  if (activeAspirations.length === 0) {
     return (
       <div className="w-full px-4 py-3 text-[12px] text-[var(--color-text-secondary)] leading-relaxed">
         还没有目标，排不了主线。点上面那条「今天主线」去建一个。
@@ -62,10 +63,12 @@ export default function MainlinePlanner({ days, today, aspirations, dayPlans, on
         </span>
       </div>
 
-      {days.map((d, i) => {
+      {days.map((d) => {
         const iso = toISODate(d) as ISODate;
-        const ids = dayPlans[iso]?.primaryAspirationIds ?? [];
-        const picked = aspirations.filter((a) => ids.includes(a.id));
+        const ids = (dayPlans[iso]?.primaryAspirationIds ?? [])
+          .filter((id) => activeAspirations.some((aspiration) => aspiration.id === id))
+          .slice(0, 3);
+        const picked = activeAspirations.filter((a) => ids.includes(a.id));
         const isToday = iso === today;
         const open = editing === iso;
         return (
@@ -118,20 +121,24 @@ export default function MainlinePlanner({ days, today, aspirations, dayPlans, on
 
             {open && (
               <div className="w-full flex flex-wrap gap-1.5 pl-[50px] pb-1">
-                {aspirations.map((a, ai) => {
+                {activeAspirations.map((a) => {
                   const on = ids.includes(a.id);
-                  const c = goalColor(a, ai);
+                  const fullIndex = aspirations.findIndex((aspiration) => aspiration.id === a.id);
+                  const c = goalColor(a, fullIndex);
+                  const full = !on && ids.length >= 3;
                   return (
                     <button
                       key={a.id}
                       type="button"
                       onClick={() => onToggle(iso, a.id)}
-                      className="flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] font-medium transition-colors"
+                      disabled={full}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-35"
                       style={{
                         backgroundColor: on ? c : "#fff",
                         borderColor: c,
                         color: on ? "#fff" : c,
                       }}
+                      title={full ? "每天主线最多 3 个；先取消一个再选择" : undefined}
                     >
                       {on && <Check className="w-3 h-3" strokeWidth={3} />}
                       {a.title}
@@ -145,6 +152,11 @@ export default function MainlinePlanner({ days, today, aspirations, dayPlans, on
                 >
                   完成
                 </button>
+                {ids.length >= 3 && (
+                  <span className="w-full text-[10px] text-[var(--color-text-tertiary)]">
+                    已选满 3 个；先取消一个，才能换入其他目标
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -153,7 +165,8 @@ export default function MainlinePlanner({ days, today, aspirations, dayPlans, on
 
       {/* 本周额度：排了几天 / 你自己定的上限。超了标黄，不拦 */}
       <div className="w-full flex flex-col gap-1 pt-1 mt-1 border-t border-[var(--color-border)]">
-        {aspirations.map((a, i) => {
+        {activeAspirations.map((a) => {
+          const i = aspirations.findIndex((aspiration) => aspiration.id === a.id);
           const used = weeklyMainlineDays(a.id, weekDates, dayPlans);
           const cap = a.weeklyLimit ?? null;
           const over = cap != null && used > cap;

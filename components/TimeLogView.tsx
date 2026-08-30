@@ -816,29 +816,32 @@ export default function TimeLogView({
                     {goalEditing === e.id && (
                       <div className="w-full flex items-center gap-1.5 flex-wrap px-3.5 pb-1">
                         <span className="text-[10px] text-[var(--color-text-tertiary)]">算给</span>
-                        {aspirations.map((a, i) => {
-                          const on = e.aspirationId === a.id;
-                          const c = goalColor(a, i);
-                          return (
-                            <button
-                              key={a.id}
-                              type="button"
-                              onClick={() => {
-                                onUpdateEntry(e.id, { aspirationId: on ? undefined : a.id });
-                                setGoalEditing(null);
-                              }}
-                              className="px-2 py-[3px] rounded-md border text-[10px] font-medium max-w-full truncate"
-                              data-full-text={a.title}
-                              style={{
-                                backgroundColor: on ? c : "#fff",
-                                borderColor: c,
-                                color: on ? "#fff" : c,
-                              }}
-                            >
-                              {a.title}
-                            </button>
-                          );
-                        })}
+                        {aspirations
+                          .filter((a) => !a.archived || e.aspirationId === a.id)
+                          .map((a) => {
+                            const on = e.aspirationId === a.id;
+                            const i = aspirations.findIndex((aspiration) => aspiration.id === a.id);
+                            const c = goalColor(a, i);
+                            return (
+                              <button
+                                key={a.id}
+                                type="button"
+                                onClick={() => {
+                                  onUpdateEntry(e.id, { aspirationId: on ? undefined : a.id });
+                                  setGoalEditing(null);
+                                }}
+                                className="px-2 py-[3px] rounded-md border text-[10px] font-medium max-w-full truncate"
+                                data-full-text={a.title}
+                                style={{
+                                  backgroundColor: on ? c : "#fff",
+                                  borderColor: c,
+                                  color: on ? "#fff" : c,
+                                }}
+                              >
+                                {a.title}
+                              </button>
+                            );
+                          })}
                       </div>
                     )}
 

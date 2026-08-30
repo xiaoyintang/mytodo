@@ -26,7 +26,18 @@ import FocusMapView from "@/components/FocusMapView";
 import GoalResultsPanel from "@/components/GoalResultsPanel";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import EdgeSwipeBack from "@/components/EdgeSwipeBack";
-import { ArrowLeft, ChevronRight, Plus, Search, Trash2, X } from "lucide-react";
+import {
+  Archive,
+  ArrowLeft,
+  ChevronDown,
+  ChevronRight,
+  GripVertical,
+  Plus,
+  RotateCcw,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 
 function goalsScrollContainer(): HTMLElement | null {
   const main = document.querySelector<HTMLElement>("main");
@@ -40,6 +51,25 @@ type Judgement = {
   reason?: string;
   blocker?: "timing" | "decision" | "endpoint";
 };
+
+type GoalDropPlacement = { targetId: string; edge: "before" | "after" };
+
+function reorderGoals(
+  goals: Aspiration[],
+  sourceId: string,
+  targetId: string,
+  edge: "before" | "after",
+): Aspiration[] {
+  if (sourceId === targetId) return goals;
+  const sourceIndex = goals.findIndex((goal) => goal.id === sourceId);
+  if (sourceIndex < 0) return goals;
+  const next = [...goals];
+  const [source] = next.splice(sourceIndex, 1);
+  const targetIndex = next.findIndex((goal) => goal.id === targetId);
+  if (targetIndex < 0) return goals;
+  next.splice(targetIndex + (edge === "after" ? 1 : 0), 0, source);
+  return next;
+}
 
 type Props = {
   initialOpenId?: string | null;
@@ -55,6 +85,9 @@ type Props = {
   onOpenAspiration: (aspirationId: string, resultId?: string) => void;
   onSelectResult: (aspirationId: string, resultId: string | null) => void;
   onCreateAspiration: (title: string, kind: AspirationKind) => void;
+  onReorderAspirations: (orderedIds: string[]) => void;
+  onArchiveAspiration: (id: string) => void;
+  onRestoreAspiration: (id: string) => void;
   onDeleteAspiration: (id: string) => void;
   onCreateGoalResult: (aspirationId: string, title: string, evidence?: string) => string;
   onUpdateGoalResult: (id: string, patch: { title?: string; evidence?: string }) => void;
@@ -111,6 +144,9 @@ export default function GoalsView({
   onOpenAspiration,
   onSelectResult,
   onCreateAspiration,
+  onReorderAspirations,
+  onArchiveAspiration,
+  onRestoreAspiration,
   onDeleteAspiration,
   onCreateGoalResult,
   onUpdateGoalResult,
@@ -146,6 +182,14 @@ export default function GoalsView({
   const [newKind, setNewKind] = useState<AspirationKind>("aspiration");
   const [query, setQuery] = useState("");
   const [deleteAspId, setDeleteAspId] = useState<string | null>(null);
+  const [showOtherGoals, setShowOtherGoals] = useState(false);
+  const [showArchivedGoals, setShowArchivedGoals] = useState(false);
+  const [draggingGoalId, setDraggingGoalId] = useState<string | null>(null);
+  const [goalDropPlacement, setGoalDropPlacement] = useState<GoalDropPlacement | null>(null);
+  const goalDragRef = useRef<{
+    sourceId: string;
+    placement: GoalDropPlacement | null;
+  } | null>(null);
   const [rejudging, setRejudging] = useState(false);
   const [rejudgeDone, setRejudgeDone] = useState(0);
   const resultScrollRestoreRef = useRef<number | null>(null);
@@ -200,10 +244,18 @@ export default function GoalsView({
   const habitBehaviorIds = new Set(
     habits.filter((h) => !h.archived && h.behaviorId).map((h) => h.behaviorId!),
   );
+  const activeAspirations = aspirations.filter((aspiration) => !aspiration.archived);
+  const archivedAspirations = aspirations.filter((aspiration) => aspiration.archived);
   const normalizedQuery = query.trim().toLocaleLowerCase("zh-CN");
-  const visibleAspirations = normalizedQuery
+  const matchingAspirations = normalizedQuery
     ? aspirations.filter((a) => a.title.toLocaleLowerCase("zh-CN").includes(normalizedQuery))
     : aspirations;
+  const visibleActiveAspirations = matchingAspirations.filter((aspiration) => !aspiration.archived);
+  const visibleArchivedAspirations = matchingAspirations.filter((aspiration) => aspiration.archived);
+  const focusAspirations = normalizedQuery
+    ? visibleActiveAspirations
+    : activeAspirations.slice(0, 3);
+  const otherAspirations = normalizedQuery ? [] : activeAspirations.slice(3);
 
   // 新条目自己去判定，不用点按钮。非阻塞：行立刻出现（"判定中…"），
   // 700ms 内连着加的攒成一次请求。
@@ -319,12 +371,208 @@ export default function GoalsView({
     onOpenAspiration(aspirationId);
   }
 
+  function beginGoalDrag(event: React.PointerEvent<HTMLButtonElement>, sourceId: string) {
+    if (event.button !== 0 || normalizedQuery) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const placement = { targetId: sourceId, edge: "before" as const };
+    goalDragRef.current = { sourceId, placement };
+    setDraggingGoalId(sourceId);
+    setGoalDropPlacement(placement);
+  }
+
+  function moveGoalDrag(event: React.PointerEvent<HTMLButtonElement>) {
+    const drag = goalDragRef.current;
+    if (!drag) return;
+    event.preventDefault();
+    const hit = document
+      .elementFromPoint(event.clientX, event.clientY)
+      ?.closest<HTMLElement>("[data-aspiration-id]");
+    const targetId = hit?.dataset.aspirationId;
+    if (!hit || !targetId || !activeAspirations.some((goal) => goal.id === targetId)) return;
+    const rect = hit.getBoundingClientRect();
+    const placement: GoalDropPlacement = {
+      targetId,
+      edge: event.clientY < rect.top + rect.height / 2 ? "before" : "after",
+    };
+    if (
+      drag.placement?.targetId === placement.targetId &&
+      drag.placement.edge === placement.edge
+    ) return;
+    drag.placement = placement;
+    setGoalDropPlacement(placement);
+  }
+
+  function endGoalDrag(event: React.PointerEvent<HTMLButtonElement>) {
+    const drag = goalDragRef.current;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      /* pointer capture may already be gone */
+    }
+    if (drag?.placement) {
+      const next = reorderGoals(
+        activeAspirations,
+        drag.sourceId,
+        drag.placement.targetId,
+        drag.placement.edge,
+      );
+      if (!next.every((goal, index) => goal.id === activeAspirations[index]?.id)) {
+        onReorderAspirations(next.map((goal) => goal.id));
+      }
+    }
+    goalDragRef.current = null;
+    setDraggingGoalId(null);
+    setGoalDropPlacement(null);
+  }
+
+  function cancelGoalDrag() {
+    goalDragRef.current = null;
+    setDraggingGoalId(null);
+    setGoalDropPlacement(null);
+  }
+
   function handleSelectResult(resultId: string | null) {
     if (!open) return;
     const scrollContainer = goalsScrollContainer();
     resultScrollRestoreRef.current = scrollContainer?.scrollTop ?? null;
     setActiveResultId(resultId);
     onSelectResult(open.id, resultId);
+  }
+
+  function renderGoalCard(a: Aspiration) {
+    const archived = Boolean(a.archived);
+    const originalIndex = aspirations.findIndex((item) => item.id === a.id);
+    const activeIndex = activeAspirations.findIndex((item) => item.id === a.id);
+    const priority = activeIndex >= 0 ? activeIndex + 1 : null;
+    const color = goalColor(a, originalIndex);
+    const cards = behaviors.filter((b) => b.aspirationId === a.id);
+    const un = cards.filter((c) => c.type === "unsorted").length;
+    const taskLeg = tasks.filter(
+      (t) => t.aspirationId === a.id && t.status !== "done",
+    ).length;
+    const habitLeg = habits.filter((h) => h.aspirationId === a.id && !h.archived).length;
+    const resultCount = goalResults.filter((result) => result.aspirationId === a.id).length;
+    const invested = entries
+      .filter((e) => e.aspirationId === a.id && weekDates.includes(e.date))
+      .reduce((sum, entry) => sum + entry.minutes, 0);
+    const isDragging = draggingGoalId === a.id;
+    const isDropTarget = goalDropPlacement?.targetId === a.id && draggingGoalId !== null;
+
+    return (
+      <div
+        key={a.id}
+        data-aspiration-id={a.id}
+        className={[
+          "group relative w-full overflow-hidden rounded-[12px] border bg-white transition-[border-color,box-shadow,transform,opacity] hover:-translate-y-px hover:shadow-sm",
+          archived ? "opacity-75" : "",
+          isDragging ? "opacity-45" : "",
+          isDropTarget && goalDropPlacement?.edge === "before"
+            ? "before:absolute before:inset-x-2 before:top-0 before:z-20 before:h-0.5 before:bg-[var(--color-primary)]"
+            : "",
+          isDropTarget && goalDropPlacement?.edge === "after"
+            ? "after:absolute after:inset-x-2 after:bottom-0 after:z-20 after:h-0.5 after:bg-[var(--color-primary)]"
+            : "",
+        ].join(" ")}
+        style={{ borderColor: archived ? "var(--color-border)" : `${color}35` }}
+      >
+        <span
+          className="absolute inset-y-0 left-0 w-1"
+          style={{ backgroundColor: archived ? "#A1A1AA" : color }}
+        />
+        {!archived && (
+          <div
+            className="pointer-events-none absolute inset-0 opacity-60"
+            style={{ background: `linear-gradient(90deg, ${color}0D 0%, transparent 48%)` }}
+          />
+        )}
+        <div className="relative flex min-h-[58px] w-full items-center gap-1 py-2 pl-2 pr-2">
+          {!archived && (
+            <button
+              type="button"
+              onPointerDown={(event) => beginGoalDrag(event, a.id)}
+              onPointerMove={moveGoalDrag}
+              onPointerUp={endGoalDrag}
+              onPointerCancel={cancelGoalDrag}
+              className="flex h-8 w-6 flex-shrink-0 touch-none items-center justify-center rounded-md text-[var(--color-text-tertiary)] hover:bg-white hover:text-[var(--color-text-secondary)]"
+              aria-label={`拖动调整「${a.title}」优先级`}
+              title={normalizedQuery ? "清空搜索后可拖动排序" : "拖动调整目标优先级"}
+            >
+              <GripVertical className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => handleOpenAspiration(a.id)}
+            className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+          >
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <span className="flex min-w-0 items-center gap-1.5">
+                {priority != null && priority <= 3 && (
+                  <span className="flex-shrink-0 rounded-md bg-[var(--color-primary-light)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--color-primary)]">
+                    焦点 {priority}
+                  </span>
+                )}
+                <span
+                  className="truncate text-[14px] font-semibold leading-[18px] text-[var(--color-text-primary)]"
+                  data-full-text={a.title}
+                >
+                  {a.title}
+                </span>
+              </span>
+              <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-[10px] leading-[14px]">
+                {resultCount > 0 && (
+                  <span className="text-[var(--color-primary)]">结果 {resultCount}</span>
+                )}
+                <span className={taskLeg === 0 ? "text-[#C27720]" : "text-[var(--color-text-secondary)]"}>
+                  任务 {taskLeg}
+                </span>
+                <span className={habitLeg === 0 ? "text-[#C27720]" : "text-[var(--color-text-secondary)]"}>
+                  习惯 {habitLeg}
+                </span>
+                <span className="truncate text-[var(--color-text-tertiary)]">
+                  本周 {invested > 0 ? formatMinutes(invested) : "0分钟"}
+                </span>
+                {un > 0 && <span className="flex-shrink-0 text-[#EA580C]">· {un} 待判定</span>}
+              </span>
+            </div>
+            <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-text-tertiary)]" />
+          </button>
+          {archived ? (
+            <>
+              <button
+                type="button"
+                onClick={() => onRestoreAspiration(a.id)}
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-primary-light)] hover:text-[var(--color-primary)]"
+                aria-label={`恢复目标「${a.title}」`}
+                title="恢复为当前目标"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeleteAspId(a.id)}
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-[#FEF2F2]"
+                aria-label={`删除目标「${a.title}」`}
+                title="彻底删除"
+              >
+                <Trash2 className="h-3.5 w-3.5 text-[#A1A1AA]" />
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onArchiveAspiration(a.id)}
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-bg-gray-lighter)] hover:text-[var(--color-text-secondary)]"
+              aria-label={`归档目标「${a.title}」`}
+              title="暂时不推进，移入归档"
+            >
+              <Archive className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+    );
   }
 
   /** 浏览器历史决定上一层：列表进入先回列表，任务/习惯直达则回执行页。 */
@@ -553,11 +801,12 @@ export default function GoalsView({
             <div className="w-full flex items-center justify-between">
               <div className="flex flex-col gap-0.5">
                 <span className="text-[var(--color-text-primary)] text-[15px] font-semibold">
-                  目标 {aspirations.length > 0 ? aspirations.length : ""}
+                  当前目标 {activeAspirations.length > 0 ? activeAspirations.length : ""}
                 </span>
                 {aspirations.length > 0 && (
                   <span className="text-[10px] text-[var(--color-text-tertiary)]">
-                    每个目标都有自己的任务、习惯和投入
+                    按优先级排列 · 前 3 个作为当前焦点
+                    {archivedAspirations.length > 0 ? ` · 已归档 ${archivedAspirations.length}` : ""}
                   </span>
                 )}
               </div>
@@ -578,7 +827,7 @@ export default function GoalsView({
                   type="search"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder={`搜索 ${aspirations.length} 个目标`}
+                  placeholder={`搜索全部 ${aspirations.length} 个目标`}
                   className="w-full rounded-[10px] border border-[var(--color-border)] bg-[var(--color-bg-gray-lighter)] py-2 pl-9 pr-14 text-[13px] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] focus:border-[var(--color-primary)] focus:bg-white focus:outline-none"
                 />
                 {query ? (
@@ -588,7 +837,7 @@ export default function GoalsView({
                     className="absolute right-2.5 top-1/2 flex h-6 items-center gap-1 -translate-y-1/2 rounded-md px-1.5 text-[10px] text-[var(--color-text-tertiary)] hover:bg-white"
                     aria-label="清空搜索"
                   >
-                    {visibleAspirations.length}/{aspirations.length}
+                    {matchingAspirations.length}/{aspirations.length}
                     <X className="h-3 w-3" />
                   </button>
                 ) : null}
@@ -685,7 +934,7 @@ export default function GoalsView({
                   又有用、又做得到的那几条。一次性行为安排到某天成为任务，可重复行为加入习惯。
                 </p>
               </div>
-            ) : visibleAspirations.length === 0 ? (
+            ) : matchingAspirations.length === 0 ? (
               <div className="flex w-full flex-col items-center gap-2 rounded-[12px] border border-dashed border-[var(--color-border)] bg-[var(--color-bg-gray-lighter)] px-4 py-8 text-center">
                 <Search className="h-5 w-5 text-[var(--color-text-tertiary)]" />
                 <span className="text-[13px] font-medium text-[var(--color-text-secondary)]">
@@ -700,87 +949,79 @@ export default function GoalsView({
                 </button>
               </div>
             ) : (
-              <div className="grid w-full grid-cols-1 gap-1.5 md:grid-cols-2 md:gap-3">
-                {visibleAspirations.map((a) => {
-                  const originalIndex = aspirations.findIndex((item) => item.id === a.id);
-                  const color = goalColor(a, originalIndex);
-                  const cards = behaviors.filter((b) => b.aspirationId === a.id);
-                  const un = cards.filter((c) => c.type === "unsorted").length;
-                  // 两条腿：任务腿=推进，习惯腿=维持。缺任何一条都走不动，
-                  // 所以并排放着让空的那条无处遁形（0 标灰，不弹提示、不打分）
-                  const taskLeg = tasks.filter(
-                    (t) => t.aspirationId === a.id && t.status !== "done",
-                  ).length;
-                  const habitLeg = habits.filter((h) => h.aspirationId === a.id && !h.archived).length;
-                  const resultCount = goalResults.filter((result) => result.aspirationId === a.id).length;
-                  const invested = entries
-                    .filter((e) => e.aspirationId === a.id && weekDates.includes(e.date))
-                    .reduce((s, e) => s + e.minutes, 0);
-                  return (
-                    <div
-                      key={a.id}
-                      className="group relative w-full overflow-hidden rounded-[12px] border bg-white transition-[border-color,box-shadow,transform] hover:-translate-y-px hover:shadow-sm"
-                      style={{ borderColor: `${color}35` }}
-                    >
-                      <span
-                        className="absolute inset-y-0 left-0 w-1"
-                        style={{ backgroundColor: color }}
-                      />
-                      <div
-                        className="pointer-events-none absolute inset-0 opacity-60"
-                        style={{ background: `linear-gradient(90deg, ${color}0D 0%, transparent 48%)` }}
-                      />
-                      <div className="relative flex min-h-[54px] w-full items-center gap-1 py-2 pl-3.5 pr-2">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenAspiration(a.id)}
-                          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-                        >
-                          <div className="flex min-w-0 flex-1 flex-col gap-1">
-                            <span
-                              className="truncate text-[14px] font-semibold leading-[18px] text-[var(--color-text-primary)]"
-                              data-full-text={a.title}
-                            >
-                              {a.title}
-                            </span>
-                            <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-[10px] leading-[14px]">
-                              {resultCount > 0 && (
-                                <span className="text-[var(--color-primary)]">
-                                  结果 {resultCount}
-                                </span>
-                              )}
-                              <span
-                                className={taskLeg === 0 ? "text-[#C27720]" : "text-[var(--color-text-secondary)]"}
-                              >
-                                任务 {taskLeg}
-                              </span>
-                              <span
-                                className={habitLeg === 0 ? "text-[#C27720]" : "text-[var(--color-text-secondary)]"}
-                              >
-                                习惯 {habitLeg}
-                              </span>
-                              <span className="truncate text-[var(--color-text-tertiary)]">
-                                本周 {invested > 0 ? formatMinutes(invested) : "0分钟"}
-                              </span>
-                              {un > 0 && (
-                                <span className="flex-shrink-0 text-[#EA580C]">· {un} 待判定</span>
-                              )}
-                            </span>
-                          </div>
-                          <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-text-tertiary)]" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeleteAspId(a.id)}
-                          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-[var(--color-bg-gray-lighter)]"
-                          aria-label="删除目标"
-                        >
-                          <Trash2 className="h-3.5 w-3.5 text-[#A1A1AA]" />
-                        </button>
-                      </div>
+              <div className="flex w-full flex-col gap-3">
+                {focusAspirations.length > 0 ? (
+                  <section className="flex w-full flex-col gap-1.5">
+                    <div className="flex items-center justify-between px-0.5">
+                      <span className="text-[12px] font-semibold text-[var(--color-text-primary)]">
+                        {normalizedQuery ? "当前目标" : "当前焦点"}
+                      </span>
+                      <span className="text-[10px] text-[var(--color-text-tertiary)]">
+                        {normalizedQuery
+                          ? `${visibleActiveAspirations.length} 个匹配`
+                          : `${Math.min(activeAspirations.length, 3)}/3 · 拖动调整优先级`}
+                      </span>
                     </div>
-                  );
-                })}
+                    <div className="grid w-full grid-cols-1 gap-1.5 md:grid-cols-2 md:gap-3">
+                      {focusAspirations.map(renderGoalCard)}
+                    </div>
+                  </section>
+                ) : (
+                  <div className="rounded-[12px] border border-dashed border-[var(--color-border)] bg-[var(--color-bg-gray-lighter)] px-4 py-5 text-center text-[12px] text-[var(--color-text-secondary)]">
+                    当前没有正在推进的目标，可以恢复一个归档目标或新建目标。
+                  </div>
+                )}
+
+                {otherAspirations.length > 0 && (
+                  <section className="flex w-full flex-col gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowOtherGoals((value) => !value)}
+                      className="flex w-full items-center gap-2 rounded-lg px-1 py-1.5 text-left hover:bg-[var(--color-bg-gray-lighter)]"
+                    >
+                      <ChevronDown
+                        className={`h-3.5 w-3.5 text-[var(--color-text-tertiary)] transition-transform ${showOtherGoals ? "rotate-180" : ""}`}
+                      />
+                      <span className="text-[12px] font-semibold text-[var(--color-text-secondary)]">
+                        其他当前目标
+                      </span>
+                      <span className="text-[10px] text-[var(--color-text-tertiary)]">
+                        {otherAspirations.length} 个 · 暂不占据主视野
+                      </span>
+                    </button>
+                    {showOtherGoals && (
+                      <div className="grid w-full grid-cols-1 gap-1.5 md:grid-cols-2 md:gap-3">
+                        {otherAspirations.map(renderGoalCard)}
+                      </div>
+                    )}
+                  </section>
+                )}
+
+                {visibleArchivedAspirations.length > 0 && (
+                  <section className="flex w-full flex-col gap-1.5 border-t border-[var(--color-border)] pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowArchivedGoals((value) => !value)}
+                      className="flex w-full items-center gap-2 rounded-lg px-1 py-1.5 text-left hover:bg-[var(--color-bg-gray-lighter)]"
+                    >
+                      <ChevronDown
+                        className={`h-3.5 w-3.5 text-[var(--color-text-tertiary)] transition-transform ${showArchivedGoals || normalizedQuery ? "rotate-180" : ""}`}
+                      />
+                      <Archive className="h-3.5 w-3.5 text-[var(--color-text-tertiary)]" />
+                      <span className="text-[12px] font-semibold text-[var(--color-text-secondary)]">
+                        已归档
+                      </span>
+                      <span className="text-[10px] text-[var(--color-text-tertiary)]">
+                        {visibleArchivedAspirations.length} 个
+                      </span>
+                    </button>
+                    {(showArchivedGoals || Boolean(normalizedQuery)) && (
+                      <div className="grid w-full grid-cols-1 gap-1.5 md:grid-cols-2 md:gap-3">
+                        {visibleArchivedAspirations.map(renderGoalCard)}
+                      </div>
+                    )}
+                  </section>
+                )}
               </div>
             )}
           </>

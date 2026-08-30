@@ -78,6 +78,8 @@ export interface Aspiration {
   title: string;
   kind: AspirationKind;
   createdAt: number;
+  /** 暂时不再投入的目标。保留结果、行为和历史，只退出当前焦点与主线选择。 */
+  archived?: boolean;
   /** 目标色（任务卡、主线条、投入图上都用它）。旧数据没有，按序号兜底 */
   color?: string;
   /** 每周投入天数上限 1-7；null / undefined = 不限。超了只提示不拦 */

@@ -347,6 +347,35 @@ export default function TodoApp() {
     }
   }, [behaviorCards, behHydrated, hydrated, setBehaviorCards, setTasks, tasks]);
 
+  // 旧数据和云端数据也统一收敛：归档目标不再占主线，一天最多保留优先级最高的 3 个。
+  useEffect(() => {
+    if (!aspHydrated || !plansHydrated) return;
+    const activeIds = new Set(
+      aspirations.filter((aspiration) => !aspiration.archived).map((aspiration) => aspiration.id),
+    );
+    const priority = new Map(
+      aspirations.map((aspiration, index) => [aspiration.id, index]),
+    );
+    setDayPlans((prev) => {
+      let changed = false;
+      const next = Object.fromEntries(
+        Object.entries(prev).map(([date, plan]) => {
+          const ids = Array.from(
+            new Set(plan.primaryAspirationIds.filter((id) => activeIds.has(id))),
+          )
+            .sort((a, b) => (priority.get(a) ?? Infinity) - (priority.get(b) ?? Infinity))
+            .slice(0, 3);
+          const same =
+            ids.length === plan.primaryAspirationIds.length &&
+            ids.every((id, index) => id === plan.primaryAspirationIds[index]);
+          if (!same) changed = true;
+          return [date, same ? plan : { ...plan, primaryAspirationIds: ids }];
+        }),
+      );
+      return changed ? next : prev;
+    });
+  }, [aspHydrated, aspirations, plansHydrated, setDayPlans]);
+
   const [viewMode, setViewMode] = useState<ViewMode>("day");
   const [tabDirection, setTabDirection] = useState<"forward" | "backward">("forward");
   const tabSwipeRef = useRef<{
@@ -803,6 +832,60 @@ export default function TodoApp() {
       color: nextGoalColor(aspirations),
     };
     setAspirations((prev) => [...prev, a]);
+  }
+
+  /** 目标数组顺序就是目标优先级；归档目标始终留在当前目标之后。 */
+  function reorderAspirations(orderedIds: string[]) {
+    const active = aspirations.filter((aspiration) => !aspiration.archived);
+    const activeIds = new Set(active.map((aspiration) => aspiration.id));
+    const uniqueIds = orderedIds.filter(
+      (id, index) => activeIds.has(id) && orderedIds.indexOf(id) === index,
+    );
+    const ordered = [
+      ...uniqueIds
+        .map((id) => active.find((aspiration) => aspiration.id === id))
+        .filter((aspiration): aspiration is Aspiration => Boolean(aspiration)),
+      ...active.filter((aspiration) => !uniqueIds.includes(aspiration.id)),
+    ];
+    if (ordered.every((aspiration, index) => aspiration.id === active[index]?.id)) return;
+    snapshotLab();
+    setAspirations((prev) => [
+      ...ordered,
+      ...prev.filter((aspiration) => aspiration.archived),
+    ]);
+  }
+
+  /** 归档只退出当前焦点和主线，不删除关键结果、行为、任务或投入记录。 */
+  function archiveAspiration(id: string) {
+    setAspirations((prev) =>
+      prev.map((aspiration) =>
+        aspiration.id === id ? { ...aspiration, archived: true } : aspiration,
+      ),
+    );
+    setDayPlans((prev) => {
+      let changed = false;
+      const next = Object.fromEntries(
+        Object.entries(prev).map(([date, plan]) => {
+          const ids = plan.primaryAspirationIds.filter((aspirationId) => aspirationId !== id);
+          const planChanged = ids.length !== plan.primaryAspirationIds.length;
+          if (planChanged) changed = true;
+          return [date, planChanged ? { ...plan, primaryAspirationIds: ids } : plan];
+        }),
+      );
+      return changed ? next : prev;
+    });
+  }
+
+  function restoreAspiration(id: string) {
+    setAspirations((prev) => {
+      const restored = prev.find((aspiration) => aspiration.id === id);
+      if (!restored?.archived) return prev;
+      return [
+        ...prev.filter((aspiration) => !aspiration.archived),
+        { ...restored, archived: undefined },
+        ...prev.filter((aspiration) => aspiration.archived && aspiration.id !== id),
+      ];
+    });
   }
 
   /** 给复杂目标增加可选的结果层；简单目标可以完全不用。 */
@@ -1599,12 +1682,20 @@ export default function TodoApp() {
 
   /** 把某个目标加进/移出某天的主线 */
   function toggleMainline(date: ISODate, aspirationId: string) {
+    const activeIds = new Set(
+      aspirations.filter((aspiration) => !aspiration.archived).map((aspiration) => aspiration.id),
+    );
+    if (!activeIds.has(aspirationId)) return;
     setDayPlans((prev) => {
       const cur = prev[date] ?? { date, primaryAspirationIds: [] };
-      const has = cur.primaryAspirationIds.includes(aspirationId);
+      const currentIds = cur.primaryAspirationIds
+        .filter((id) => activeIds.has(id))
+        .slice(0, 3);
+      const has = currentIds.includes(aspirationId);
+      if (!has && currentIds.length >= 3) return prev;
       const ids = has
-        ? cur.primaryAspirationIds.filter((id) => id !== aspirationId)
-        : [...cur.primaryAspirationIds, aspirationId];
+        ? currentIds.filter((id) => id !== aspirationId)
+        : [...currentIds, aspirationId];
       return { ...prev, [date]: { ...cur, primaryAspirationIds: ids } };
     });
   }
@@ -1752,6 +1843,9 @@ export default function TodoApp() {
           onOpenAspiration={openGoal}
           onSelectResult={selectGoalResult}
           onCreateAspiration={createAspiration}
+          onReorderAspirations={reorderAspirations}
+          onArchiveAspiration={archiveAspiration}
+          onRestoreAspiration={restoreAspiration}
           onDeleteAspiration={deleteAspiration}
           onCreateGoalResult={createGoalResult}
           onUpdateGoalResult={updateGoalResult}

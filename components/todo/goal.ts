@@ -51,7 +51,8 @@ export function mainlinesOf(
   aspirations: Aspiration[],
 ): Aspiration[] {
   const ids = plans[date]?.primaryAspirationIds ?? [];
-  return aspirations.filter((a) => ids.includes(a.id));
+  // 主线是当天真正要注意的焦点：归档目标退出，最多只突出优先级最高的 3 个。
+  return aspirations.filter((a) => !a.archived && ids.includes(a.id)).slice(0, 3);
 }
 
 /** 这个目标本周被排成主线的天数（用于额度条） */

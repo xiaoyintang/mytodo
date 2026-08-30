@@ -14,7 +14,7 @@ import type {
 } from "@/components/todo/types";
 import { CN_WEEKDAY, addDays, parseISODate, startOfWeek } from "@/components/todo/date";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
-import { goalColor } from "@/components/todo/goal";
+import { goalColor, mainlinesOf } from "@/components/todo/goal";
 import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
 import { Check, ChevronDown, ListChecks, MoreHorizontal, Timer } from "lucide-react";
 import TaskBottomSheet from "@/components/TaskBottomSheet";
@@ -164,8 +164,9 @@ export default function TodoDayView({
   const days = Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
 
   // 今天主线
-  const plan = dayPlans[selectedDate];
-  const mainIds = plan?.primaryAspirationIds ?? [];
+  const mainIds = mainlinesOf(selectedDate, dayPlans, aspirations).map(
+    (aspiration) => aspiration.id,
+  );
   const isMainlineTask = (t: Task) => !!t.aspirationId && mainIds.includes(t.aspirationId);
 
   const dayTasks = tasks

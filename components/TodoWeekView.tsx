@@ -15,6 +15,7 @@ import type {
 import { CN_WEEKDAY, addDays, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
 import { Check, Flag, Timer } from "lucide-react";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
+import { mainlinesOf } from "@/components/todo/goal";
 import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
 import TaskBottomSheet from "@/components/TaskBottomSheet";
 import QuickAddTask from "@/components/QuickAddTask";
@@ -381,7 +382,9 @@ export default function TodoWeekView({
                 goalResults={goalResults}
                 behaviors={behaviors}
                 habits={habits}
-                mainlineIds={dayPlans[iso]?.primaryAspirationIds ?? []}
+                mainlineIds={mainlinesOf(iso as ISODate, dayPlans, aspirations).map(
+                  (aspiration) => aspiration.id,
+                )}
                 onTaskClick={handleTaskClick}
               />
             );
