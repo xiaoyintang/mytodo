@@ -99,6 +99,8 @@ export interface GoalResult {
   evidence?: string;
   /** 同一目标下的优先顺序，数字越小越靠前；旧数据没有时按创建顺序兼容。 */
   order?: number;
+  /** 暂时不推进的结果路径。归档只收起这一层，下面的行为和历史关联都保留。 */
+  archived?: boolean;
   createdAt: number;
 }
 
@@ -172,6 +174,8 @@ export interface BehaviorCard {
   startAction?: StartAction;
   /** 一次性任务排进日视图之后，关联的那个 Task 的 id */
   taskId?: string;
+  /** 暂时退出焦点地图的推进项；已排任务、习惯和历史记录不受影响。 */
+  archived?: boolean;
 }
 
 /**

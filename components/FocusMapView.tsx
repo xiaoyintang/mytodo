@@ -30,6 +30,8 @@ import { CN_WEEKDAY, addDays, toISODate } from "@/components/todo/date";
 import { BLOCKER_INFO, blockerOf } from "@/components/todo/blocker";
 import {
   AlertTriangle,
+  Archive,
+  ArchiveRestore,
   ArrowUpDown,
   CalendarPlus,
   Check,
@@ -90,6 +92,8 @@ type Props = {
   allCards?: BehaviorCard[];
   /** 可重复行为 + 一次性任务，都上图 */
   cards: BehaviorCard[];
+  /** 当前结果路径下已经退出比较、但仍保留所有关联的推进项。 */
+  archivedCards?: BehaviorCard[];
   tasks: Task[];
   onSetAxis: (id: string, patch: AxisPatch) => void;
   onSetSteps: (id: string, steps: BehaviorStep[]) => void;
@@ -98,6 +102,9 @@ type Props = {
   onResetAxes: () => void;
   onDelete: (id: string) => void;
   onDeleteMany: (ids: string[]) => void;
+  onArchive: (id: string) => void;
+  onArchiveMany: (ids: string[]) => void;
+  onRestore: (id: string) => void;
   onReplaceText: (id: string, text: string) => void;
   onAddExtra: (items: Array<{ text: string; type: BehaviorType; resultId?: string }>) => void;
   onApplyImport: (
@@ -194,6 +201,7 @@ export default function FocusMapView({
   resultOptions = [],
   allCards,
   cards,
+  archivedCards = [],
   tasks,
   onSetAxis,
   onSetSteps,
@@ -202,6 +210,9 @@ export default function FocusMapView({
   onResetAxes,
   onDelete,
   onDeleteMany,
+  onArchive,
+  onArchiveMany,
+  onRestore,
   onReplaceText,
   onAddExtra,
   onApplyImport,
@@ -249,6 +260,8 @@ export default function FocusMapView({
   const [pinnedId, setPinnedId] = useState<string | null>(null);
   // 焦点地图首先是一张比较清单：默认鸟瞰，真正要评分/编辑时一次只展开一条。
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showOtherCards, setShowOtherCards] = useState(false);
+  const [showArchivedCards, setShowArchivedCards] = useState(false);
 
   // 两种改写共用一套 UI：改小（做不到 → 变小）/ 改具体（会卡住 → 给终点或产出物）
   const [shrinkingId, setShrinkingId] = useState<string | null>(null);
@@ -280,7 +293,8 @@ export default function FocusMapView({
     .filter(isGolden)
     .slice()
     .sort((a, b) => goldenScore(b) - goldenScore(a));
-  const goldenRank = new Map(golden.map((g, i) => [g.id, i + 1]));
+  // 一次只突出前三个推进重点；右上角仍保留真实象限数量，不篡改用户评分。
+  const goldenRank = new Map(golden.slice(0, 3).map((g, i) => [g.id, i + 1]));
   const plotted = actionableCards.filter((c) => c.impact != null && c.feasibility != null);
   const rated = actionableCards.filter((c) => c.impact != null || c.feasibility != null).length;
   const rateable = actionableCards.length;
@@ -293,6 +307,7 @@ export default function FocusMapView({
       (bIndex < 0 ? Number.MAX_SAFE_INTEGER : bIndex);
   });
   const list = ordered;
+  const visibleList = showOtherCards ? list : list.slice(0, 3);
 
   function applySort(mode: SortMode) {
     setSort(mode);
@@ -310,6 +325,7 @@ export default function FocusMapView({
   function submitAdd() {
     const t = draft.trim();
     if (!t) return;
+    if (list.length >= 3) setShowOtherCards(true);
     onAdd(t);
     setDraft("");
   }
@@ -1882,7 +1898,19 @@ export default function FocusMapView({
 
       {/* 默认是鸟瞰清单；一次只展开一条，评分表单不再永久撑高每个行为。 */}
       <div className="w-full flex flex-col gap-1">
-        {list.map((b) => {
+        {list.length > 0 && (
+          <div className="mb-0.5 flex items-center justify-between px-0.5">
+            <span className="text-[10px] font-semibold text-[var(--color-text-secondary)]">
+              当前优先 {Math.min(list.length, 3)}/3
+            </span>
+            {list.length > 3 && (
+              <span className="text-[9px] text-[var(--color-text-tertiary)]">
+                其余 {list.length - 3} 条候选已收起
+              </span>
+            )}
+          </div>
+        )}
+        {visibleList.map((b) => {
           const rank = goldenRank.get(b.id);
           const st = TYPE_STYLE[b.type];
           const picked = selected.has(b.id);
@@ -2067,13 +2095,20 @@ export default function FocusMapView({
                       type="button"
                       onClick={() => {
                         if (behaviorReview?.forId === b.id) setBehaviorReview(null);
-                        onDelete(b.id);
+                        setSelected((current) => {
+                          const next = new Set(current);
+                          next.delete(b.id);
+                          return next;
+                        });
+                        setExpandedId(null);
+                        onArchive(b.id);
                       }}
-                      className="flex items-center gap-1 text-[10px] text-[var(--color-text-tertiary)] hover:text-[var(--color-danger)]"
-                      aria-label="删掉这条"
+                      className="flex items-center gap-1 text-[10px] text-[var(--color-text-tertiary)] hover:text-[var(--color-primary)]"
+                      aria-label="归档这条"
+                      title="退出当前比较，但保留任务、习惯和历史关联"
                     >
-                      <Trash2 className="h-3 w-3" />
-                      删除
+                      <Archive className="h-3 w-3" />
+                      归档
                     </button>
                   </div>
 
@@ -2475,11 +2510,78 @@ export default function FocusMapView({
             </div>
           );
         })}
+
+        {list.length > 3 && (
+          <button
+            type="button"
+            onClick={() => setShowOtherCards((current) => !current)}
+            className="mt-0.5 flex items-center justify-center gap-1 rounded-lg border border-dashed border-[var(--color-border)] bg-white px-2 py-1.5 text-[10px] font-medium text-[var(--color-text-secondary)]"
+          >
+            <ChevronDown
+              className={`h-3.5 w-3.5 transition-transform ${showOtherCards ? "rotate-180" : ""}`}
+            />
+            {showOtherCards ? "收起其他候选" : `展开其他 ${list.length - 3} 条`}
+          </button>
+        )}
       </div>
 
+      {archivedCards.length > 0 && (
+        <div className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-gray-lighter)] px-2.5 py-2">
+          <button
+            type="button"
+            onClick={() => setShowArchivedCards((current) => !current)}
+            className="flex w-full items-center gap-1.5 text-left text-[10px] font-medium text-[var(--color-text-secondary)]"
+          >
+            <Archive className="h-3.5 w-3.5" />
+            已归档推进项 {archivedCards.length}
+            <ChevronDown
+              className={`ml-auto h-3.5 w-3.5 transition-transform ${showArchivedCards ? "rotate-180" : ""}`}
+            />
+          </button>
+          {showArchivedCards && (
+            <div className="mt-1.5 flex flex-col gap-1">
+              {archivedCards.map((card) => (
+                <div
+                  key={card.id}
+                  className="flex min-w-0 items-center gap-1.5 rounded-md border border-[var(--color-border)] bg-white px-2 py-1.5"
+                >
+                  <span
+                    className="min-w-0 flex-1 truncate text-[10px] font-medium text-[var(--color-text-secondary)]"
+                    data-full-text={card.text}
+                  >
+                    {card.text}
+                  </span>
+                  {card.impact != null && card.feasibility != null && (
+                    <span className="flex-shrink-0 text-[9px] tabular-nums text-[var(--color-text-tertiary)]">
+                      综合 {Math.round(goldenScore(card))}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => onRestore(card.id)}
+                    className="flex flex-shrink-0 items-center gap-1 rounded-md border border-[#BFDBFE] bg-white px-1.5 py-1 text-[9px] font-medium text-[var(--color-primary)]"
+                  >
+                    <ArchiveRestore className="h-3 w-3" />
+                    恢复
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDelete(card.id)}
+                    aria-label={`永久删除${card.text}`}
+                    title="永久删除；已排出的未完成任务也会移除"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-[var(--color-text-tertiary)]" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <p className="text-[11px] leading-relaxed text-[var(--color-text-tertiary)]">
-        右上角是当前最值得优先推进的项目。可重复行为一次只养 1-3 个；任务包则选少数排进日程，
-        <strong>清单变短才说明这一步做对了</strong>。
+        前 3 条是当前推进重点，其余仍是候选，不会丢；暂时不做的可以归档。
+        可重复行为一次只养 1-3 个，任务包则选少数排进日程。
       </p>
 
       {/* 选中后的批量操作栏（固定在底部，滚到哪儿都够得着） */}
@@ -2490,6 +2592,20 @@ export default function FocusMapView({
               已选 {selected.size} 条
             </span>
             <div className="flex-1" />
+            <button
+              type="button"
+              onClick={() => {
+                onArchiveMany(Array.from(selected));
+                setSelected(new Set());
+                setScheduling(false);
+                setBatchScheduleDates(new Set());
+              }}
+              className="inline-flex items-center gap-1 text-[12px] font-medium text-[var(--color-primary)] hover:opacity-75 transition-opacity"
+            >
+              <Archive className="w-3.5 h-3.5" />
+              归档所选
+            </button>
+            <span className="h-3.5 w-px bg-[var(--color-border)]" />
             <button
               type="button"
               onClick={() => setConfirmBatchDelete(true)}

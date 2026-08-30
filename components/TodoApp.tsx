@@ -933,6 +933,34 @@ export default function TodoApp() {
     );
   }
 
+  /** 归档结果只把一条路径退出当前焦点；行为、任务、习惯和历史关联都原样保留。 */
+  function archiveGoalResult(id: string) {
+    snapshotLab();
+    setGoalResults((prev) =>
+      prev.map((result) => (result.id === id ? { ...result, archived: true } : result)),
+    );
+  }
+
+  function restoreGoalResult(id: string) {
+    snapshotLab();
+    setGoalResults((prev) => {
+      const restoring = prev.find((result) => result.id === id);
+      if (!restoring) return prev;
+      const activeOrders = prev
+        .filter(
+          (result) =>
+            result.aspirationId === restoring.aspirationId &&
+            !result.archived &&
+            result.id !== id,
+        )
+        .map((result) => result.order ?? 0);
+      const nextOrder = (activeOrders.length > 0 ? Math.max(...activeOrders) : -1) + 1;
+      return prev.map((result) =>
+        result.id === id ? { ...result, archived: undefined, order: nextOrder } : result,
+      );
+    });
+  }
+
   /** 删除结果只解除分组；行为是用户已经想过的，不跟着丢。 */
   function deleteGoalResult(id: string) {
     snapshotLab();
@@ -1674,6 +1702,34 @@ export default function TodoApp() {
     deleteBehaviors([id]);
   }
 
+  /**
+   * 归档是焦点管理，不是删除：卡片从焦点地图退出，但已排日程、习惯和归属不动。
+   * 批量归档只记一份快照，整批可以一次撤回。
+   */
+  function archiveBehaviors(behaviorIds: string[]) {
+    if (behaviorIds.length === 0) return;
+    const ids = new Set(behaviorIds);
+    snapshotLab();
+    setBehaviorCards((prev) =>
+      prev.map((behavior) =>
+        ids.has(behavior.id) ? { ...behavior, archived: true } : behavior,
+      ),
+    );
+  }
+
+  function archiveBehavior(id: string) {
+    archiveBehaviors([id]);
+  }
+
+  function restoreBehavior(id: string) {
+    snapshotLab();
+    setBehaviorCards((prev) =>
+      prev.map((behavior) =>
+        behavior.id === id ? { ...behavior, archived: undefined } : behavior,
+      ),
+    );
+  }
+
   function setWeeklyLimit(aspirationId: string, limit: number | null) {
     setAspirations((prev) =>
       prev.map((a) => (a.id === aspirationId ? { ...a, weeklyLimit: limit } : a)),
@@ -1850,6 +1906,8 @@ export default function TodoApp() {
           onCreateGoalResult={createGoalResult}
           onUpdateGoalResult={updateGoalResult}
           onReorderGoalResults={reorderGoalResults}
+          onArchiveGoalResult={archiveGoalResult}
+          onRestoreGoalResult={restoreGoalResult}
           onDeleteGoalResult={deleteGoalResult}
           onAssignBehaviorResult={assignBehaviorResult}
           onApplyGoalResultStructure={applyGoalResultStructure}
@@ -1869,6 +1927,9 @@ export default function TodoApp() {
           onSetWeeklyLimit={setWeeklyLimit}
           onDeleteBehavior={deleteBehavior}
           onDeleteBehaviors={deleteBehaviors}
+          onArchiveBehavior={archiveBehavior}
+          onArchiveBehaviors={archiveBehaviors}
+          onRestoreBehavior={restoreBehavior}
           onAddHabit={addHabit}
           onRemoveHabitByBehavior={removeHabitByBehavior}
           onUndo={undoLab}

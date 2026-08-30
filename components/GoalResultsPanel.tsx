@@ -7,7 +7,10 @@ import { UNASSIGNED_RESULT_ID } from "@/components/todo/goal";
 import { callBehaviorAPI } from "@/components/todo/behaviorApi";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import {
+  Archive,
+  ArchiveRestore,
   Check,
+  ChevronDown,
   ChevronRight,
   FolderTree,
   GripVertical,
@@ -41,12 +44,16 @@ type DropPlacement = { targetId: string; edge: "before" | "after" };
 type Props = {
   aspiration: Aspiration;
   results: GoalResult[];
+  archivedResults: GoalResult[];
   cards: BehaviorCard[];
+  allCards: BehaviorCard[];
   activeResultId: string | null;
   onSelect: (resultId: string | null) => void;
   onCreate: (title: string, evidence?: string) => string;
   onUpdate: (id: string, patch: { title?: string; evidence?: string }) => void;
   onReorder: (orderedIds: string[]) => void;
+  onArchive: (id: string) => void;
+  onRestore: (id: string) => void;
   onDelete: (id: string) => void;
   onApplyStructure: (
     groups: Array<{ title: string; evidence?: string; behaviorIds: string[] }>,
@@ -121,12 +128,16 @@ function parseSuggestions(
 export default function GoalResultsPanel({
   aspiration,
   results,
+  archivedResults,
   cards,
+  allCards,
   activeResultId,
   onSelect,
   onCreate,
   onUpdate,
   onReorder,
+  onArchive,
+  onRestore,
   onDelete,
   onApplyStructure,
 }: Props) {
@@ -141,6 +152,8 @@ export default function GoalResultsPanel({
   const [clarifying, setClarifying] = useState(false);
   const [draftReview, setDraftReview] = useState<DraftReview | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [showOtherResults, setShowOtherResults] = useState(false);
+  const [showArchivedResults, setShowArchivedResults] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropPlacement, setDropPlacement] = useState<DropPlacement | null>(null);
   const dragRef = useRef<{ sourceId: string; placement: DropPlacement | null } | null>(null);
@@ -148,6 +161,7 @@ export default function GoalResultsPanel({
   const resultIds = new Set(results.map((result) => result.id));
   const unassigned = cards.filter((card) => !card.resultId || !resultIds.has(card.resultId));
   const cardById = new Map(cards.map((card) => [card.id, card]));
+  const visibleResults = showOtherResults ? results : results.slice(0, 3);
 
   function beginCreate() {
     setEditingId("new");
@@ -175,6 +189,7 @@ export default function GoalResultsPanel({
     if (!cleanTitle) return;
     if (editingId === "new") {
       const id = onCreate(cleanTitle, evidence);
+      if (results.length >= 3) setShowOtherResults(true);
       onSelect(id);
     } else if (editingId) {
       onUpdate(editingId, { title: cleanTitle, evidence });
@@ -598,6 +613,16 @@ export default function GoalResultsPanel({
 
       {results.length > 0 && (
         <div className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between px-0.5">
+            <span className="text-[10px] font-semibold text-[var(--color-text-secondary)]">
+              当前焦点 {Math.min(results.length, 3)}/3
+            </span>
+            {results.length > 3 && (
+              <span className="text-[9px] text-[var(--color-text-tertiary)]">
+                其余 {results.length - 3} 条已收起
+              </span>
+            )}
+          </div>
           <button
             type="button"
             onClick={() => onSelect(null)}
@@ -626,7 +651,7 @@ export default function GoalResultsPanel({
             </span>
             <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-text-tertiary)]" />
           </button>
-          {results.map((result, index) => {
+          {visibleResults.map((result, index) => {
             const mine = cards.filter((card) => card.resultId === result.id);
             const golden = mine.filter((card) => isActionable(card.type) && isGolden(card)).length;
             const active = activeResultId === result.id;
@@ -712,12 +737,30 @@ export default function GoalResultsPanel({
                 <button type="button" onClick={() => beginEdit(result)} aria-label={`编辑${result.title}`}>
                   <Pencil className="h-3.5 w-3.5 text-[var(--color-text-tertiary)]" />
                 </button>
-                <button type="button" onClick={() => setDeleteId(result.id)} aria-label={`删除${result.title}`}>
-                  <Trash2 className="h-3.5 w-3.5 text-[var(--color-text-tertiary)]" />
+                <button
+                  type="button"
+                  onClick={() => onArchive(result.id)}
+                  aria-label={`归档${result.title}`}
+                  title="暂时不推进，归档后仍保留下面的行为"
+                >
+                  <Archive className="h-3.5 w-3.5 text-[var(--color-text-tertiary)]" />
                 </button>
               </div>
             );
           })}
+
+          {results.length > 3 && (
+            <button
+              type="button"
+              onClick={() => setShowOtherResults((current) => !current)}
+              className="flex items-center justify-center gap-1 rounded-lg border border-dashed border-[var(--color-border)] bg-white/60 px-2 py-1.5 text-[10px] font-medium text-[var(--color-text-secondary)]"
+            >
+              <ChevronDown
+                className={`h-3.5 w-3.5 transition-transform ${showOtherResults ? "rotate-180" : ""}`}
+              />
+              {showOtherResults ? "收起其他关键结果" : `展开其他 ${results.length - 3} 条`}
+            </button>
+          )}
 
           {unassigned.length > 0 && (
             <button
@@ -742,6 +785,60 @@ export default function GoalResultsPanel({
               </span>
               <ChevronRight className="h-3.5 w-3.5 text-[var(--color-text-tertiary)]" />
             </button>
+          )}
+        </div>
+      )}
+
+      {archivedResults.length > 0 && (
+        <div className="flex flex-col gap-1.5 border-t border-[#D9E5FF] pt-2">
+          <button
+            type="button"
+            onClick={() => setShowArchivedResults((current) => !current)}
+            className="flex items-center gap-1.5 text-left text-[10px] font-medium text-[var(--color-text-secondary)]"
+          >
+            <Archive className="h-3.5 w-3.5" />
+            已归档 {archivedResults.length}
+            <ChevronDown
+              className={`ml-auto h-3.5 w-3.5 transition-transform ${showArchivedResults ? "rotate-180" : ""}`}
+            />
+          </button>
+          {showArchivedResults && (
+            <div className="flex flex-col gap-1">
+              {archivedResults.map((result) => {
+                const linkedCount = allCards.filter((card) => card.resultId === result.id).length;
+                return (
+                  <div
+                    key={result.id}
+                    className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white/60 px-2 py-1.5"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[11px] font-medium text-[var(--color-text-secondary)]" data-full-text={result.title}>
+                        {result.title}
+                      </span>
+                      <span className="block text-[9px] text-[var(--color-text-tertiary)]">
+                        保留 {linkedCount} 条推进项
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onRestore(result.id)}
+                      className="flex items-center gap-1 rounded-md border border-[#BFDBFE] bg-white px-1.5 py-1 text-[9px] font-medium text-[var(--color-primary)]"
+                    >
+                      <ArchiveRestore className="h-3 w-3" />
+                      恢复
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteId(result.id)}
+                      aria-label={`永久删除${result.title}`}
+                      title="永久删除结果，下面的推进项会回到未归属"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-[var(--color-text-tertiary)]" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       )}

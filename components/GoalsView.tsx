@@ -92,6 +92,8 @@ type Props = {
   onCreateGoalResult: (aspirationId: string, title: string, evidence?: string) => string;
   onUpdateGoalResult: (id: string, patch: { title?: string; evidence?: string }) => void;
   onReorderGoalResults: (aspirationId: string, orderedIds: string[]) => void;
+  onArchiveGoalResult: (id: string) => void;
+  onRestoreGoalResult: (id: string) => void;
   onDeleteGoalResult: (id: string) => void;
   onAssignBehaviorResult: (behaviorId: string, resultId?: string) => void;
   onApplyGoalResultStructure: (
@@ -122,6 +124,9 @@ type Props = {
   onSetWeeklyLimit: (aspirationId: string, limit: number | null) => void;
   onDeleteBehavior: (id: string) => void;
   onDeleteBehaviors: (ids: string[]) => void;
+  onArchiveBehavior: (id: string) => void;
+  onArchiveBehaviors: (ids: string[]) => void;
+  onRestoreBehavior: (id: string) => void;
   onAddHabit: (input: Omit<Habit, "id" | "createdAt">) => void;
   onRemoveHabitByBehavior: (behaviorId: string) => void;
   onUndo: () => void;
@@ -151,6 +156,8 @@ export default function GoalsView({
   onCreateGoalResult,
   onUpdateGoalResult,
   onReorderGoalResults,
+  onArchiveGoalResult,
+  onRestoreGoalResult,
   onDeleteGoalResult,
   onAssignBehaviorResult,
   onApplyGoalResultStructure,
@@ -170,6 +177,9 @@ export default function GoalsView({
   onSetWeeklyLimit,
   onDeleteBehavior,
   onDeleteBehaviors,
+  onArchiveBehavior,
+  onArchiveBehaviors,
+  onRestoreBehavior,
   onAddHabit,
   onRemoveHabitByBehavior,
   onUndo,
@@ -220,13 +230,24 @@ export default function GoalsView({
   }, [activeResultId]);
 
   const open = openId ? aspirations.find((a) => a.id === openId) ?? null : null;
-  const openCards = open ? behaviors.filter((b) => b.aspirationId === open.id) : [];
-  const openResults = open
+  const allOpenCards = open ? behaviors.filter((b) => b.aspirationId === open.id) : [];
+  const allOpenResults = open
     ? sortGoalResults(goalResults.filter((result) => result.aspirationId === open.id))
     : [];
-  const resultIds = new Set(openResults.map((result) => result.id));
+  const openResults = allOpenResults.filter((result) => !result.archived);
+  const archivedResults = allOpenResults.filter((result) => result.archived);
+  const activeResultIds = new Set(openResults.map((result) => result.id));
+  const archivedResultIds = new Set(archivedResults.map((result) => result.id));
+  // 归档关键结果会连同整条路径退出当前焦点，但不会改写卡片的 resultId。
+  // 恢复结果后，原来的推进项会自动回到它下面。
+  const openCards = allOpenCards.filter(
+    (card) => !card.archived && (!card.resultId || !archivedResultIds.has(card.resultId)),
+  );
+  const archivedOpenCards = allOpenCards.filter(
+    (card) => card.archived && (!card.resultId || !archivedResultIds.has(card.resultId)),
+  );
   const unassignedCards = openCards.filter(
-    (card) => !card.resultId || !resultIds.has(card.resultId),
+    (card) => !card.resultId || !activeResultIds.has(card.resultId),
   );
   const resolvedResultId: string | null =
     activeResultId === UNASSIGNED_RESULT_ID && unassignedCards.length > 0
@@ -241,6 +262,14 @@ export default function GoalsView({
       : resolvedResultId === UNASSIGNED_RESULT_ID
         ? unassignedCards
         : openCards.filter((card) => card.resultId === resolvedResultId);
+  const focusArchivedCards =
+    openResults.length === 0 || resolvedResultId === null
+      ? archivedOpenCards
+      : resolvedResultId === UNASSIGNED_RESULT_ID
+        ? archivedOpenCards.filter(
+            (card) => !card.resultId || !activeResultIds.has(card.resultId),
+          )
+        : archivedOpenCards.filter((card) => card.resultId === resolvedResultId);
   const habitBehaviorIds = new Set(
     habits.filter((h) => !h.archived && h.behaviorId).map((h) => h.behaviorId!),
   );
@@ -446,13 +475,15 @@ export default function GoalsView({
     const activeIndex = activeAspirations.findIndex((item) => item.id === a.id);
     const priority = activeIndex >= 0 ? activeIndex + 1 : null;
     const color = goalColor(a, originalIndex);
-    const cards = behaviors.filter((b) => b.aspirationId === a.id);
+    const cards = behaviors.filter((b) => b.aspirationId === a.id && !b.archived);
     const un = cards.filter((c) => c.type === "unsorted").length;
     const taskLeg = tasks.filter(
       (t) => t.aspirationId === a.id && t.status !== "done",
     ).length;
     const habitLeg = habits.filter((h) => h.aspirationId === a.id && !h.archived).length;
-    const resultCount = goalResults.filter((result) => result.aspirationId === a.id).length;
+    const resultCount = goalResults.filter(
+      (result) => result.aspirationId === a.id && !result.archived,
+    ).length;
     const invested = entries
       .filter((e) => e.aspirationId === a.id && weekDates.includes(e.date))
       .reduce((sum, entry) => sum + entry.minutes, 0);
@@ -649,12 +680,19 @@ export default function GoalsView({
               key={open.id}
               aspiration={open}
               results={openResults}
+              archivedResults={archivedResults}
               cards={openCards}
+              allCards={allOpenCards}
               activeResultId={resolvedResultId}
               onSelect={handleSelectResult}
               onCreate={(title, evidence) => onCreateGoalResult(open.id, title, evidence)}
               onUpdate={onUpdateGoalResult}
               onReorder={(orderedIds) => onReorderGoalResults(open.id, orderedIds)}
+              onArchive={(id) => {
+                if (resolvedResultId === id) handleSelectResult(null);
+                onArchiveGoalResult(id);
+              }}
+              onRestore={onRestoreGoalResult}
               onDelete={onDeleteGoalResult}
               onApplyStructure={(groups) => onApplyGoalResultStructure(open.id, groups)}
             />
@@ -762,8 +800,9 @@ export default function GoalsView({
               focusTitle={selectedResult?.title ?? open.title}
               defaultResultId={selectedResult?.id}
               resultOptions={openResults}
-              allCards={openCards}
+              allCards={allOpenCards}
               cards={focusCards}
+              archivedCards={focusArchivedCards}
               tasks={tasks}
               onSetAxis={onSetBehaviorAxis}
               onSetSteps={onSetBehaviorSteps}
@@ -772,6 +811,9 @@ export default function GoalsView({
               onResetAxes={() => onResetBehaviorAxes(focusCards.map((card) => card.id))}
               onDelete={onDeleteBehavior}
               onDeleteMany={onDeleteBehaviors}
+              onArchive={onArchiveBehavior}
+              onArchiveMany={onArchiveBehaviors}
+              onRestore={onRestoreBehavior}
               onReplaceText={onShrinkBehavior}
               onAddExtra={(items) => onAddBehaviors(open.id, items, selectedResult?.id)}
               onApplyImport={(results, behaviorChanges) =>
