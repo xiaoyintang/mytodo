@@ -88,6 +88,7 @@ type Props = {
   onResetBehaviorAxes: (behaviorIds: string[]) => void;
   onSetWeeklyLimit: (aspirationId: string, limit: number | null) => void;
   onDeleteBehavior: (id: string) => void;
+  onDeleteBehaviors: (ids: string[]) => void;
   onAddHabit: (input: Omit<Habit, "id" | "createdAt">) => void;
   onRemoveHabitByBehavior: (behaviorId: string) => void;
   onUndo: () => void;
@@ -132,6 +133,7 @@ export default function GoalsView({
   onResetBehaviorAxes,
   onSetWeeklyLimit,
   onDeleteBehavior,
+  onDeleteBehaviors,
   onAddHabit,
   onRemoveHabitByBehavior,
   onUndo,
@@ -521,6 +523,7 @@ export default function GoalsView({
               onConvertToTaskPackage={onConvertBehaviorToTaskPackage}
               onResetAxes={() => onResetBehaviorAxes(focusCards.map((card) => card.id))}
               onDelete={onDeleteBehavior}
+              onDeleteMany={onDeleteBehaviors}
               onReplaceText={onShrinkBehavior}
               onAddExtra={(items) => onAddBehaviors(open.id, items, selectedResult?.id)}
               onApplyImport={(results, behaviorChanges) =>

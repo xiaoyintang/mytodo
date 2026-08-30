@@ -97,6 +97,7 @@ type Props = {
   onConvertToTaskPackage: (id: string, steps: BehaviorStep[]) => void;
   onResetAxes: () => void;
   onDelete: (id: string) => void;
+  onDeleteMany: (ids: string[]) => void;
   onReplaceText: (id: string, text: string) => void;
   onAddExtra: (items: Array<{ text: string; type: BehaviorType; resultId?: string }>) => void;
   onApplyImport: (
@@ -200,6 +201,7 @@ export default function FocusMapView({
   onConvertToTaskPackage,
   onResetAxes,
   onDelete,
+  onDeleteMany,
   onReplaceText,
   onAddExtra,
   onApplyImport,
@@ -223,6 +225,7 @@ export default function FocusMapView({
 }: Props) {
   const goalContext = focusTitle?.trim() || aspiration.title;
   const [confirmReset, setConfirmReset] = useState(false);
+  const [confirmBatchDelete, setConfirmBatchDelete] = useState(false);
   const [sort, setSort] = useState<SortMode>("score");
   const cardsRef = useRef(cards);
   cardsRef.current = cards;
@@ -731,6 +734,16 @@ export default function FocusMapView({
   const chosenSchedulable = chosen.filter(
     (card) => isRepeatable(card.type) || (card.type === "onetime" && !card.taskId),
   );
+  const chosenTaskIds = new Set(
+    chosen.flatMap((card) => (card.taskId ? [card.taskId] : [])),
+  );
+  const chosenPendingTaskCount = tasks.filter(
+    (task) =>
+      task.status !== "done" &&
+      (chosenTaskIds.has(task.id) ||
+        Boolean(task.sourceBehaviorId && selected.has(task.sourceBehaviorId))),
+  ).length;
+  const chosenActiveHabitCount = chosen.filter((card) => habitBehaviorIds.has(card.id)).length;
 
   function batchAddHabits() {
     chosenHabits.forEach(onAddHabit);
@@ -2331,6 +2344,15 @@ export default function FocusMapView({
             <div className="flex-1" />
             <button
               type="button"
+              onClick={() => setConfirmBatchDelete(true)}
+              className="inline-flex items-center gap-1 text-[12px] font-medium text-[var(--color-danger)] hover:opacity-75 transition-opacity"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              删除所选
+            </button>
+            <span className="h-3.5 w-px bg-[var(--color-border)]" />
+            <button
+              type="button"
               onClick={() => {
                 setSelected(new Set());
                 setScheduling(false);
@@ -2403,6 +2425,28 @@ export default function FocusMapView({
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmBatchDelete}
+        title={`删除选中的 ${selected.size} 条行为？`}
+        description={`会从焦点地图删除这批行为${
+          chosenPendingTaskCount > 0
+            ? `，并移除由它们排出的 ${chosenPendingTaskCount} 个未完成日程`
+            : ""
+        }。${
+          chosenActiveHabitCount > 0
+            ? `其中 ${chosenActiveHabitCount} 条已经进入习惯页，习惯和既往打卡会保留。`
+            : ""
+        }删错后可以点行为操作栏的「撤回」整批找回。`}
+        confirmLabel="删除所选"
+        onConfirm={() => {
+          onDeleteMany(Array.from(selected));
+          setSelected(new Set());
+          setScheduling(false);
+          setConfirmBatchDelete(false);
+        }}
+        onCancel={() => setConfirmBatchDelete(false)}
+      />
 
       <ConfirmDialog
         isOpen={confirmReset}

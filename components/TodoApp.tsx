@@ -1451,21 +1451,32 @@ export default function TodoApp() {
     );
   }
 
-  // 删行为卡 = 这条不做了，所以它排出去的那个任务也该跟着走。
-  // 已完成的任务留着——那是历史，不该被抹掉。
-  function deleteBehavior(id: string) {
-    const card = behaviorCards.find((b) => b.id === id);
+  // 批量删行为只存一份快照，所以误删十几条也能一次完整撤回。
+  // 行为排出去的未完成任务跟着走；已完成任务和习惯记录保留为历史。
+  function deleteBehaviors(behaviorIds: string[]) {
+    if (behaviorIds.length === 0) return;
+    const behaviorIdSet = new Set(behaviorIds);
+    const linkedTaskIds = new Set(
+      behaviorCards
+        .filter((behavior) => behaviorIdSet.has(behavior.id) && behavior.taskId)
+        .map((behavior) => behavior.taskId as string),
+    );
     const gone = tasks.filter(
       (task) =>
         task.status !== "done" &&
-        (task.id === card?.taskId || task.sourceBehaviorId === id),
+        (linkedTaskIds.has(task.id) ||
+          Boolean(task.sourceBehaviorId && behaviorIdSet.has(task.sourceBehaviorId))),
     );
     snapshotLab(gone);
     if (gone.length > 0) {
       const ids = new Set(gone.map((t) => t.id));
       setTasks((prev) => prev.filter((t) => !ids.has(t.id)));
     }
-    setBehaviorCards((prev) => prev.filter((b) => b.id !== id));
+    setBehaviorCards((prev) => prev.filter((b) => !behaviorIdSet.has(b.id)));
+  }
+
+  function deleteBehavior(id: string) {
+    deleteBehaviors([id]);
   }
 
   function setWeeklyLimit(aspirationId: string, limit: number | null) {
@@ -1651,6 +1662,7 @@ export default function TodoApp() {
           onResetBehaviorAxes={resetBehaviorAxes}
           onSetWeeklyLimit={setWeeklyLimit}
           onDeleteBehavior={deleteBehavior}
+          onDeleteBehaviors={deleteBehaviors}
           onAddHabit={addHabit}
           onRemoveHabitByBehavior={removeHabitByBehavior}
           onUndo={undoLab}
