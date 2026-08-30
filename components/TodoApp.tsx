@@ -39,7 +39,7 @@ import type {
   AIResultImportApply,
 } from "@/components/todo/aiBridge";
 import { useTimer } from "@/components/todo/useTimer";
-import { Cloud, CloudOff, RefreshCw } from "lucide-react";
+import { Cloud, CloudOff, House, RefreshCw } from "lucide-react";
 
 const STORAGE_KEY = "mytodo.tasks.v1";
 const ENTRIES_KEY = "mytodo.entries.v1";
@@ -1823,6 +1823,24 @@ export default function TodoApp() {
     setGoalEntryResultId(null);
   }
 
+  /**
+   * 全局首页不是浏览器的“上一页”，而是一个确定的落点：今天的任务页。
+   * 用 replaceState 收掉当前目标页路由，避免点首页后再按浏览器返回又钻回焦点地图。
+   */
+  function goHome() {
+    setTabDirection("backward");
+    setViewMode("day");
+    setSelectedDate(todayIso);
+    setGoalsOpen(false);
+    setGoalEntryId(null);
+    setGoalEntryResultId(null);
+    window.history.replaceState(
+      historyStateWith({ view: "workspace" }),
+      "",
+      window.location.href,
+    );
+  }
+
   function handleWorkspacePointerDown(event: ReactPointerEvent<HTMLElement>) {
     if (
       goalsOpen ||
@@ -2081,6 +2099,25 @@ export default function TodoApp() {
         onSubmit={createTask}
         selectedDate={selectedDate}
       />
+
+      {/*
+       * 非首页始终给一个确定出口。它不等同于“返回”：无论当前从哪里进来，
+       * 都直接落到今天的任务，而不是让用户猜还要退几层。
+       */}
+      {(goalsOpen || viewMode !== "day" || selectedDate !== todayIso) &&
+        !isModalOpen &&
+        !isSyncOpen && (
+          <button
+            type="button"
+            data-no-tab-swipe
+            onClick={goHome}
+            aria-label="回到首页，查看今天的任务"
+            className="fixed bottom-4 left-4 z-40 flex h-11 items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-white px-3.5 text-[13px] font-medium text-[var(--color-text-secondary)] shadow-[0_2px_10px_rgba(0,0,0,0.12)] transition-[color,background-color,transform] hover:bg-[var(--color-bg-gray-light)] hover:text-[var(--color-text-primary)] active:scale-95 sm:bottom-auto sm:top-4"
+          >
+            <House className="h-[18px] w-[18px] text-[var(--color-primary)]" />
+            <span>首页</span>
+          </button>
+        )}
 
       {/* 手机避开页头新增按钮；桌面仍放在右上角。 */}
       <button
