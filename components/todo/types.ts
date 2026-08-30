@@ -48,7 +48,7 @@ export interface Task {
   resultId?: string;
   /** 从哪条习惯手动排到日程。可选；用于完成 Todo 时自动回写习惯记录。 */
   sourceHabitId?: string;
-  /** 从焦点地图的哪条可重复行为排出来；用于同日去重、回溯和同步改名。 */
+  /** 从焦点地图的哪条推进项排出来；用于同日去重、回溯和同步改名。 */
   sourceBehaviorId?: string;
   startTime?: string; // "HH:mm"
   endTime?: string; // "HH:mm"

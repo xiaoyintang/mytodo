@@ -732,7 +732,12 @@ export default function FocusMapView({
   const chosen = cards.filter((c) => selected.has(c.id));
   const chosenHabits = chosen.filter((c) => isRepeatable(c.type) && !habitBehaviorIds.has(c.id));
   const chosenSchedulable = chosen.filter(
-    (card) => isRepeatable(card.type) || (card.type === "onetime" && !card.taskId),
+    (card) =>
+      isRepeatable(card.type) ||
+      (card.type === "onetime" &&
+        !tasks.some(
+          (task) => task.id === card.taskId || task.sourceBehaviorId === card.id,
+        )),
   );
   const chosenTaskIds = new Set(
     chosen.flatMap((card) => (card.taskId ? [card.taskId] : [])),
@@ -1807,7 +1812,11 @@ export default function FocusMapView({
           const rank = goldenRank.get(b.id);
           const st = TYPE_STYLE[b.type];
           const picked = selected.has(b.id);
-          const task = b.taskId ? tasks.find((t) => t.id === b.taskId) : undefined;
+          const task = !isRepeatable(b.type)
+            ? tasks.find((candidate) =>
+                candidate.id === b.taskId || candidate.sourceBehaviorId === b.id,
+              )
+            : undefined;
           const repeatTasks = isRepeatable(b.type)
             ? tasks.filter((candidate) => candidate.sourceBehaviorId === b.id)
             : [];

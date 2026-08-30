@@ -602,6 +602,13 @@ export default function TodoApp() {
   // Delete task
   function deleteTask(taskId: string) {
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    // 一次性推进项会记住自己排出去的任务。任务被单独删除后要解除关联，
+    // 否则焦点地图虽然重新显示「排日程」，底层仍会被旧 taskId 卡住。
+    setBehaviorCards((prev) =>
+      prev.map((behavior) =>
+        behavior.taskId === taskId ? { ...behavior, taskId: undefined } : behavior,
+      ),
+    );
   }
 
   // Update task (for editing)
@@ -1113,7 +1120,13 @@ export default function TodoApp() {
     const card = behaviorCards.find((b) => b.id === cardId);
     if (!card) return;
     const repeatable = isRepeatable(card.type);
-    if (!repeatable && (card.type !== "onetime" || card.taskId)) return;
+    if (!repeatable && card.type !== "onetime") return;
+    const linkedTask = tasks.find(
+      (task) => task.id === card.taskId || task.sourceBehaviorId === cardId,
+    );
+    // 一次性任务只保留一个真实存在的执行实例。旧 taskId 指向的任务已经被删时，
+    // 允许重新排期，并在下面用新 taskId 自动修复旧关联。
+    if (!repeatable && linkedTask) return;
 
     const liveHabit = repeatable
       ? habits.find((habit) => !habit.archived && habit.behaviorId === cardId)
@@ -1138,7 +1151,7 @@ export default function TodoApp() {
           status: "todo" as TaskStatus,
           aspirationId: card.aspirationId,
           resultId: card.resultId,
-          sourceBehaviorId: repeatable ? cardId : undefined,
+          sourceBehaviorId: cardId,
           sourceHabitId: liveHabit?.id,
           subtasks,
           startAction,
