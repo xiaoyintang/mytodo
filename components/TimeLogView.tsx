@@ -3,7 +3,13 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import type { Aspiration, DayPlan, EntryCategory, ISODate, Task, TimeEntry, ViewMode } from "@/components/todo/types";
 import { CN_WEEKDAY, addDays, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
-import { formatMinutes, matchTaskByTitle, timeToMinutes, minutesToTime } from "@/components/todo/time";
+import {
+  durationBetweenTimes,
+  formatMinutes,
+  matchTaskByTitle,
+  timeToMinutes,
+  minutesToTime,
+} from "@/components/todo/time";
 import { goalColor } from "@/components/todo/goal";
 import { parseTimeEntries, type ParsedEntry } from "@/components/todo/nlparse";
 import {
@@ -369,8 +375,8 @@ export default function TimeLogView({
     if (which === "start") setEditStart(value);
     else setEditEnd(value);
     if (start && end) {
-      const diff = timeToMinutes(end) - timeToMinutes(start);
-      if (diff > 0) setEditMinutes(String(diff));
+      const diff = durationBetweenTimes(start, end);
+      setEditMinutes(diff > 0 ? String(diff) : "");
     }
   }
 
@@ -379,14 +385,20 @@ export default function TimeLogView({
     setEditMinutes(value);
     const m = Math.round(Number(value));
     if (editStart && Number.isFinite(m) && m > 0) {
-      const newEnd = minutesToTime(timeToMinutes(editStart) + m);
+      // 手动改时长时，结束钟点可以自然跨到次日。
+      const newEnd = minutesToTime((timeToMinutes(editStart) + m) % (24 * 60));
       setEditEnd(newEnd ?? "");
     }
   }
 
+  function resolvedEditMinutes(): number {
+    if (editStart && editEnd) return durationBetweenTimes(editStart, editEnd);
+    return Math.round(Number(editMinutes));
+  }
+
   function saveEditEntry(e: TimeEntry) {
     const title = editTitle.trim();
-    const minutes = Math.round(Number(editMinutes));
+    const minutes = resolvedEditMinutes();
     if (!title || !Number.isFinite(minutes) || minutes <= 0) return;
     // 标题变了就重新匹配任务关联；没变则保留原关联
     const taskId = title === e.title ? e.taskId : matchTaskByTitle(title, e.date, tasks)?.id;
@@ -413,7 +425,7 @@ export default function TimeLogView({
 
   function saveNewEntry() {
     const title = editTitle.trim();
-    const minutes = Math.round(Number(editMinutes));
+    const minutes = resolvedEditMinutes();
     if (!title || !Number.isFinite(minutes) || minutes <= 0) return;
     onAddEntries([
       {
@@ -430,7 +442,11 @@ export default function TimeLogView({
 
   // 台账条目编辑表单（新建/编辑共用），onSave 决定是新增还是更新
   function renderEntryEditor(onSave: () => void) {
-    const canSave = editTitle.trim() !== "" && Number(editMinutes) > 0;
+    const resolvedMinutes = resolvedEditMinutes();
+    const crossesMidnight = Boolean(
+      editStart && editEnd && timeToMinutes(editEnd) < timeToMinutes(editStart),
+    );
+    const canSave = editTitle.trim() !== "" && resolvedMinutes > 0;
     return (
       <div className="w-full flex flex-col gap-2 px-3.5 py-3 rounded-[10px] bg-[var(--color-bg-gray-lighter)] border-[1.5px] border-[var(--color-primary)]">
         <input
@@ -456,6 +472,11 @@ export default function TimeLogView({
             className="w-[100px] px-3 py-2 rounded-lg border border-[var(--color-border)] text-[13px] bg-white focus:outline-none focus:border-[var(--color-primary)]"
           />
           <span className="text-[13px] text-[var(--color-text-secondary)]">分钟</span>
+          {crossesMidnight && (
+            <span className="rounded bg-[#EEF2FF] px-1.5 py-0.5 text-[10px] font-medium text-[#4F46E5]">
+              跨到次日
+            </span>
+          )}
           <div className="flex-1" />
           <button
             type="button"

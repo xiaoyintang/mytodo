@@ -14,6 +14,20 @@ export function minutesToTime(total: number): string | null {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+/**
+ * 两个钟点之间经过了多少分钟。结束时间早于开始时间时视为跨过午夜：
+ * 23:35 → 00:10 = 35 分钟，而不是负数，也不能沿用旧时长。
+ * 相同时间返回 0；界面会要求用户补一个真正的时长，避免擅自猜成 24 小时。
+ */
+export function durationBetweenTimes(start: string, end: string): number {
+  const startMinutes = timeToMinutes(start);
+  const endMinutes = timeToMinutes(end);
+  if (startMinutes === endMinutes) return 0;
+  return endMinutes > startMinutes
+    ? endMinutes - startMinutes
+    : endMinutes + 24 * 60 - startMinutes;
+}
+
 /** 分钟数 → 人类可读时长，如 "3小时20分" / "45分钟" */
 export function formatMinutes(min: number): string {
   if (min < 60) return `${min}分钟`;
