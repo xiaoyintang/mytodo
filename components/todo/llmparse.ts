@@ -181,8 +181,22 @@ ${BEHAVIOR_TYPES}
 
 **判成 aspiration / outcome 的一律给 null**——它压根还不是行为，缺的是动作本身。
 
+【额外抽取：父行为 + 用户已经写出的流程】
+
+有时用户会把一个行为和它的完整做法写在同一句里，例如：
+「做拉伸运动，流程是：活动肩颈 → 拉伸大腿后侧 → 拉伸小腿 → 深呼吸结束」
+
+这时不要把全文当成行为标题：
+- text 只保留外层父行为，例如「做拉伸运动」
+- steps 按用户原文的最终顺序返回每一步
+- type、blocker 判断的是完整行为包，不给每一步单独分类或评分
+
+只有原文明示“流程、步骤、顺序、依次、先…再…”并且确实写出了至少 2 步时，才允许返回 steps。
+步骤必须来自用户原文，只能清理序号和连接词，不准自行补充、改写或脑补动作。
+没有明确流程时，text 必须原样返回，steps 返回空数组。
+
 【输出】必须是合法 JSON，不要输出其他内容：
-{"results":[{"id":"原样返回输入的id","type":"habit","reason":"不超过20字","blocker":null}]}
+{"results":[{"id":"原样返回输入的id","text":"父行为或原文","steps":["用户原文步骤1","用户原文步骤2"],"type":"habit","reason":"不超过20字","blocker":null}]}
 blocker 只能是 "endpoint" 或 null。
 输入几条就输出几条，一条都不能少，id 必须原样返回。`;
 
@@ -538,6 +552,10 @@ export type BehaviorClarification = {
 
 export type LLMJudgement = {
   id: string;
+  /** 原文明确携带流程时，提炼出的外层父行为；否则仍是输入原文。 */
+  text?: string;
+  /** 只抽取用户已经写出的完整流程，不由模型新增步骤。 */
+  steps?: string[];
   type: BehaviorType;
   reason: string;
   blocker?: BehaviorBlocker;
@@ -669,15 +687,28 @@ export async function sortBehaviorsWithLLM(
   const raw = (parsed as { results?: unknown })?.results;
   if (!Array.isArray(raw)) return null;
 
-  const known = new Set(items.map((i) => i.id));
+  const sourceById = new Map(items.map((item) => [item.id, item.text]));
+  const hasProcedureCue = (text: string) =>
+    /(?:流程|步骤|顺序|依次|第一步|第二步|先.+(?:再|然后|接着))/.test(text);
   return raw
     .map((r): LLMJudgement | null => {
       const o = r as Record<string, unknown>;
       const id = String(o?.id ?? "").trim();
       const type = String(o?.type ?? "").trim();
-      if (!known.has(id) || !VALID_TYPE.has(type)) return null;
+      const sourceText = sourceById.get(id);
+      if (!sourceText || !VALID_TYPE.has(type)) return null;
+      const extractedSteps = hasProcedureCue(sourceText) && Array.isArray(o?.steps)
+        ? (o.steps as unknown[])
+            .map((step) => String(step ?? "").trim().slice(0, 120))
+            .filter(Boolean)
+            .slice(0, 12)
+        : [];
+      const extractedText = String(o?.text ?? "").trim().slice(0, 160);
+      const hasValidProcedure = extractedSteps.length >= 2 && Boolean(extractedText);
       return {
         id,
+        text: hasValidProcedure ? extractedText : sourceText,
+        steps: hasValidProcedure ? extractedSteps : undefined,
         type: type as BehaviorType,
         reason: String(o?.reason ?? "").trim().slice(0, 40),
         blocker: VALID_BLOCKER.has(String(o?.blocker)) ? (String(o?.blocker) as BehaviorBlocker) : undefined,

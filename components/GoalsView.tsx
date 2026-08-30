@@ -47,6 +47,8 @@ function goalsScrollContainer(): HTMLElement | null {
 
 type Judgement = {
   id: string;
+  text?: string;
+  steps?: string[];
   type: BehaviorType;
   reason?: string;
   blocker?: "timing" | "decision" | "endpoint";

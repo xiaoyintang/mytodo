@@ -1232,6 +1232,8 @@ export default function TodoApp() {
   function applyJudgements(
     results: Array<{
       id: string;
+      text?: string;
+      steps?: string[];
       type: BehaviorType;
       reason?: string;
       blocker?: "timing" | "decision" | "endpoint";
@@ -1243,9 +1245,22 @@ export default function TodoApp() {
       prev.map((b) => {
         const r = byId.get(b.id);
         if (!r || b.typeSource === "user") return b;
+        // 自动收集的新条目如果把“父行为 + 已写出的流程”揉在一句里，
+        // 第一次判定时就把它还原成一个行为包。已有卡片重判时不动结构，
+        // 避免模型覆盖用户后来手工维护的步骤。
+        const extractedSteps =
+          b.type === "unsorted" &&
+          !b.steps?.length &&
+          r.text?.trim() &&
+          r.steps &&
+          r.steps.length >= 2
+            ? importBehaviorSteps(r.steps, `judge-${b.id}`)
+            : undefined;
         // hasDecision 是老字段，重判后清掉，统一用 blocker
         return {
           ...b,
+          text: extractedSteps ? r.text!.trim() : b.text,
+          steps: extractedSteps ?? b.steps,
           type: r.type,
           typeSource: "ai" as const,
           reason: r.reason,
