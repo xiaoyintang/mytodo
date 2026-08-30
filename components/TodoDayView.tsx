@@ -205,16 +205,22 @@ export default function TodoDayView({
     const subs = t.subtasks ?? [];
     const subDone = subs.filter((x) => x.done).length;
     const nextSubtask = subs.find((x) => !x.done);
+    const stepStartAction =
+      nextSubtask?.startAction && !nextSubtask.startAction.done
+        ? nextSubtask.startAction
+        : undefined;
     const startActionTarget = t.startAction?.targetStepId
       ? subs.find((subtask) => subtask.id === t.startAction?.targetStepId)
       : undefined;
     const startActionWaiting = Boolean(
       startActionTarget && nextSubtask && startActionTarget.id !== nextSubtask.id,
     );
-    const activeStartAction =
+    const legacyStartAction =
       t.startAction && !t.startAction.done && !startActionTarget?.done && !startActionWaiting
         ? t.startAction
         : undefined;
+    const activeStartAction = stepStartAction ?? legacyStartAction;
+    const startActionLivesOnStep = Boolean(stepStartAction);
     const isExpanded = expanded.has(t.id);
     const taskResult = resolveTaskGoalResult(t, goalResults, behaviors, habits);
 
@@ -278,10 +284,30 @@ export default function TodoDayView({
                 type="button"
                 onClick={(event) => {
                   event.stopPropagation();
-                  onUpdateTask(t.id, {
-                    startAction: { ...activeStartAction, kind: "minimum", done: true },
-                    ...(t.status === "todo" ? { status: "in_progress" as const } : {}),
-                  });
+                  onUpdateTask(
+                    t.id,
+                    startActionLivesOnStep && nextSubtask
+                      ? {
+                          subtasks: subs.map((subtask) =>
+                            subtask.id === nextSubtask.id
+                              ? {
+                                  ...subtask,
+                                  startAction: {
+                                    ...activeStartAction,
+                                    kind: "minimum",
+                                    targetStepId: subtask.id,
+                                    done: true,
+                                  },
+                                }
+                              : subtask,
+                          ),
+                          ...(t.status === "todo" ? { status: "in_progress" as const } : {}),
+                        }
+                      : {
+                          startAction: { ...activeStartAction, kind: "minimum", done: true },
+                          ...(t.status === "todo" ? { status: "in_progress" as const } : {}),
+                        },
+                  );
                 }}
                 className="mt-1 flex w-full items-start gap-1.5 rounded-md bg-[#FAF5FF] px-2 py-1.5 text-left transition-colors hover:bg-[#F3E8FF]"
                 aria-label={`完成最小启动：${activeStartAction.title}`}

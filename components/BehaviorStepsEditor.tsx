@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { BehaviorStep, StartAction } from "@/components/todo/types";
+import { useRef, useState } from "react";
+import type { BehaviorStep } from "@/components/todo/types";
 import { callBehaviorAPI } from "@/components/todo/behaviorApi";
 import StartActionEditor from "@/components/StartActionEditor";
 import {
@@ -22,8 +22,6 @@ type Props = {
   goal: string;
   steps: BehaviorStep[];
   onChange: (steps: BehaviorStep[]) => void;
-  startAction?: StartAction;
-  onStartActionChange?: (value?: StartAction) => void;
   mode?: "procedure" | "task" | "task-package";
 };
 
@@ -53,8 +51,6 @@ export default function BehaviorStepsEditor({
   goal,
   steps,
   onChange,
-  startAction,
-  onStartActionChange,
   mode = "procedure",
 }: Props) {
   const [open, setOpen] = useState(steps.length > 0);
@@ -65,17 +61,11 @@ export default function BehaviorStepsEditor({
   const [error, setError] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropPlacement, setDropPlacement] = useState<DropPlacement | null>(null);
-  const [starterStepId, setStarterStepId] = useState<string | null>(
-    startAction?.targetStepId ?? null,
-  );
+  const [starterStepId, setStarterStepId] = useState<string | null>(null);
   const dragRef = useRef<{ sourceId: string; placement: DropPlacement | null } | null>(null);
   const draftRef = useRef<HTMLTextAreaElement | null>(null);
   const isTaskFlow = mode === "task" || mode === "task-package";
   const flowLabel = isTaskFlow ? "任务步骤" : "固定流程";
-
-  useEffect(() => {
-    if (startAction?.targetStepId) setStarterStepId(startAction.targetStepId);
-  }, [startAction?.targetStepId]);
 
   function openEditor() {
     setOpen(true);
@@ -241,7 +231,7 @@ export default function BehaviorStepsEditor({
               {steps.map((step, index) => {
                 const isDragging = draggingId === step.id;
                 const isTarget = dropPlacement?.targetId === step.id && draggingId !== null;
-                const ownsStarter = startAction?.targetStepId === step.id;
+                const ownsStarter = Boolean(step.startAction);
                 const showsStarter = ownsStarter || starterStepId === step.id;
                 return (
                   <div key={step.id} className="flex flex-col">
@@ -289,22 +279,20 @@ export default function BehaviorStepsEditor({
                         {step.title}
                       </button>
                     )}
-                    {onStartActionChange && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setStarterStepId((current) => (current === step.id ? null : step.id))
-                        }
-                        className={[
-                          "-mt-[1px] flex h-5 w-5 flex-shrink-0 items-center justify-center rounded",
-                          ownsStarter ? "bg-[#F3E8FF] text-[#7C3AED]" : "text-[var(--color-text-tertiary)] hover:bg-[#FAF5FF] hover:text-[#7C3AED]",
-                        ].join(" ")}
-                        aria-label={`为「${step.title}」设置最小启动`}
-                        title={ownsStarter ? "已设置最小启动" : "这一步难开始时，再把它缩小"}
-                      >
-                        <Sparkles className="h-3 w-3" />
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setStarterStepId((current) => (current === step.id ? null : step.id))
+                      }
+                      className={[
+                        "-mt-[1px] flex h-5 w-5 flex-shrink-0 items-center justify-center rounded",
+                        ownsStarter ? "bg-[#F3E8FF] text-[#7C3AED]" : "text-[var(--color-text-tertiary)] hover:bg-[#FAF5FF] hover:text-[#7C3AED]",
+                      ].join(" ")}
+                      aria-label={`为「${step.title}」设置最小启动`}
+                      title={ownsStarter ? "已设置最小启动" : "这一步难开始时，再把它缩小"}
+                    >
+                      <Sparkles className="h-3 w-3" />
+                    </button>
                     {steps.length > 1 && (
                       <button
                         type="button"
@@ -338,15 +326,31 @@ export default function BehaviorStepsEditor({
                       <Trash2 className="h-3 w-3 text-[#A1A1AA]" />
                     </button>
                     </div>
-                    {showsStarter && onStartActionChange && (
+                    {showsStarter && (
                       <div className="ml-5">
                         <StartActionEditor
                           key={`${step.id}-${ownsStarter ? "saved" : "new"}`}
-                          value={ownsStarter ? startAction : undefined}
+                          value={step.startAction}
                           targetStep={step}
                           autoEdit={!ownsStarter}
                           onChange={(next) => {
-                            onStartActionChange(next);
+                            onChange(
+                              steps.map((item) =>
+                                item.id === step.id
+                                  ? {
+                                      ...item,
+                                      startAction: next
+                                        ? {
+                                            ...next,
+                                            kind: "minimum",
+                                            targetStepId: step.id,
+                                            done: undefined,
+                                          }
+                                        : undefined,
+                                    }
+                                  : item,
+                              ),
+                            );
                             if (!next) setStarterStepId(null);
                             else setStarterStepId(step.id);
                           }}

@@ -22,6 +22,8 @@ export interface SubTask {
   done: boolean;
   /** 从焦点地图固定流程的哪一步实例化而来；用于把起步动作挂回正确步骤。 */
   sourceBehaviorStepId?: string;
+  /** 这一步自己的最小启动；轮到该步骤时才出现，互不覆盖。 */
+  startAction?: StartAction;
 }
 
 /**
@@ -131,6 +133,8 @@ export type BehaviorType =
 export interface BehaviorStep {
   id: string;
   title: string;
+  /** 这一步自己的最小启动。固定流程可为多步分别设置。 */
+  startAction?: StartAction;
 }
 
 /** 行为集群里的一张卡 */

@@ -148,12 +148,25 @@ function seedTasks(today: ISODate): Task[] {
 function instantiateBehaviorSteps(card?: BehaviorCard): SubTask[] | undefined {
   if (!card?.steps?.length) return undefined;
   const stamp = Date.now();
-  return card.steps.map((step, index) => ({
-    id: `st-${stamp}-${index}-${Math.random().toString(36).slice(2, 6)}`,
-    title: step.title,
-    done: false,
-    sourceBehaviorStepId: step.id,
-  }));
+  return card.steps.map((step, index) => {
+    const id = `st-${stamp}-${index}-${Math.random().toString(36).slice(2, 6)}`;
+    const legacyStartAction =
+      card.startAction?.kind === "minimum" &&
+      (card.startAction.targetStepId === step.id ||
+        (!card.startAction.targetStepId && index === 0))
+        ? card.startAction
+        : undefined;
+    const startAction = step.startAction ?? legacyStartAction;
+    return {
+      id,
+      title: step.title,
+      done: false,
+      sourceBehaviorStepId: step.id,
+      startAction: startAction?.title.trim()
+        ? { ...startAction, kind: "minimum" as const, targetStepId: id, done: false }
+        : undefined,
+    };
+  });
 }
 
 /** 起步动作跟着这次执行实例走；若它针对固定流程某一步，换成对应的 SubTask id。 */
@@ -162,20 +175,12 @@ function instantiateStartAction(
   subtasks: SubTask[] | undefined,
 ): StartAction | undefined {
   if (!card?.startAction?.title.trim() || card.startAction.kind !== "minimum") return undefined;
-  const targetBehaviorStep = card.startAction.targetStepId
-    ? card.steps?.find((step) => step.id === card.startAction?.targetStepId)
-    : undefined;
-  const targetSubtask = card.startAction.targetStepId
-    ? subtasks?.find(
-        (subtask) =>
-          subtask.sourceBehaviorStepId === card.startAction?.targetStepId ||
-          (targetBehaviorStep ? subtask.title === targetBehaviorStep.title : false),
-      )
-    : undefined;
+  // 有步骤时，最小启动已经分别实例化到对应 SubTask；父级字段只服务无步骤任务。
+  if (subtasks?.length) return undefined;
   return {
     kind: "minimum",
     title: card.startAction.title,
-    targetStepId: targetSubtask?.id,
+    targetStepId: undefined,
     done: false,
   };
 }
@@ -190,8 +195,24 @@ function migrateBehaviorStartAction(card: BehaviorCard): BehaviorCard {
   const steps = card.steps ?? [];
 
   if (startAction.kind === "minimum") {
-    if (steps.length === 0 || startAction.targetStepId) return card;
-    return { ...card, startAction: { ...startAction, targetStepId: steps[0].id, done: undefined } };
+    if (steps.length === 0) {
+      return { ...card, startAction: { ...startAction, targetStepId: undefined, done: undefined } };
+    }
+    const targetId = steps.some((step) => step.id === startAction.targetStepId)
+      ? startAction.targetStepId
+      : steps[0].id;
+    return {
+      ...card,
+      steps: steps.map((step) =>
+        step.id === targetId && !step.startAction
+          ? {
+              ...step,
+              startAction: { ...startAction, targetStepId: step.id, done: undefined },
+            }
+          : step,
+      ),
+      startAction: undefined,
+    };
   }
 
   const title = startAction.title.trim();
@@ -213,8 +234,24 @@ function migrateTaskStartAction(task: Task): Task {
   const subtasks = task.subtasks ?? [];
 
   if (startAction.kind === "minimum") {
-    if (subtasks.length === 0 || startAction.targetStepId) return task;
-    return { ...task, startAction: { ...startAction, targetStepId: subtasks[0].id } };
+    if (subtasks.length === 0) {
+      return { ...task, startAction: { ...startAction, targetStepId: undefined } };
+    }
+    const targetId = subtasks.some((subtask) => subtask.id === startAction.targetStepId)
+      ? startAction.targetStepId
+      : subtasks[0].id;
+    return {
+      ...task,
+      subtasks: subtasks.map((subtask) =>
+        subtask.id === targetId && !subtask.startAction
+          ? {
+              ...subtask,
+              startAction: { ...startAction, targetStepId: subtask.id },
+            }
+          : subtask,
+      ),
+      startAction: undefined,
+    };
   }
 
   const title = startAction.title.trim();
@@ -293,8 +330,7 @@ export default function TodoApp() {
         (task) =>
           task.startAction?.kind === "next" ||
           (task.startAction?.kind === "minimum" &&
-            Boolean(task.subtasks?.length) &&
-            !task.startAction.targetStepId),
+            Boolean(task.subtasks?.length)),
       )
     ) {
       setTasks((prev) => prev.map(migrateTaskStartAction));
@@ -304,8 +340,7 @@ export default function TodoApp() {
         (card) =>
           card.startAction?.kind === "next" ||
           (card.startAction?.kind === "minimum" &&
-            Boolean(card.steps?.length) &&
-            !card.startAction.targetStepId),
+            Boolean(card.steps?.length)),
       )
     ) {
       setBehaviorCards((prev) => prev.map(migrateBehaviorStartAction));
@@ -521,7 +556,7 @@ export default function TodoApp() {
     setTasks((prev) =>
       prev.map((t) => {
         if (t.id !== taskId) return t;
-        const subtasks = fn(t.subtasks ?? []);
+        let subtasks = fn(t.subtasks ?? []);
         // 打勾直接带动任务状态，不让你再手动同步一次：
         // 全勾完 = done，勾了一部分 = 进行中，全清空 = 回待办。
         // 反向也成立（取消勾选会退回进行中），所以点错了不会卡住
@@ -535,11 +570,25 @@ export default function TodoApp() {
           : subtasks.length > 0
             ? Math.round((subtasks.filter((x) => x.done).length / subtasks.length) * 100)
             : t.progress;
-        const startAction =
+        let startAction =
           t.startAction?.targetStepId &&
           !subtasks.some((subtask) => subtask.id === t.startAction?.targetStepId)
             ? { ...t.startAction, targetStepId: undefined }
             : t.startAction;
+        if (startAction?.kind === "minimum" && subtasks.length > 0) {
+          const targetId = subtasks.some((subtask) => subtask.id === startAction?.targetStepId)
+            ? startAction.targetStepId
+            : subtasks[0].id;
+          subtasks = subtasks.map((subtask) =>
+            subtask.id === targetId && !subtask.startAction
+              ? {
+                  ...subtask,
+                  startAction: { ...startAction!, targetStepId: subtask.id },
+                }
+              : subtask,
+          );
+          startAction = undefined;
+        }
         return { ...t, subtasks, startAction, status, progress };
       }),
     );
@@ -1366,29 +1415,79 @@ export default function TodoApp() {
    * 因此修改模板不会回头篡改已经排出去的任务，但习惯下次排 Todo 会读到最新版。
    */
   function setBehaviorSteps(id: string, steps: BehaviorStep[]) {
-    snapshotLab();
+    const card = behaviorCards.find((behavior) => behavior.id === id);
+    if (!card) return;
+    const targetId = steps.some((step) => step.id === card.startAction?.targetStepId)
+      ? card.startAction?.targetStepId
+      : steps[0]?.id;
+    // 无步骤行为原先可能有一个父级最小启动；第一次增加步骤时把它迁到
+    // 对应步骤里。之后每一步都维护自己的 startAction，彼此不再覆盖。
+    const nextSteps = card.startAction
+      ? steps.map((step) =>
+          step.id === targetId && !step.startAction
+            ? {
+                ...step,
+                startAction: {
+                  ...card.startAction!,
+                  kind: "minimum" as const,
+                  targetStepId: step.id,
+                  done: undefined,
+                },
+              }
+            : step,
+        )
+      : steps;
+    const derivedTasks = tasks.filter(
+      (task) =>
+        task.status !== "done" &&
+        (task.id === card.taskId || task.sourceBehaviorId === id),
+    );
+    snapshotLab(derivedTasks);
     setBehaviorCards((prev) =>
       prev.map((behavior) =>
         behavior.id === id
           ? {
               ...behavior,
-              steps: steps.length > 0 ? steps : undefined,
-              startAction: behavior.startAction
-                ? {
-                    ...behavior.startAction,
-                    kind: "minimum" as const,
-                    targetStepId:
-                      steps.length > 0
-                        ? steps.some((step) => step.id === behavior.startAction?.targetStepId)
-                          ? behavior.startAction.targetStepId
-                          : steps[0].id
-                        : undefined,
-                  }
-                : undefined,
+              steps: nextSteps.length > 0 ? nextSteps : undefined,
+              startAction: nextSteps.length > 0 ? undefined : behavior.startAction,
             }
           : behavior,
       ),
     );
+
+    // 已排出的任务保留自己的文字、顺序和完成状态，只把各步骤的最小启动同步过去。
+    if (derivedTasks.length > 0) {
+      const byId = new Map(nextSteps.map((step) => [step.id, step]));
+      setTasks((prev) =>
+        prev.map((task) =>
+          task.status !== "done" &&
+          (task.id === card.taskId || task.sourceBehaviorId === id) &&
+          task.subtasks?.length
+            ? {
+                ...task,
+                subtasks: task.subtasks.map((subtask) => {
+                  const template = subtask.sourceBehaviorStepId
+                    ? byId.get(subtask.sourceBehaviorStepId) ??
+                      nextSteps.find((step) => step.title === subtask.title)
+                    : nextSteps.find((step) => step.title === subtask.title);
+                  return {
+                    ...subtask,
+                    startAction: template?.startAction
+                      ? {
+                          ...template.startAction,
+                          kind: "minimum" as const,
+                          targetStepId: subtask.id,
+                          done: subtask.startAction?.done ?? false,
+                        }
+                      : undefined,
+                  };
+                }),
+                startAction: undefined,
+              }
+            : task,
+        ),
+      );
+    }
   }
 
   /** 最小启动只改变执行设计，不改变父行为的影响力或可行性评分。 */

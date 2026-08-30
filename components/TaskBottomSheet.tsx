@@ -15,7 +15,7 @@ import type {
 import { parseISODate, toISODate, startOfWeek, addDays, CN_WEEKDAY } from "@/components/todo/date";
 import { goalColor, sortGoalResults } from "@/components/todo/goal";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
-import { X, Check, Calendar, Clock, Flag, Trash2, ChevronLeft, ChevronRight, GripVertical, Target, Timer, Plus, Gauge, ListChecks, Wand2 } from "lucide-react";
+import { X, Check, Calendar, Clock, Flag, Trash2, ChevronLeft, ChevronRight, GripVertical, Target, Timer, Plus, Gauge, ListChecks, Wand2, Sparkles } from "lucide-react";
 import { callBehaviorAPI } from "@/components/todo/behaviorApi";
 import TimePicker from "@/components/TimePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -940,6 +940,14 @@ export default function TaskBottomSheet({
                       {st.title}
                     </button>
                   )}
+                  {st.startAction && (
+                    <span
+                      className="-mt-[1px] flex h-5 w-5 flex-shrink-0 items-center justify-center rounded bg-[#F3E8FF] text-[#7C3AED]"
+                      title={`最小启动：${st.startAction.title}`}
+                    >
+                      <Sparkles className="h-3 w-3" />
+                    </span>
+                  )}
                   {!st.done && openIndex != null && openSubs.length > 1 && (
                     <button
                       type="button"
@@ -1280,17 +1288,29 @@ export default function TaskBottomSheet({
 
                     <div className="ml-2">
                       <StartActionEditor
-                        value={
-                          !task.startAction?.targetStepId ||
-                          task.startAction.targetStepId === nextSubtask.id
-                            ? task.startAction
-                            : undefined
-                        }
+                        value={nextSubtask.startAction}
                         targetStep={nextSubtask}
                         executable
                         onChange={(startAction) =>
                           onUpdate(task.id, {
-                            startAction,
+                            subtasks: subs.map((subtask) =>
+                              subtask.id === nextSubtask.id
+                                ? {
+                                    ...subtask,
+                                    startAction: startAction
+                                      ? {
+                                          ...startAction,
+                                          kind: "minimum",
+                                          targetStepId: subtask.id,
+                                        }
+                                      : undefined,
+                                  }
+                                : subtask,
+                            ),
+                            startAction:
+                              task.startAction?.targetStepId === nextSubtask.id
+                                ? undefined
+                                : task.startAction,
                             ...(startAction?.done && task.status === "todo"
                               ? { status: "in_progress" as const }
                               : {}),

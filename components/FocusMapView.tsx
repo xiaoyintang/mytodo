@@ -1898,6 +1898,8 @@ export default function FocusMapView({
           const repeatScheduleChanged = upcomingScheduleDates.some(
             ({ iso }) => originalRepeatDates.has(iso) !== singleScheduleDates.has(iso),
           );
+          const startActionCount =
+            (b.startAction ? 1 : 0) + (b.steps?.filter((step) => step.startAction).length ?? 0);
           const inHabits = habitBehaviorIds.has(b.id);
           const issueKind = blockerOf(b);
           const isExpanded = expandedId === b.id;
@@ -1992,12 +1994,16 @@ export default function FocusMapView({
                     {b.steps.length}步
                   </span>
                 )}
-                {b.startAction && (
+                {startActionCount > 0 && (
                   <span
                     className="flex-shrink-0 rounded bg-[#EEF2FF] px-1 py-[1px] text-[8px] font-medium text-[#4F46E5]"
-                    title={`最小启动：${b.startAction.title}`}
+                    title={
+                      startActionCount === 1
+                        ? `最小启动：${b.startAction?.title ?? b.steps?.find((step) => step.startAction)?.startAction?.title}`
+                        : `${startActionCount} 个步骤设有最小启动`
+                    }
                   >
-                    有最小启动
+                    {startActionCount > 1 ? `${startActionCount}个最小启动` : "有最小启动"}
                   </span>
                 )}
                 {(task || repeatTasks.length > 0 || inHabits) && (
@@ -2131,8 +2137,6 @@ export default function FocusMapView({
                     steps={b.steps ?? []}
                     mode={b.type === "onetime" ? "task" : "procedure"}
                     onChange={(steps) => onSetSteps(b.id, steps)}
-                    startAction={b.startAction}
-                    onStartActionChange={(startAction) => onSetStartAction(b.id, startAction)}
                   />
                   {!(b.steps?.length) && (
                     <StartActionEditor
