@@ -870,6 +870,24 @@ export default function HabitTracker({
             aria-labelledby="habit-schedule-title"
             className="w-full max-w-[430px] rounded-t-[18px] border border-[var(--color-border)] bg-white p-4 shadow-[0_18px_50px_rgba(0,0,0,0.18)] sm:rounded-[16px]"
             onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (
+                event.key !== "Enter" ||
+                event.nativeEvent.isComposing ||
+                event.metaKey ||
+                event.ctrlKey ||
+                event.altKey ||
+                selectedScheduleDates.length === 0
+              ) return;
+              const target = event.target as HTMLElement;
+              if (
+                target.closest('input, textarea, select, [contenteditable="true"]') ||
+                target.closest("[data-schedule-command]")
+              ) return;
+              event.preventDefault();
+              event.stopPropagation();
+              applyScheduleDates();
+            }}
           >
             <div className="flex items-start gap-3">
               <div className="min-w-0 flex-1">
@@ -888,6 +906,7 @@ export default function HabitTracker({
               </div>
               <button
                 type="button"
+                data-schedule-command
                 onClick={closeScheduler}
                 className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-[var(--color-text-tertiary)] hover:bg-[var(--color-bg-gray-lighter)]"
                 aria-label="关闭日期选择"
@@ -943,11 +962,12 @@ export default function HabitTracker({
             <div className="mt-4 flex items-center gap-2 border-t border-[var(--color-border)] pt-3">
               <span className="min-w-0 flex-1 text-[10px] text-[var(--color-text-tertiary)]">
                 {selectedScheduleDates.length > 0
-                  ? `已选 ${selectedScheduleDates.length} 天，将生成 ${selectedScheduleDates.length} 条 Todo`
+                  ? `已选 ${selectedScheduleDates.length} 天 · Enter 加入任务`
                   : "点选一个或多个日期"}
               </span>
               <button
                 type="button"
+                data-schedule-command
                 onClick={closeScheduler}
                 className="rounded-lg px-3 py-2 text-[12px] font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-gray-lighter)]"
               >
@@ -955,6 +975,7 @@ export default function HabitTracker({
               </button>
               <button
                 type="button"
+                data-schedule-command
                 onClick={applyScheduleDates}
                 disabled={selectedScheduleDates.length === 0}
                 className="rounded-lg bg-[var(--color-primary)] px-3.5 py-2 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"

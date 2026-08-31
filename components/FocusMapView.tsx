@@ -2243,7 +2243,28 @@ export default function FocusMapView({
 
               {singleSchedulingId === b.id &&
                 (isRepeatable(b.type) || (b.type === "onetime" && !task)) && (
-                <div className="mt-0.5 flex w-full flex-col gap-1.5 rounded-lg bg-[var(--color-bg-gray-lighter)] p-2">
+                <div
+                  className="mt-0.5 flex w-full flex-col gap-1.5 rounded-lg bg-[var(--color-bg-gray-lighter)] p-2"
+                  onKeyDown={(event) => {
+                    if (
+                      !isRepeatable(b.type) ||
+                      event.key !== "Enter" ||
+                      event.nativeEvent.isComposing ||
+                      event.metaKey ||
+                      event.ctrlKey ||
+                      event.altKey ||
+                      !repeatScheduleChanged
+                    ) return;
+                    const target = event.target as HTMLElement;
+                    if (
+                      target.closest('input, textarea, select, [contenteditable="true"]') ||
+                      target.closest("[data-schedule-command]")
+                    ) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    saveRepeatSchedule(b, repeatTasks);
+                  }}
+                >
                   <div className="grid w-full grid-cols-4 gap-1.5">
                     {upcomingScheduleDates.map(({ date, iso, label }) => {
                       const alreadyScheduled = originalRepeatDates.has(iso);
@@ -2294,6 +2315,7 @@ export default function FocusMapView({
                     <div className="flex w-full items-center gap-1.5">
                       <button
                         type="button"
+                        data-schedule-command
                         onClick={() =>
                           setSingleScheduleDates(
                             singleScheduleDates.size === upcomingScheduleDates.length
@@ -2306,10 +2328,11 @@ export default function FocusMapView({
                         {singleScheduleDates.size === upcomingScheduleDates.length ? "清空" : "整周"}
                       </button>
                       <span className="flex-1 text-[9px] text-[var(--color-text-tertiary)]">
-                        已选 {singleScheduleDates.size} 天
+                        已选 {singleScheduleDates.size} 天 · Enter 保存
                       </span>
                       <button
                         type="button"
+                        data-schedule-command
                         onClick={() => {
                           setSingleSchedulingId(null);
                           setSingleScheduleDates(new Set());
@@ -2320,6 +2343,7 @@ export default function FocusMapView({
                       </button>
                       <button
                         type="button"
+                        data-schedule-command
                         disabled={!repeatScheduleChanged}
                         onClick={() => saveRepeatSchedule(b, repeatTasks)}
                         className="rounded-md bg-[#4F46E5] px-2.5 py-1 text-[10px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
@@ -2330,6 +2354,7 @@ export default function FocusMapView({
                   ) : (
                     <button
                       type="button"
+                      data-schedule-command
                       onClick={() => {
                         setSingleSchedulingId(null);
                         setSingleScheduleDates(new Set());
@@ -2586,7 +2611,28 @@ export default function FocusMapView({
 
       {/* 选中后的批量操作栏（固定在底部，滚到哪儿都够得着） */}
       {selected.size > 0 && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[380px] max-w-[92vw] flex flex-col gap-2 px-4 py-3 rounded-[14px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.15)] border border-[var(--color-border)]">
+        <div
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[380px] max-w-[92vw] flex flex-col gap-2 px-4 py-3 rounded-[14px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.15)] border border-[var(--color-border)]"
+          onKeyDown={(event) => {
+            if (
+              !scheduling ||
+              event.key !== "Enter" ||
+              event.nativeEvent.isComposing ||
+              event.metaKey ||
+              event.ctrlKey ||
+              event.altKey ||
+              batchScheduleDates.size === 0
+            ) return;
+            const target = event.target as HTMLElement;
+            if (
+              target.closest('input, textarea, select, [contenteditable="true"]') ||
+              target.closest("[data-schedule-command]")
+            ) return;
+            event.preventDefault();
+            event.stopPropagation();
+            confirmBatchSchedule();
+          }}
+        >
           <div className="w-full flex items-center gap-2">
             <span className="text-[12px] font-semibold text-[var(--color-text-primary)]">
               已选 {selected.size} 条
@@ -2594,6 +2640,7 @@ export default function FocusMapView({
             <div className="flex-1" />
             <button
               type="button"
+              data-schedule-command
               onClick={() => {
                 onArchiveMany(Array.from(selected));
                 setSelected(new Set());
@@ -2608,6 +2655,7 @@ export default function FocusMapView({
             <span className="h-3.5 w-px bg-[var(--color-border)]" />
             <button
               type="button"
+              data-schedule-command
               onClick={() => setConfirmBatchDelete(true)}
               className="inline-flex items-center gap-1 text-[12px] font-medium text-[var(--color-danger)] hover:opacity-75 transition-opacity"
             >
@@ -2617,6 +2665,7 @@ export default function FocusMapView({
             <span className="h-3.5 w-px bg-[var(--color-border)]" />
             <button
               type="button"
+              data-schedule-command
               onClick={() => {
                 setSelected(new Set());
                 setScheduling(false);
@@ -2638,6 +2687,7 @@ export default function FocusMapView({
                 {chosenRepeatables.length > 0 && (
                   <button
                     type="button"
+                    data-schedule-command
                     onClick={() =>
                       setBatchScheduleDates(
                         batchScheduleDates.size === upcomingScheduleDates.length
@@ -2683,10 +2733,11 @@ export default function FocusMapView({
               )}
               <div className="flex items-center gap-2">
                 <span className="flex-1 text-[10px] text-[var(--color-text-tertiary)]">
-                  已选 {batchScheduleDates.size} 天
+                  已选 {batchScheduleDates.size} 天 · Enter 确认
                 </span>
                 <button
                   type="button"
+                  data-schedule-command
                   onClick={() => {
                     setScheduling(false);
                     setBatchScheduleDates(new Set());
@@ -2697,6 +2748,7 @@ export default function FocusMapView({
                 </button>
                 <button
                   type="button"
+                  data-schedule-command
                   disabled={batchScheduleDates.size === 0}
                   onClick={confirmBatchSchedule}
                   className="rounded-lg bg-[#4F46E5] px-3 py-1.5 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
