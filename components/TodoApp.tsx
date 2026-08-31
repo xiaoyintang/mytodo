@@ -9,6 +9,7 @@ import HabitLabView from "@/components/HabitLabView";
 import GoalsView from "@/components/GoalsView";
 import AddTaskModal from "@/components/AddTaskModal";
 import SyncModal from "@/components/SyncModal";
+import DayTemplateModal from "@/components/DayTemplateModal";
 import FastTooltip from "@/components/FastTooltip";
 import type {
   Aspiration,
@@ -25,6 +26,7 @@ import type {
   StartAction,
   SubTask,
   Task,
+  TaskTemplate,
   TimeEntry,
   ViewMode,
   TaskStatus,
@@ -39,6 +41,10 @@ import type {
   AIResultImportApply,
 } from "@/components/todo/aiBridge";
 import { useTimer } from "@/components/todo/useTimer";
+import {
+  instantiateTemplateTasks,
+  tasksToTemplateItems,
+} from "@/components/todo/taskTemplate";
 import { Cloud, CloudOff, House, RefreshCw } from "lucide-react";
 
 const STORAGE_KEY = "mytodo.tasks.v1";
@@ -50,6 +56,7 @@ const BEHAVIORS_KEY = "mytodo.behaviors.v1";
 const HABITS_KEY = "mytodo.habits.v1";
 const HABIT_LOGS_KEY = "mytodo.habitlogs.v1";
 const DAY_PLANS_KEY = "mytodo.dayplans.v1";
+const TASK_TEMPLATES_KEY = "mytodo.task-templates.v1";
 const EMPTY_ENTRIES: TimeEntry[] = [];
 const EMPTY_ASPIRATIONS: Aspiration[] = [];
 const EMPTY_GOAL_RESULTS: GoalResult[] = [];
@@ -57,6 +64,7 @@ const EMPTY_BEHAVIORS: BehaviorCard[] = [];
 const EMPTY_HABITS: Habit[] = [];
 const EMPTY_HABIT_LOGS: HabitLog[] = [];
 const EMPTY_DAY_PLANS: Record<string, DayPlan> = {};
+const EMPTY_TASK_TEMPLATES: TaskTemplate[] = [];
 const APP_HISTORY_KEY = "mytodo.route.v1";
 const WORKSPACE_TABS: ViewMode[] = ["day", "week", "log", "habit"];
 
@@ -320,6 +328,8 @@ export default function TodoApp() {
   // 每天的安排（主线/必做）。按日期做 key，不建 MainLine 实体
   const { value: dayPlans, setValue: setDayPlans, hydrated: plansHydrated } =
     useLocalStorageState<Record<string, DayPlan>>(DAY_PLANS_KEY, EMPTY_DAY_PLANS);
+  const { value: taskTemplates, setValue: setTaskTemplates, hydrated: templatesHydrated } =
+    useLocalStorageState<TaskTemplate[]>(TASK_TEMPLATES_KEY, EMPTY_TASK_TEMPLATES);
 
   const startActionMigrationDone = useRef(false);
   useEffect(() => {
@@ -432,6 +442,7 @@ export default function TodoApp() {
     prevTodayRef.current = todayIso;
   }, [todayIso]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isTemplateOpen, setIsTemplateOpen] = useState(false);
   const [isSyncOpen, setIsSyncOpen] = useState(false);
   // 时间记录撤回栈：每次用户改动记录前先存一份快照，最多留 30 步
   const [entriesHistory, setEntriesHistory] = useState<TimeEntry[][]>([]);
@@ -454,16 +465,31 @@ export default function TodoApp() {
   const safeHabits = habitsHydrated ? habits : EMPTY_HABITS;
   const safeHabitLogs = logsHydrated ? habitLogs : EMPTY_HABIT_LOGS;
   const safeDayPlans = plansHydrated ? dayPlans : EMPTY_DAY_PLANS;
+  const safeTaskTemplates = templatesHydrated ? taskTemplates : EMPTY_TASK_TEMPLATES;
 
   // 多设备同步码
   // 计时器提到这一层，才能进云同步（手机上开始，电脑上看得到还在跑）
   const timer = useTimer((entry) => addEntries([entry]));
 
   const labHydrated =
-    aspHydrated && resultsHydrated && behHydrated && habitsHydrated && logsHydrated && plansHydrated;
+    aspHydrated &&
+    resultsHydrated &&
+    behHydrated &&
+    habitsHydrated &&
+    logsHydrated &&
+    plansHydrated &&
+    templatesHydrated;
   const lab = useMemo(
-    () => ({ aspirations, goalResults, behaviors: behaviorCards, habits, habitLogs, dayPlans }),
-    [aspirations, goalResults, behaviorCards, habits, habitLogs, dayPlans],
+    () => ({
+      aspirations,
+      goalResults,
+      behaviors: behaviorCards,
+      habits,
+      habitLogs,
+      dayPlans,
+      taskTemplates,
+    }),
+    [aspirations, goalResults, behaviorCards, habits, habitLogs, dayPlans, taskTemplates],
   );
 
   const sync = useCloudSync({
@@ -482,6 +508,7 @@ export default function TodoApp() {
       if (patch.habits) setHabits(patch.habits);
       if (patch.habitLogs) setHabitLogs(patch.habitLogs);
       if (patch.dayPlans) setDayPlans(patch.dayPlans);
+      if (patch.taskTemplates) setTaskTemplates(patch.taskTemplates);
     },
     adoptTimer: timer.adopt,
   });
@@ -572,6 +599,45 @@ export default function TodoApp() {
       id: `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     };
     setTasks((prev) => [...prev, newTask]);
+  }
+
+  /**
+   * 从某一天挑出的真实任务沉淀成模板。模板只复制结构：完成状态、进度和日期全部清零。
+   * 目标/KR/步骤/最小启动及习惯关联保留，焦点地图来源不是必填项。
+   */
+  function createTaskTemplate(name: string, taskIds: string[]): string | null {
+    const ids = new Set(taskIds);
+    const source = tasks
+      .filter((task) => ids.has(task.id))
+      .slice()
+      .sort((a, b) => (a.startTime ?? "99:99").localeCompare(b.startTime ?? "99:99"));
+    const items = tasksToTemplateItems(source);
+    if (!name.trim() || items.length === 0) return null;
+    const id = `tpl-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const template: TaskTemplate = {
+      id,
+      name: name.trim(),
+      items,
+      createdAt: Date.now(),
+    };
+    setTaskTemplates((prev) => [...prev, template]);
+    return id;
+  }
+
+  function deleteTaskTemplate(templateId: string) {
+    setTaskTemplates((prev) => prev.filter((template) => template.id !== templateId));
+  }
+
+  function applyTaskTemplate(
+    templateId: string,
+    itemIds: string[],
+    date: ISODate,
+  ): { created: number; skipped: number } {
+    const template = taskTemplates.find((candidate) => candidate.id === templateId);
+    if (!template) return { created: 0, skipped: 0 };
+    const result = instantiateTemplateTasks(template, itemIds, date, tasks);
+    if (result.tasks.length > 0) setTasks((prev) => [...prev, ...result.tasks]);
+    return { created: result.tasks.length, skipped: result.skipped };
   }
 
   // ===== 子任务 =====
@@ -1845,6 +1911,7 @@ export default function TodoApp() {
     if (
       goalsOpen ||
       isModalOpen ||
+      isTemplateOpen ||
       isSyncOpen ||
       window.innerWidth >= 640 ||
       !event.isPrimary ||
@@ -1983,6 +2050,7 @@ export default function TodoApp() {
           onToggleSubtask={toggleSubtask}
           onReorderSubtask={reorderSubtask}
           onOpenAddModal={() => setIsModalOpen(true)}
+          onOpenTemplates={() => setIsTemplateOpen(true)}
           onCreateTask={createTask}
           onDeleteTask={deleteTask}
           onUpdateTask={updateTask}
@@ -2100,12 +2168,26 @@ export default function TodoApp() {
         selectedDate={selectedDate}
       />
 
+      <DayTemplateModal
+        isOpen={isTemplateOpen}
+        date={selectedDate}
+        tasks={safeTasks}
+        templates={safeTaskTemplates}
+        aspirations={safeAspirations}
+        goalResults={safeGoalResults}
+        onClose={() => setIsTemplateOpen(false)}
+        onCreate={createTaskTemplate}
+        onDelete={deleteTaskTemplate}
+        onApply={applyTaskTemplate}
+      />
+
       {/*
        * 非首页始终给一个确定出口。它不等同于“返回”：无论当前从哪里进来，
        * 都直接落到今天的任务，而不是让用户猜还要退几层。
        */}
       {(goalsOpen || viewMode !== "day" || selectedDate !== todayIso) &&
         !isModalOpen &&
+        !isTemplateOpen &&
         !isSyncOpen && (
           <button
             type="button"

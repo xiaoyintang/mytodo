@@ -1,7 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Aspiration, BehaviorCard, DayPlan, GoalResult, Habit, HabitLog, Task, TimeEntry } from "./types";
+import type {
+  Aspiration,
+  BehaviorCard,
+  DayPlan,
+  GoalResult,
+  Habit,
+  HabitLog,
+  Task,
+  TaskTemplate,
+  TimeEntry,
+} from "./types";
 import type { TimerState } from "./useTimer";
 
 export type SyncStatus = "off" | "syncing" | "synced" | "error" | "not_configured";
@@ -26,6 +36,7 @@ export type LabData = {
   habits: Habit[];
   habitLogs: HabitLog[];
   dayPlans: Record<string, DayPlan>;
+  taskTemplates: TaskTemplate[];
 };
 
 type Args = {
@@ -218,12 +229,25 @@ export function useCloudSync({
           data?.dayPlans && typeof data.dayPlans === "object"
             ? (data.dayPlans as Record<string, DayPlan>)
             : null;
+        const cloudTemplates = Array.isArray(data?.taskTemplates)
+          ? (data.taskTemplates as TaskTemplate[])
+          : null;
         // 计时状态：谁的 updatedAt 新听谁的（adopt 内部还会再比一次）。
         // 采纳远端的"已停止"不会记一笔——那笔记录在按停止的那台设备上产生，会自己同步过来。
         const cloudTimer = data?.timer as TimerState | undefined;
         if (cloudTimer && typeof cloudTimer.updatedAt === "number") adoptTimer(cloudTimer);
 
-        if (!cloudTasks && !cloudEntries && !cloudAsp && !cloudResults && !cloudBeh) return "empty";
+        if (
+          !cloudTasks &&
+          !cloudEntries &&
+          !cloudAsp &&
+          !cloudResults &&
+          !cloudBeh &&
+          !cloudHabits &&
+          !cloudLogs &&
+          !cloudPlans &&
+          !cloudTemplates
+        ) return "empty";
 
         // 本地有未上传的改动（含拉取期间刚新增的）→ 合并而不是覆盖，
         // 保证本地记录一条都不丢，合并后再把完整数据推上云。
@@ -242,6 +266,10 @@ export function useCloudSync({
             habits: mergeById(cloudHabits ?? [], labRef.current.habits),
             habitLogs: mergeById(cloudLogs ?? [], labRef.current.habitLogs),
             dayPlans: mergePlans(cloudPlans, labRef.current.dayPlans),
+            taskTemplates: mergeById(
+              cloudTemplates ?? [],
+              labRef.current.taskTemplates,
+            ),
           };
           setTasks(mergedTasks);
           setEntries(mergedEntries);
@@ -263,6 +291,7 @@ export function useCloudSync({
           ...(cloudHabits ? { habits: cloudHabits } : {}),
           ...(cloudLogs ? { habitLogs: cloudLogs } : {}),
           ...(cloudPlans ? { dayPlans: cloudPlans } : {}),
+          ...(cloudTemplates ? { taskTemplates: cloudTemplates } : {}),
         });
         setStatus("synced");
         setLastSyncedAt(Date.now());

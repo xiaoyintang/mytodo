@@ -52,6 +52,10 @@ export interface Task {
   sourceHabitId?: string;
   /** 从焦点地图的哪条推进项排出来；用于同日去重、回溯和同步改名。 */
   sourceBehaviorId?: string;
+  /** 从哪套日计划模板生成；模板只是来源，不要求任务经过焦点地图。 */
+  sourceTemplateId?: string;
+  /** 模板里的哪一项；同一模板重复套用时用于精确去重。 */
+  sourceTemplateItemId?: string;
   startTime?: string; // "HH:mm"
   endTime?: string; // "HH:mm"
   status: TaskStatus;
@@ -65,6 +69,35 @@ export interface Task {
   startAction?: StartAction;
   /** 手动完成进度 0-100（非时长目标任务用；与状态联动：0=待办 100=已完成 其余=进行中） */
   progress?: number;
+}
+
+/**
+ * 日计划模板的一项。它不是待办本身，只保存创建执行实例时需要复制的结构。
+ * 不保存日期、状态和完成进度：每次套用都会得到一条全新的当天任务。
+ */
+export interface TaskTemplateItem {
+  id: string;
+  title: string;
+  aspirationId?: string;
+  resultId?: string;
+  sourceHabitId?: string;
+  sourceBehaviorId?: string;
+  startTime?: string;
+  endTime?: string;
+  priority?: TaskPriority;
+  tag?: TaskTag;
+  targetMinutes?: number;
+  subtasks?: SubTask[];
+  startAction?: StartAction;
+}
+
+/** 一套可按需复制到某一天的例行计划，例如“工作日”“周末”“轻量日”。 */
+export interface TaskTemplate {
+  id: string;
+  name: string;
+  items: TaskTemplateItem[];
+  createdAt: number;
+  updatedAt?: number;
 }
 
 // ===== 习惯实验室（福格行为设计）=====

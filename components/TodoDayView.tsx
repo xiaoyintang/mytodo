@@ -16,7 +16,7 @@ import { CN_WEEKDAY, addDays, parseISODate, startOfWeek } from "@/components/tod
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
 import { goalColor, mainlinesOf } from "@/components/todo/goal";
 import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
-import { Check, ChevronDown, ListChecks, MoreHorizontal, Timer } from "lucide-react";
+import { Check, ChevronDown, LayoutTemplate, ListChecks, MoreHorizontal, Timer } from "lucide-react";
 import TaskBottomSheet from "@/components/TaskBottomSheet";
 import QuickAddTask from "@/components/QuickAddTask";
 import MainlineBar from "@/components/MainlineBar";
@@ -36,6 +36,7 @@ type Props = {
   onToggleSubtask: (taskId: string, subId: string) => void;
   onReorderSubtask: (taskId: string, subId: string, targetId: string, edge: "before" | "after") => void;
   onOpenAddModal: () => void;
+  onOpenTemplates: () => void;
   onCreateTask: (task: Omit<Task, "id">) => void;
   onDeleteTask: (taskId: string) => void;
   onUpdateTask: (taskId: string, updates: Partial<Omit<Task, "id">>) => void;
@@ -107,6 +108,7 @@ export default function TodoDayView({
   onToggleSubtask,
   onReorderSubtask,
   onOpenAddModal,
+  onOpenTemplates,
   onCreateTask,
   onDeleteTask,
   onUpdateTask,
@@ -506,7 +508,18 @@ export default function TodoDayView({
       <WeekDateStrip days={days} selectedDate={selectedDate} today={today} onSelect={onSelectDate} />
 
       <div className="flex w-full flex-col gap-5 px-[18px] pb-6 pt-1">
-        <QuickAddTask onCreate={onCreateTask} />
+        <div className="flex items-start gap-2">
+          <QuickAddTask onCreate={onCreateTask} />
+          <button
+            type="button"
+            onClick={onOpenTemplates}
+            className="flex h-9 flex-shrink-0 items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-white px-3 text-[12px] font-semibold text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-primary)] hover:bg-[var(--color-primary-light)] hover:text-[var(--color-primary)]"
+            aria-label="打开日计划模板"
+          >
+            <LayoutTemplate className="h-3.5 w-3.5" />
+            模板
+          </button>
+        </div>
 
         <div
           className={
