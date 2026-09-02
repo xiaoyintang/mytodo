@@ -257,6 +257,8 @@ export interface TimeEntry {
   startTime?: string; // "HH:mm"，事后补记可以没有
   endTime?: string; // "HH:mm"
   taskId?: string; // 关联的任务（计入该任务的时长目标进度）
+  /** 自动匹配、用户明确指定，或用户明确选择“不计入任务”。旧记录缺省时仍兼容标题倒查。 */
+  taskLinkMode?: "auto" | "manual" | "none";
   aspirationId?: string; // 属于哪个目标（阶段三：计时时默认填今日主线）
   category?: EntryCategory; // 大类（关键词规则或 AI 判定）
   categorySource?: "user" | "ai"; // "user"=手动改过，以后同名记录都听它的，AI 不再覆盖

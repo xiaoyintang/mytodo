@@ -41,6 +41,7 @@ import type {
   AIResultImportApply,
 } from "@/components/todo/aiBridge";
 import { useTimer } from "@/components/todo/useTimer";
+import { matchTaskByTitle } from "@/components/todo/time";
 import {
   instantiateTemplateTasks,
   tasksToTemplateItems,
@@ -787,11 +788,24 @@ export default function TodoApp() {
 
   function addEntries(entryList: Omit<TimeEntry, "id">[]) {
     snapshotEntries();
-    const newEntries: TimeEntry[] = entryList.map((e, i) => ({
-      ...e,
-      aspirationId: resolveEntryAspiration(e),
-      id: `e-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
-    }));
+    const newEntries: TimeEntry[] = entryList.map((e, i) => {
+      // 停止计时、快捷记录和行内新增都走同一套关联规则；调用方明确给 taskId 时优先。
+      const hasExplicitTaskChoice = Object.prototype.hasOwnProperty.call(e, "taskId");
+      const matchedTask = hasExplicitTaskChoice
+        ? tasks.find((task) => task.id === e.taskId)
+        : matchTaskByTitle(e.title, e.date, tasks);
+      const taskLinkMode =
+        e.taskLinkMode ??
+        (hasExplicitTaskChoice ? (matchedTask ? "manual" : "none") : matchedTask ? "auto" : undefined);
+      const linkedEntry = matchedTask
+        ? { ...e, taskId: matchedTask.id, taskLinkMode }
+        : { ...e, taskLinkMode };
+      return {
+        ...linkedEntry,
+        aspirationId: resolveEntryAspiration(linkedEntry),
+        id: `e-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
+      };
+    });
     setEntries((prev) => [...prev, ...newEntries]);
   }
 

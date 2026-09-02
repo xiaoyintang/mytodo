@@ -75,7 +75,7 @@ function WeekTaskRow({
   const isInProgress = task.status === "in_progress";
   const isHigh = task.priority === "high";
   const target = task.targetMinutes ?? 0;
-  const logged = target > 0 ? taskLoggedMinutes(task, entries) : 0;
+  const logged = taskLoggedMinutes(task, entries);
   const reached = target > 0 && logged >= target;
   const manualPct = target > 0 ? 0 : (task.progress ?? 0);
 
@@ -160,9 +160,17 @@ function WeekTaskRow({
           <Timer className="w-3 h-3" />
           {formatMinutes(logged)}/{formatMinutes(target)}
         </span>
-      ) : manualPct > 0 && !isDone ? (
-        <span className="text-[11px] font-medium text-[var(--color-primary)] flex-shrink-0 tabular-nums">
-          {manualPct}%
+      ) : logged > 0 || (manualPct > 0 && !isDone) ? (
+        <span className="flex flex-shrink-0 items-center gap-1.5 text-[11px] font-medium">
+          {logged > 0 && (
+            <span className="flex items-center gap-0.5 text-[var(--color-primary)]">
+              <Timer className="h-3 w-3" />
+              {formatMinutes(logged)}
+            </span>
+          )}
+          {manualPct > 0 && !isDone && (
+            <span className="tabular-nums text-[var(--color-text-tertiary)]">{manualPct}%</span>
+          )}
         </span>
       ) : (
         task.startTime && (

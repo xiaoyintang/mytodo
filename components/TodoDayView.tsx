@@ -202,7 +202,8 @@ export default function TodoDayView({
     const isHigh = t.priority === "high";
     const time = timeLabel(t);
     const target = t.targetMinutes ?? 0;
-    const logged = target > 0 ? taskLoggedMinutes(t, entries) : 0;
+    // 即使没设置“目标时长”，只要台账计入过，也要在执行列表里看得见投入。
+    const logged = taskLoggedMinutes(t, entries);
     const reached = target > 0 && logged >= target;
     const manualPct = target > 0 ? 0 : (t.progress ?? 0);
     const subs = t.subtasks ?? [];
@@ -235,7 +236,8 @@ export default function TodoDayView({
       !!t.sourceHabitId ||
       !!t.sourceBehaviorId ||
       !!t.tag ||
-      isHigh;
+      isHigh ||
+      logged > 0;
 
     return (
       <div key={t.id} className={isInProgress ? "bg-[#F8FBFF]" : "bg-white"}>
@@ -361,6 +363,12 @@ export default function TodoDayView({
                 {showTime && time && (
                   <span className={isInProgress ? "font-medium text-[var(--color-primary)]" : "text-[var(--color-text-tertiary)]"}>
                     {time}
+                  </span>
+                )}
+                {target <= 0 && logged > 0 && (
+                  <span className="flex items-center gap-0.5 font-medium text-[var(--color-primary)]">
+                    <Timer className="h-2.5 w-2.5" />
+                    已投入 {formatMinutes(logged)}
                   </span>
                 )}
                 {(() => {

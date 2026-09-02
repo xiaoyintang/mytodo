@@ -38,13 +38,18 @@ export function formatMinutes(min: number): string {
 
 /** 某任务已累计记录的分钟数。计入两类记录：
  *  1. 明确关联到该任务的（taskId 命中）——记录时任务已存在
- *  2. 未关联、但同一天且标题与任务完全一致的——先记时间后建任务，也能倒着认回来
+ *  2. 未关联、未明确排除，且同一天标题完全一致的——先记时间后建任务，也能倒着认回来
  * 这样"先记录后建任务"和"先建任务后记录"两个顺序都能算进进度。 */
 export function taskLoggedMinutes(task: Task, entries: TimeEntry[]): number {
   const title = task.title.trim();
   return entries.reduce((sum, e) => {
     if (e.taskId === task.id) return sum + e.minutes;
-    if (!e.taskId && e.date === task.date && e.title.trim() === title) return sum + e.minutes;
+    if (
+      !e.taskId &&
+      e.taskLinkMode !== "none" &&
+      e.date === task.date &&
+      e.title.trim() === title
+    ) return sum + e.minutes;
     return sum;
   }, 0);
 }

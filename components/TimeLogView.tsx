@@ -70,6 +70,15 @@ type SummaryRow = {
   category: EntryCategory | null;
 };
 
+/**
+ * 解析完成但还没真正落账的一笔记录。
+ * taskId 是系统给出的关联建议，用户可以在确认前手动改掉。
+ */
+type PendingEntry = ParsedEntry & {
+  taskId?: string;
+  taskLinkMode?: TimeEntry["taskLinkMode"];
+};
+
 // AI 解析请求：8 秒超时 + 失败自动重试一次（应对 VPN 抽风）。返回 null 表示彻底失败（由调用方降级规则）。
 async function fetchAIParse(text: string, now: string): Promise<ParsedEntry[] | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -144,7 +153,7 @@ export default function TimeLogView({
   onNextWeek,
 }: Props) {
   const [input, setInput] = useState("");
-  const [pending, setPending] = useState<ParsedEntry[] | null>(null);
+  const [pending, setPending] = useState<PendingEntry[] | null>(null);
   const [parsing, setParsing] = useState(false);
   const [parseSource, setParseSource] = useState<"ai" | "rule" | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
@@ -160,6 +169,7 @@ export default function TimeLogView({
   const [weekOpen, setWeekOpen] = useState(false); // 周汇总默认收起
   const [catEditing, setCatEditing] = useState<string | null>(null); // 正在改分类的汇总行（按事项名）
   const [goalEditing, setGoalEditing] = useState<string | null>(null); // 正在改归属目标的那条记录
+  const [taskEditing, setTaskEditing] = useState<string | null>(null); // 正在改“计入哪个任务”的记录
   const classifyAskedRef = useRef<Set<string>>(new Set()); // 已问过 AI 的事项名，避免反复请求
 
   const todayISO = toISODate(new Date());
@@ -324,23 +334,32 @@ export default function TimeLogView({
       setParseError('没识别出时间记录。试试"背单词40分钟""刚才复盘面试30分钟"，或"现在养号"启动计时');
       return;
     }
-    setPending(parsed);
+    // 自动匹配只是建议：确认预览里仍然可以换成当天任意任务，或明确设为不计入。
+    setPending(
+      parsed.map((entry) => ({
+        ...entry,
+        ...(() => {
+          const matched = matchTaskByTitle(entry.title, selectedDate, tasks);
+          return matched
+            ? { taskId: matched.id, taskLinkMode: "auto" as const }
+            : { taskLinkMode: "none" as const };
+        })(),
+      })),
+    );
   }
 
   function handleConfirm() {
     if (!pending || pending.length === 0) return;
     onAddEntries(
-      pending.map((p) => {
-        const matched = matchTaskByTitle(p.title, selectedDate, tasks);
-        return {
-          date: selectedDate,
-          title: p.title,
-          minutes: p.minutes,
-          startTime: p.startTime,
-          endTime: p.endTime,
-          taskId: matched?.id,
-        };
-      }),
+      pending.map((p) => ({
+        date: selectedDate,
+        title: p.title,
+        minutes: p.minutes,
+        startTime: p.startTime,
+        endTime: p.endTime,
+        taskId: p.taskId,
+        taskLinkMode: p.taskLinkMode,
+      })),
     );
     setPending(null);
     setInput("");
@@ -351,6 +370,16 @@ export default function TimeLogView({
     if (!pending) return;
     const next = pending.filter((_, i) => i !== index);
     setPending(next.length > 0 ? next : null);
+  }
+
+  function setPendingTask(index: number, taskId: string | undefined) {
+    setPending((prev) =>
+      prev?.map((entry, i) =>
+        i === index
+          ? { ...entry, taskId, taskLinkMode: taskId ? "manual" : "none" }
+          : entry,
+      ) ?? null,
+    );
   }
 
   function handleConfirmDeleteEntry() {
@@ -400,14 +429,28 @@ export default function TimeLogView({
     const title = editTitle.trim();
     const minutes = resolvedEditMinutes();
     if (!title || !Number.isFinite(minutes) || minutes <= 0) return;
-    // 标题变了就重新匹配任务关联；没变则保留原关联
-    const taskId = title === e.title ? e.taskId : matchTaskByTitle(title, e.date, tasks)?.id;
+    // 手动指定过任务后，记录标题怎么改都不应冲掉人工判断；其余情况标题变化时重新给建议。
+    const rematched =
+      title !== e.title && e.taskLinkMode !== "manual"
+        ? matchTaskByTitle(title, e.date, tasks)
+        : undefined;
+    const taskId =
+      title === e.title || e.taskLinkMode === "manual"
+        ? e.taskId
+        : rematched?.id;
+    const taskLinkMode =
+      title === e.title || e.taskLinkMode === "manual"
+        ? e.taskLinkMode
+        : rematched
+          ? "auto"
+          : "none";
     onUpdateEntry(e.id, {
       title,
       minutes,
       startTime: editStart || undefined,
       endTime: editEnd || undefined,
       taskId,
+      taskLinkMode,
     });
     setEditingId(null);
   }
@@ -427,16 +470,16 @@ export default function TimeLogView({
     const title = editTitle.trim();
     const minutes = resolvedEditMinutes();
     if (!title || !Number.isFinite(minutes) || minutes <= 0) return;
-    onAddEntries([
-      {
-        date: selectedDate,
-        title,
-        minutes,
-        startTime: editStart || undefined,
-        endTime: editEnd || undefined,
-        taskId: matchTaskByTitle(title, selectedDate, tasks)?.id,
-      },
-    ]);
+    const matched = matchTaskByTitle(title, selectedDate, tasks);
+    onAddEntries([{
+      date: selectedDate,
+      title,
+      minutes,
+      startTime: editStart || undefined,
+      endTime: editEnd || undefined,
+      taskId: matched?.id,
+      taskLinkMode: matched ? "auto" : "none",
+    }]);
     setEditingId(null);
   }
 
@@ -646,9 +689,10 @@ export default function TimeLogView({
                 </span>
               </div>
               {pending.map((p, i) => {
-                const matched = matchTaskByTitle(p.title, selectedDate, tasks);
+                const matched = p.taskId ? tasks.find((task) => task.id === p.taskId) : undefined;
+                const availableTasks = tasks.filter((task) => task.date === selectedDate);
                 return (
-                  <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-[var(--color-border)]">
+                  <div key={i} className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white px-3 py-2">
                     <div className="flex-1 flex flex-col min-w-0">
                       <span
                         className="truncate text-[13px] font-medium text-[var(--color-text-primary)]"
@@ -656,15 +700,27 @@ export default function TimeLogView({
                       >
                         {p.title}
                       </span>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[11px] text-[var(--color-text-tertiary)]">{entryTimeLabel(p)}</span>
                         <span className="text-[11px] font-medium text-[var(--color-primary)]">{formatMinutes(p.minutes)}</span>
-                        {matched && (
-                          <span className="flex items-center gap-0.5 text-[10px] text-[var(--color-success)]">
-                            <Link2 className="w-3 h-3" />
-                            {matched.title}
-                          </span>
-                        )}
+                        <label className="flex min-w-0 items-center gap-1 text-[10px] text-[var(--color-text-tertiary)]">
+                          <Link2 className="h-3 w-3 flex-shrink-0" />
+                          <span className="flex-shrink-0">计入</span>
+                          <select
+                            value={p.taskId ?? ""}
+                            onChange={(event) => setPendingTask(i, event.target.value || undefined)}
+                            className="min-w-0 max-w-[220px] rounded border border-[var(--color-border)] bg-white px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-text-secondary)] focus:border-[var(--color-primary)] focus:outline-none"
+                            aria-label={`选择“${p.title}”计入的任务`}
+                          >
+                            <option value="">不计入任务</option>
+                            {availableTasks.map((task) => (
+                              <option key={task.id} value={task.id}>
+                                {task.title}
+                              </option>
+                            ))}
+                          </select>
+                          {matched && <span className="text-[var(--color-success)]">已关联</span>}
+                        </label>
                       </div>
                     </div>
                     <button
@@ -776,11 +832,26 @@ export default function TimeLogView({
                           {e.title}
                         </span>
                         <span className="flex items-center gap-2 flex-wrap">
-                          {task && (
-                            <span className="flex items-center gap-0.5 text-[10px] text-[var(--color-success)]">
+                          {(task || tasks.some((candidate) => candidate.date === e.date)) && (
+                            <button
+                              type="button"
+                              onClick={() => setTaskEditing(taskEditing === e.id ? null : e.id)}
+                              className={[
+                                "flex min-w-0 max-w-[260px] items-center gap-0.5 rounded px-1 py-[1px] text-[10px] transition-colors",
+                                task
+                                  ? "text-[var(--color-success)] hover:bg-[#F0FDF4]"
+                                  : "text-[var(--color-text-tertiary)] hover:bg-[var(--color-bg-gray-light)]",
+                              ].join(" ")}
+                              title={task ? "点一下更改计入的任务" : "点一下手动计入任务"}
+                            >
                               <Link2 className="w-3 h-3" />
-                              计入「{task.title}」
-                            </span>
+                              <span
+                                className="truncate"
+                                data-full-text={task ? `计入「${task.title}」` : "计入任务"}
+                              >
+                                {task ? `计入「${task.title}」` : "计入任务"}
+                              </span>
+                            </button>
                           )}
                           {/* 归属目标：创建时从 task/habit 复制来的，这里可以点着改 */}
                           {aspirations.length > 0 && (() => {
@@ -833,6 +904,42 @@ export default function TimeLogView({
                         <Trash2 className="w-[16px] h-[16px] text-[#A1A1AA]" />
                       </button>
                     </div>
+                    {/* 任务关联与记录标题是两件事：标题完全不同也可以手动计入。 */}
+                    {taskEditing === e.id && (
+                      <div className="flex w-full items-center gap-2 px-3.5 pb-1">
+                        <span className="flex-shrink-0 text-[10px] text-[var(--color-text-tertiary)]">计入任务</span>
+                        <select
+                          value={e.taskId ?? ""}
+                          onChange={(event) => {
+                            const nextTask = tasks.find((candidate) => candidate.id === event.target.value);
+                            onUpdateEntry(e.id, {
+                              taskId: nextTask?.id,
+                              taskLinkMode: nextTask ? "manual" : "none",
+                              ...(nextTask ? { aspirationId: nextTask.aspirationId } : {}),
+                            });
+                            setTaskEditing(null);
+                          }}
+                          className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-white px-2 py-1.5 text-[11px] text-[var(--color-text-secondary)] focus:border-[var(--color-primary)] focus:outline-none"
+                          aria-label={`更改“${e.title}”计入的任务`}
+                        >
+                          <option value="">不计入任务</option>
+                          {tasks
+                            .filter((candidate) => candidate.date === e.date)
+                            .map((candidate) => (
+                              <option key={candidate.id} value={candidate.id}>
+                                {candidate.title}
+                              </option>
+                            ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setTaskEditing(null)}
+                          className="rounded px-2 py-1 text-[10px] text-[var(--color-text-tertiary)] hover:bg-[var(--color-bg-gray-light)]"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    )}
                     {/* 改归属目标：就地展开，改完立刻收起 */}
                     {goalEditing === e.id && (
                       <div className="w-full flex items-center gap-1.5 flex-wrap px-3.5 pb-1">
