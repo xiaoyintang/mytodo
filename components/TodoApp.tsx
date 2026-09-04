@@ -629,6 +629,21 @@ export default function TodoApp() {
     setTaskTemplates((prev) => prev.filter((template) => template.id !== templateId));
   }
 
+  /** 修改的是可复用母版；已经从它生成的任务是历史执行实例，不跟着回写。 */
+  function updateTaskTemplate(
+    templateId: string,
+    name: string,
+    items: TaskTemplate["items"],
+  ) {
+    setTaskTemplates((prev) =>
+      prev.map((template) =>
+        template.id === templateId
+          ? { ...template, name: name.trim(), items, updatedAt: Date.now() }
+          : template,
+      ),
+    );
+  }
+
   function applyTaskTemplate(
     templateId: string,
     itemIds: string[],
@@ -2191,6 +2206,7 @@ export default function TodoApp() {
         goalResults={safeGoalResults}
         onClose={() => setIsTemplateOpen(false)}
         onCreate={createTaskTemplate}
+        onUpdate={updateTaskTemplate}
         onDelete={deleteTaskTemplate}
         onApply={applyTaskTemplate}
       />
