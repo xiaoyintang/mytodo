@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import type { ISODate, ViewMode } from "@/components/todo/types";
 import { CN_WEEKDAY, toISODate } from "@/components/todo/date";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 
 const TABS: Array<[ViewMode, string]> = [
   ["day", "今天"],
@@ -25,10 +25,11 @@ type HeaderProps = {
   subtitle?: string;
   onPrev?: () => void;
   onNext?: () => void;
+  onToday?: () => void;
   onAdd?: () => void;
 };
 
-export function AppHeader({ title, subtitle, onPrev, onNext, onAdd }: HeaderProps) {
+export function AppHeader({ title, subtitle, onPrev, onNext, onToday, onAdd }: HeaderProps) {
   return (
     <header className="flex w-full items-center justify-between gap-3 px-[18px] pb-3 pt-4 sm:pt-[18px]">
       <div className="min-w-0">
@@ -49,6 +50,17 @@ export function AppHeader({ title, subtitle, onPrev, onNext, onAdd }: HeaderProp
       </div>
 
       <div className="flex flex-shrink-0 items-center gap-1">
+        {onToday && (
+          <button
+            type="button"
+            onClick={onToday}
+            className="mr-1 flex h-8 items-center gap-1 rounded-lg border border-[var(--color-primary)] px-2 text-[11px] font-semibold text-[var(--color-primary)] transition-colors hover:bg-[var(--color-primary-light)]"
+            aria-label="回到今天"
+          >
+            <CalendarDays className="h-3.5 w-3.5" />
+            回今天
+          </button>
+        )}
         {onPrev && (
           <button
             type="button"

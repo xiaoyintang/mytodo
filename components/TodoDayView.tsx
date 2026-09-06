@@ -500,6 +500,7 @@ export default function TodoDayView({
         subtitle={headerSubtitle}
         onPrev={onPrevWeek}
         onNext={onNextWeek}
+        onToday={selectedDate !== today ? () => onSelectDate(today) : undefined}
         onAdd={onOpenAddModal}
       />
       <MainlineBar
