@@ -20,7 +20,7 @@ import { Check, ChevronDown, LayoutTemplate, ListChecks, MoreHorizontal, Timer }
 import TaskBottomSheet from "@/components/TaskBottomSheet";
 import QuickAddTask from "@/components/QuickAddTask";
 import MainlineBar from "@/components/MainlineBar";
-import { AppHeader, AppShell, ViewTabs, WeekDateStrip } from "@/components/ViewChrome";
+import { AppHeader, AppShell, MonthDatePicker, ViewTabs, WeekDateStrip } from "@/components/ViewChrome";
 
 type Props = {
   viewMode: ViewMode;
@@ -129,6 +129,7 @@ export default function TodoDayView({
 }: Props) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [offOpen, setOffOpen] = useState(false);        // 非主线任务默认折起来
   // 展开的任务（看子任务）。默认全收起——卡片列表要保持一眼扫得完
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -501,8 +502,17 @@ export default function TodoDayView({
         onPrev={onPrevWeek}
         onNext={onNextWeek}
         onToday={selectedDate !== today ? () => onSelectDate(today) : undefined}
+        onTitleClick={() => setDatePickerOpen(true)}
         onAdd={onOpenAddModal}
       />
+      {datePickerOpen && (
+        <MonthDatePicker
+          selectedDate={selectedDate}
+          today={today}
+          onSelect={onSelectDate}
+          onClose={() => setDatePickerOpen(false)}
+        />
+      )}
       <MainlineBar
         date={selectedDate}
         aspirations={aspirations}
