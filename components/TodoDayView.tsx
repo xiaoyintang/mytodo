@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import type {
   Aspiration,
   BehaviorCard,
@@ -16,7 +17,8 @@ import { CN_WEEKDAY, addDays, parseISODate, startOfWeek } from "@/components/tod
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
 import { goalColor, mainlinesOf } from "@/components/todo/goal";
 import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
-import { Check, ChevronDown, LayoutTemplate, ListChecks, MoreHorizontal, Timer } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, LayoutTemplate, ListChecks, MoreHorizontal, Timer, X } from "lucide-react";
+import TaskScheduleDialog, { type TaskSchedule } from "@/components/TaskScheduleDialog";
 import TaskBottomSheet from "@/components/TaskBottomSheet";
 import QuickAddTask from "@/components/QuickAddTask";
 import MainlineBar from "@/components/MainlineBar";
@@ -130,6 +132,20 @@ export default function TodoDayView({
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [scheduleEditor, setScheduleEditor] = useState<{ taskId: string; focusTime: boolean } | null>(null);
+  const [scheduleUndo, setScheduleUndo] = useState<{ taskId: string; before: TaskSchedule; message: string } | null>(null);
+  const schedulingTask = tasks.find((task) => task.id === scheduleEditor?.taskId);
+
+  function applySchedule(schedule: TaskSchedule) {
+    if (!schedulingTask) return;
+    const before: TaskSchedule = { date: schedulingTask.date, startTime: schedulingTask.startTime,
+      endTime: schedulingTask.endTime, targetMinutes: schedulingTask.targetMinutes };
+    setScheduleEditor(null);
+    if (Object.keys(before).every((key) => before[key as keyof TaskSchedule] === schedule[key as keyof TaskSchedule])) return;
+    onUpdateTask(schedulingTask.id, schedule);
+    setScheduleUndo({ taskId: schedulingTask.id, before,
+      message: `已安排到 ${schedule.date}${schedule.startTime ? ` ${schedule.startTime}` : " · 不限时段"}` });
+  }
   const [offOpen, setOffOpen] = useState(false);        // 非主线任务默认折起来
   // 展开的任务（看子任务）。默认全收起——卡片列表要保持一眼扫得完
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -393,9 +409,12 @@ export default function TodoDayView({
             {hasMeta && (
               <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] leading-4">
                 {showTime && time && (
-                  <span className={isInProgress ? "font-medium text-[var(--color-primary)]" : "text-[var(--color-text-tertiary)]"}>
+                  <button type="button" aria-label={`修改时间：${t.title}`} onClick={(event) => {
+                    event.stopPropagation();
+                    setScheduleEditor({ taskId: t.id, focusTime: true });
+                  }} className={`rounded hover:bg-[var(--color-primary-light)] ${isInProgress ? "font-medium text-[var(--color-primary)]" : "text-[var(--color-text-tertiary)]"}`}>
                     {time}
-                  </span>
+                  </button>
                 )}
                 {target <= 0 && logged > 0 && (
                   <span className="flex items-center gap-0.5 font-medium text-[var(--color-primary)]">
@@ -456,6 +475,13 @@ export default function TodoDayView({
             )}
           </div>
 
+          <button type="button" onClick={(event) => {
+            event.stopPropagation();
+            setScheduleEditor({ taskId: t.id, focusTime: false });
+          }} aria-label={`改期：${t.title}`}
+            className="flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-[11px] text-[var(--color-text-secondary)] hover:bg-[var(--color-primary-light)] hover:text-[var(--color-primary)]">
+            <CalendarDays className="h-3.5 w-3.5" /><span>改期</span>
+          </button>
           <button
             type="button"
             onClick={(e) => handleStartEdit(e, t)}
@@ -605,14 +631,16 @@ export default function TodoDayView({
               <div>
                 {scheduledTasks.map((task, index) => (
                   <div key={task.id} className="flex border-b border-[var(--color-border)] last:border-b-0">
-                    <div className="w-[42px] flex-shrink-0 py-3 pr-1 text-right tabular-nums">
+                    <button type="button" onClick={() => setScheduleEditor({ taskId: task.id, focusTime: true })}
+                      aria-label={`修改时间：${task.title}`}
+                      className="w-[42px] self-start flex-shrink-0 rounded-md py-3 pr-1 text-right tabular-nums hover:bg-[var(--color-primary-light)] focus-visible:outline-[var(--color-primary)]">
                       <span className="block text-[11px] font-semibold leading-4 text-[var(--color-text-secondary)]">
                         {task.startTime}
                       </span>
                       {task.endTime && (
                         <span className="block text-[9px] leading-3 text-[var(--color-text-tertiary)]">{task.endTime}</span>
                       )}
-                    </div>
+                    </button>
                     <div className="relative w-5 flex-shrink-0">
                       {index < scheduledTasks.length - 1 && (
                         <span className="absolute bottom-0 left-1/2 top-[17px] w-px -translate-x-1/2 bg-[var(--color-border)]" />
@@ -677,6 +705,16 @@ export default function TodoDayView({
       </div>
 
       {/* Bottom Sheet for editing */}
+      {schedulingTask && scheduleEditor && <TaskScheduleDialog key={schedulingTask.id}
+        task={schedulingTask} today={today} focusTime={scheduleEditor.focusTime}
+        onApply={applySchedule} onClose={() => setScheduleEditor(null)} />}
+      {scheduleUndo && tasks.some((task) => task.id === scheduleUndo.taskId) && createPortal(
+        <div role="status" className="fixed bottom-16 left-1/2 z-[110] flex w-max max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-3 rounded-xl border border-[var(--color-border)] bg-white px-3 py-2 shadow-lg" data-no-tab-swipe>
+          <span className="min-w-0 text-[12px] text-[var(--color-text-secondary)]">{scheduleUndo.message}</span>
+          <button type="button" onClick={() => { onUpdateTask(scheduleUndo.taskId, scheduleUndo.before); setScheduleUndo(null); }} className="shrink-0 text-[12px] font-semibold text-[var(--color-primary)]">撤回改期</button>
+          <button type="button" onClick={() => setScheduleUndo(null)} aria-label="关闭改期提示"><X className="h-3.5 w-3.5" /></button>
+        </div>, document.body
+      )}
       <TaskBottomSheet
         onAddSubtasks={onAddSubtasks}
         onToggleSubtask={onToggleSubtask}
