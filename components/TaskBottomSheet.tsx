@@ -269,10 +269,12 @@ export default function TaskBottomSheet({
     if (!isEditingTime || !task) return;
     function handleOutside(e: MouseEvent) {
       if (timeEditorRef.current?.contains(e.target as Node)) return;
+      if ((e.target as HTMLElement).closest?.('[data-target-editor]')) return;
       const taskId = task!.id;
       onUpdate(taskId, {
         startTime: editStartTimeRef.current || undefined,
         endTime: editEndTimeRef.current || undefined,
+        ...(editStartTimeRef.current ? { targetMinutes: undefined } : {}),
       });
       setIsEditingTime(false);
     }
@@ -337,6 +339,7 @@ export default function TaskBottomSheet({
     onUpdate(task.id, {
       startTime: editStartTimeRef.current || undefined,
       endTime: editEndTimeRef.current || undefined,
+      ...(editStartTimeRef.current ? { targetMinutes: undefined } : {}),
     });
     setIsEditingTime(false);
   }
@@ -387,9 +390,89 @@ export default function TaskBottomSheet({
 
   function handleSaveTarget(minutes: number) {
     if (!task || !Number.isFinite(minutes) || minutes <= 0) return;
-    onUpdate(task.id, { targetMinutes: minutes });
+    onUpdate(task.id, { targetMinutes: Math.round(minutes), startTime: undefined, endTime: undefined });
+    editStartTimeRef.current = "";
+    editEndTimeRef.current = "";
+    setIsEditingTime(false);
     setIsEditingTarget(false);
     setTargetInput("");
+  }
+
+  function renderTargetControl() {
+    const target = task?.targetMinutes ?? 0;
+    return (
+      <div data-target-editor>
+                {isEditingTarget ? (
+                  <div className="flex flex-col gap-2 mb-3">
+                    <p className="text-[11px] text-[var(--color-text-secondary)]">设为时长目标：当天累计投入这些分钟即可，保存后取消固定起止时间。</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {TARGET_PRESETS.map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => handleSaveTarget(m)}
+                          className={[
+                            "px-2.5 py-1.5 rounded-lg text-[12px] font-medium border transition-colors",
+                            target === m
+                              ? "bg-[var(--color-primary)] text-white border-[var(--color-primary)]"
+                              : "bg-white text-[var(--color-text-primary)] border-[var(--color-border)] hover:border-[var(--color-primary)]",
+                          ].join(" ")}
+                        >
+                          {formatMinutes(m)}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        value={targetInput}
+                        onChange={(e) => setTargetInput(e.target.value)}
+                        placeholder="自定义分钟数"
+                        className="flex-1 px-3 py-2 rounded-lg border border-[var(--color-border)] text-[13px] bg-white placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSaveTarget(Math.round(Number(targetInput)))}
+                        disabled={!targetInput || Number(targetInput) <= 0}
+                        className={[
+                          "px-3 py-2 rounded-lg text-[12px] font-medium transition-colors",
+                          targetInput && Number(targetInput) > 0
+                            ? "bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8]"
+                            : "bg-[var(--color-bg-gray-light)] text-[var(--color-text-tertiary)] cursor-not-allowed",
+                        ].join(" ")}
+                      >
+                        确认
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsEditingTarget(false);
+                          setTargetInput("");
+                        }}
+                        className="px-3 py-2 rounded-lg text-[12px] text-[var(--color-text-secondary)] hover:bg-white transition-colors"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      cancelTimeEdit();
+                      setTargetInput(target > 0 ? String(target) : "");
+                      setIsEditingTarget(true);
+                    }}
+                    className="flex items-center gap-1 mb-3 -ml-1 px-2.5 py-1 rounded-md text-[12px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] hover:bg-white transition-colors"
+                  >
+                    <Gauge className="w-3.5 h-3.5" />
+                    {target > 0 ? `时长目标 ${formatMinutes(target)} · 点击修改` : "改为时长目标"}
+                  </button>
+                )}
+      </div>
+    );
   }
 
   // Generate week days for the picker
@@ -554,11 +637,14 @@ export default function TaskBottomSheet({
           <div className="mb-4">
             <button
               type="button"
-              onClick={() => setIsEditingTime(!isEditingTime)}
+              onClick={() => {
+                setIsEditingTarget(false);
+                setIsEditingTime(!isEditingTime);
+              }}
               className="flex items-center gap-2 text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] transition-colors"
             >
               <Clock className="w-4 h-4 text-[var(--color-text-tertiary)]" />
-              <span>{timeStr || "未设置时间"}</span>
+              <span>{timeStr || (task.targetMinutes ? "不限时段 · 可改为固定时间" : "未设置时间")}</span>
               <span className="text-[11px] text-[var(--color-text-quaternary)]">点击修改</span>
             </button>
 
@@ -621,6 +707,8 @@ export default function TaskBottomSheet({
           </div>
 
           {/* 所属目标：决定它算不算"今天主线"里的任务 */}
+          {renderTargetControl()}
+
           {aspirations.length > 0 && (
             <div className="mb-4">
               <div className="mb-1.5 flex min-h-7 items-center justify-between gap-3">
@@ -1483,74 +1571,6 @@ export default function TaskBottomSheet({
                   </div>
                 )}
 
-                {/* 目标时长（可修改，不必删掉重建） */}
-                {isEditingTarget ? (
-                  <div className="flex flex-col gap-2 mb-3">
-                    <div className="flex flex-wrap gap-1.5">
-                      {TARGET_PRESETS.map((m) => (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() => handleSaveTarget(m)}
-                          className={[
-                            "px-2.5 py-1.5 rounded-lg text-[12px] font-medium border transition-colors",
-                            target === m
-                              ? "bg-[var(--color-primary)] text-white border-[var(--color-primary)]"
-                              : "bg-white text-[var(--color-text-primary)] border-[var(--color-border)] hover:border-[var(--color-primary)]",
-                          ].join(" ")}
-                        >
-                          {formatMinutes(m)}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        min={1}
-                        value={targetInput}
-                        onChange={(e) => setTargetInput(e.target.value)}
-                        placeholder="自定义分钟数"
-                        className="flex-1 px-3 py-2 rounded-lg border border-[var(--color-border)] text-[13px] bg-white placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)]"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleSaveTarget(Math.round(Number(targetInput)))}
-                        disabled={!targetInput || Number(targetInput) <= 0}
-                        className={[
-                          "px-3 py-2 rounded-lg text-[12px] font-medium transition-colors",
-                          targetInput && Number(targetInput) > 0
-                            ? "bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8]"
-                            : "bg-[var(--color-bg-gray-light)] text-[var(--color-text-tertiary)] cursor-not-allowed",
-                        ].join(" ")}
-                      >
-                        确认
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsEditingTarget(false);
-                          setTargetInput("");
-                        }}
-                        className="px-3 py-2 rounded-lg text-[12px] text-[var(--color-text-secondary)] hover:bg-white transition-colors"
-                      >
-                        取消
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTargetInput(target > 0 ? String(target) : "");
-                      setIsEditingTarget(true);
-                    }}
-                    className="flex items-center gap-1 mb-3 -ml-1 px-2.5 py-1 rounded-md text-[12px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] hover:bg-white transition-colors"
-                  >
-                    <Gauge className="w-3.5 h-3.5" />
-                    {target > 0 ? `目标 ${formatMinutes(target)} · 点击修改` : "设定目标时长"}
-                  </button>
-                )}
 
                 {isLogging ? (
                   <div className="flex flex-col gap-2">

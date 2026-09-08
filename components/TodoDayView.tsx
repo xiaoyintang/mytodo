@@ -196,6 +196,37 @@ export default function TodoDayView({
   const anytimeTasks = focusTasks.filter((task) => !task.startTime);
   const scheduledTasks = focusTasks.filter((task) => !!task.startTime);
 
+  function renderGoalGroups(items: Task[], showTime = false) {
+    const groups = aspirations
+      .map((goal, index) => ({ goal, index, tasks: items.filter((task) => task.aspirationId === goal.id) }))
+      .filter((group) => group.tasks.length > 0)
+      .sort((a, b) => Number(mainIds.includes(b.goal.id)) - Number(mainIds.includes(a.goal.id)));
+    const unassigned = items.filter((task) => !aspirations.some((goal) => goal.id === task.aspirationId));
+    return (
+      <div>
+        {groups.map(({ goal, index, tasks: groupedTasks }) => (
+          <section key={goal.id} aria-label={`${goal.title}的待办`} className="mt-2">
+            <div className="flex min-h-7 items-center gap-1.5 rounded-md bg-[var(--color-bg-gray-lighter)] px-2">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: goalColor(goal, index) }} />
+              <h3 className="min-w-0 flex-1 truncate text-[11px] font-semibold text-[var(--color-text-secondary)]" data-full-text={goal.title}>{goal.title}</h3>
+              {mainIds.includes(goal.id) && <span className="text-[9px] text-[var(--color-primary)]">主线</span>}
+              <span className="text-[10px] tabular-nums text-[var(--color-text-tertiary)]">{groupedTasks.length} 项</span>
+            </div>
+            <div className="divide-y divide-[var(--color-border)]">{groupedTasks.map((task) => renderTaskCard(task, showTime))}</div>
+          </section>
+        ))}
+        {unassigned.length > 0 && (
+          <section aria-label="未归属目标的待办" className="mt-2">
+            <h3 className="flex min-h-7 items-center justify-between rounded-md bg-[var(--color-bg-gray-lighter)] px-2 text-[11px] font-medium text-[var(--color-text-tertiary)]">
+              <span>未归属目标</span><span className="text-[10px]">{unassigned.length} 项</span>
+            </h3>
+            <div className="divide-y divide-[var(--color-border)]">{unassigned.map((task) => renderTaskCard(task, showTime))}</div>
+          </section>
+        )}
+      </div>
+    );
+  }
+
   // 任务行：默认只露出执行所需的信息，详情和删除收进右侧的更多入口。
   function renderTaskCard(t: Task, showTime = true) {
     const isDone = t.status === "done";
@@ -555,7 +586,7 @@ export default function TodoDayView({
                 </h2>
                 <span className="text-[10px] font-medium text-[var(--color-text-tertiary)]">{anytimeTasks.length} 项</span>
               </div>
-              <div className="divide-y divide-[var(--color-border)]">{anytimeTasks.map((task) => renderTaskCard(task, false))}</div>
+              {renderGoalGroups(anytimeTasks)}
             </section>
           )}
 
@@ -633,7 +664,7 @@ export default function TodoDayView({
                   })}
                 </span>
               </button>
-              {offOpen && <div className="divide-y divide-[var(--color-border)]">{offTasks.map((task) => renderTaskCard(task))}</div>}
+              {offOpen && renderGoalGroups(offTasks, true)}
             </div>
           )}
         </div>
