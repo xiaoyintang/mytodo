@@ -796,6 +796,8 @@ export default function TodoApp() {
    */
   function resolveEntryAspiration(e: Omit<TimeEntry, "id">): string | undefined {
     if (e.aspirationId) return e.aspirationId;
+    // 历史选择允许明确沿用“未归属”，不要又按同名习惯补上另一个目标。
+    if (e.taskLinkMode === "none" && Object.prototype.hasOwnProperty.call(e, "aspirationId")) return undefined;
     if (e.taskId) return tasks.find((t) => t.id === e.taskId)?.aspirationId;
     const title = e.title.trim();
     return habits.find((h) => !h.archived && h.title.trim() === title)?.aspirationId;

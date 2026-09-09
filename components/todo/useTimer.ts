@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ISODate, TimeEntry } from "./types";
 import { toISODate } from "./date";
+import { historyEntryFields } from "./entryHistory";
 
 // 正在进行的计时（跨刷新/重开持久化，并跟着云同步跨设备）。
 // 历史上字段名是 category，这里兼容读取。
 const RUN_KEY = "mytodo.timer.v1";
 
-export type RunningTimer = { title: string; startedAt: number };
+export type TimerAttribution = { aspirationId?: string };
+export type RunningTimer = { title: string; startedAt: number; attribution?: TimerAttribution };
 
 /**
  * 计时状态。带 updatedAt 是为了跨设备合并时能分清
@@ -33,9 +35,14 @@ function read(): TimerState {
     const p = JSON.parse(raw) as Record<string, unknown>;
     // 新格式 { running, updatedAt }
     if ("updatedAt" in p) {
-      const r = p.running as { title?: string; startedAt?: number } | null;
+      const r = p.running as Partial<RunningTimer> | null;
       const running =
-        r && typeof r.startedAt === "number" && r.title ? { title: r.title, startedAt: r.startedAt } : null;
+        r && typeof r.startedAt === "number" && r.title ? {
+          title: r.title, startedAt: r.startedAt,
+          ...(r.attribution && typeof r.attribution === "object" ? {
+            attribution: { aspirationId: typeof r.attribution.aspirationId === "string" ? r.attribution.aspirationId : undefined },
+          } : {}),
+        } : null;
       return { running, updatedAt: Number(p.updatedAt) || 0 };
     }
     // 旧格式：直接存的 RunningTimer（还可能是更早的 category 字段）
@@ -120,17 +127,19 @@ export function useTimer(onRecord: (entry: Omit<TimeEntry, "id">) => void) {
       minutes,
       startTime: hhmm(startD),
       endTime: hhmm(endD),
+      ...(cur.running.attribution ? historyEntryFields(cur.running.attribution) : {}),
     });
   }, []);
 
   // 只修改本次计时的名称；保留 startedAt，不停止、不产生额外记录。
   // 编辑时若另一台设备已换了计时，不把旧草稿写到新的事件上。
-  const rename = useCallback((title: string, startedAt: number) => {
+  const rename = useCallback((title: string, startedAt: number, attribution?: TimerAttribution) => {
     const cur = stateRef.current;
     const nextTitle = title.trim();
-    if (!cur.running || cur.running.startedAt !== startedAt || !nextTitle || cur.running.title === nextTitle) return;
+    if (!cur.running || cur.running.startedAt !== startedAt || !nextTitle) return;
+    if (cur.running.title === nextTitle && !attribution) return;
     commitRef.current({
-      running: { ...cur.running, title: nextTitle },
+      running: { ...cur.running, title: nextTitle, attribution },
       updatedAt: Math.max(Date.now(), cur.updatedAt + 1),
     });
   }, []);

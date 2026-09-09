@@ -23,6 +23,9 @@ import { ChevronDown, ChevronUp, Mic, Sparkles, Trash2, X, Check, Link2, Zap, Pe
 import TimePicker from "@/components/TimePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import TimerPanel from "@/components/TimerPanel";
+import EntryNameInput from "@/components/EntryNameInput";
+import { buildEntryHistory, historyEntryFields, type EntryHistoryChoice } from "@/components/todo/entryHistory";
+import type { RunningTimer, TimerAttribution } from "@/components/todo/useTimer";
 import MainlineBar from "@/components/MainlineBar";
 import CategoryDonut, { type DonutSlice } from "@/components/CategoryDonut";
 import GoalInvestChart from "@/components/GoalInvestChart";
@@ -45,11 +48,11 @@ type Props = {
   canUndoEntries: boolean;
   /** 计时器提到 TodoApp 那层了（要进云同步），这里只用不建 */
   timer: {
-    running: { title: string; startedAt: number } | null;
+    running: RunningTimer | null;
     elapsedMs: number;
     start: (title: string) => void;
     stop: () => void;
-    rename: (title: string, startedAt: number) => void;
+    rename: (title: string, startedAt: number, attribution?: TimerAttribution) => void;
   };
   today: ISODate;
   aspirations: Aspiration[];
@@ -162,6 +165,7 @@ export default function TimeLogView({
   // 台账行内编辑状态
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [editHistoryChoice, setEditHistoryChoice] = useState<EntryHistoryChoice | null>(null);
   const [editMinutes, setEditMinutes] = useState("");
   const [editStart, setEditStart] = useState("");
   const [editEnd, setEditEnd] = useState("");
@@ -188,6 +192,7 @@ export default function TimeLogView({
 
   // 标题 → 大类 查表（手动改过的 > 已分类的同名记录 > 关键词规则）
   const titleCategory = useMemo(() => buildTitleCategoryMap(entries), [entries]);
+  const entryHistory = useMemo(() => buildEntryHistory(entries, aspirations), [entries, aspirations]);
 
   // 汇总辅助：按（关联任务标题 或 记录标题）聚合一组记录
   function aggregate(list: TimeEntry[]): SummaryRow[] {
@@ -391,6 +396,7 @@ export default function TimeLogView({
   }
 
   function startEditEntry(e: TimeEntry) {
+    setEditHistoryChoice(null);
     setEditingId(e.id);
     setEditTitle(e.title);
     setEditMinutes(String(e.minutes));
@@ -452,12 +458,14 @@ export default function TimeLogView({
       endTime: editEnd || undefined,
       taskId,
       taskLinkMode,
+      ...(editHistoryChoice ? historyEntryFields(editHistoryChoice) : {}),
     });
     setEditingId(null);
   }
 
   // 复制：照着某笔再记一次（沿用同一个名字 → 汇总能合并），时长清空由你重填
   function startCopyEntry(e: TimeEntry) {
+    setEditHistoryChoice(null);
     const d = new Date();
     setCopySourceId(e.id); // 让新建表单出现在这条下面
     setEditingId("__new__");
@@ -480,6 +488,7 @@ export default function TimeLogView({
       endTime: editEnd || undefined,
       taskId: matched?.id,
       taskLinkMode: matched ? "auto" : "none",
+      ...(editHistoryChoice ? historyEntryFields(editHistoryChoice) : {}),
     }]);
     setEditingId(null);
   }
@@ -493,13 +502,14 @@ export default function TimeLogView({
     const canSave = editTitle.trim() !== "" && resolvedMinutes > 0;
     return (
       <div className="w-full flex flex-col gap-2 px-3.5 py-3 rounded-[10px] bg-[var(--color-bg-gray-lighter)] border-[1.5px] border-[var(--color-primary)]">
-        <input
-          type="text"
+        <EntryNameInput
+          label="记录事项名称"
           value={editTitle}
-          onChange={(ev) => setEditTitle(ev.target.value)}
-          placeholder="事项名称"
-          className="w-full px-3 py-2 rounded-lg border border-[var(--color-border)] text-[14px] bg-white focus:outline-none focus:border-[var(--color-primary)]"
+          onChange={(value) => { setEditTitle(value); setEditHistoryChoice(null); }}
+          history={entryHistory}
+          onSelect={(choice) => { setEditTitle(choice.title); setEditHistoryChoice(choice); }}
         />
+        {editHistoryChoice && <div className="text-[11px] text-[var(--color-text-secondary)]">保存后归属：{editHistoryChoice.goalLabel}</div>}
         <div className="flex items-center gap-2">
           <TimePicker value={editStart} onChange={(v) => handleEditTime("start", v)} placeholder="开始" label="开始时间" />
           <span className="text-[13px] text-[var(--color-text-tertiary)]">—</span>
@@ -653,6 +663,8 @@ export default function TimeLogView({
             onStart={timer.start}
             onStop={timer.stop}
             onRename={timer.rename}
+            history={entryHistory}
+            aspirations={aspirations}
           />
         )}
 
@@ -895,6 +907,7 @@ export default function TimeLogView({
                       <button
                         type="button"
                         onClick={() => startEditEntry(e)}
+                        aria-label={`编辑记录：${e.title}`}
                         className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0"
                       >
                         <Pencil className="w-[16px] h-[16px] text-[#A1A1AA]" />

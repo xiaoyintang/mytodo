@@ -2,7 +2,10 @@
 
 import { useRef, useState } from "react";
 import { Pencil, Square, Timer as TimerIcon } from "lucide-react";
-import type { RunningTimer } from "@/components/todo/useTimer";
+import type { RunningTimer, TimerAttribution } from "@/components/todo/useTimer";
+import type { EntryHistoryChoice } from "@/components/todo/entryHistory";
+import type { Aspiration } from "@/components/todo/types";
+import EntryNameInput from "@/components/EntryNameInput";
 import { CATEGORY_LIST, CATEGORY_STYLE } from "@/components/todo/category";
 
 // 三类计时快捷按钮，配色与汇总饼图共用一套
@@ -32,10 +35,12 @@ type Props = {
   elapsedMs: number;
   onStart: (title: string) => void;
   onStop: () => void;
-  onRename: (title: string, startedAt: number) => void;
+  onRename: (title: string, startedAt: number, attribution?: TimerAttribution) => void;
+  history: EntryHistoryChoice[];
+  aspirations: Aspiration[];
 };
 
-export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRename }: Props) {
+export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRename, history, aspirations }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const editingRef = useRef(false);
@@ -63,25 +68,19 @@ export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRena
           style={{ backgroundColor: style.bg, borderColor: style.solid }}
         >
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            {editing ? <input
+            {editing ? <EntryNameInput
               autoFocus
-              aria-label="正在计时的事件名称"
+              label="正在计时的事件名称"
               value={draft}
-              onFocus={(event) => event.currentTarget.select()}
-              onChange={(event) => setDraft(event.target.value)}
-              onBlur={saveName}
-              onKeyDown={(event) => {
-                if (event.nativeEvent.isComposing || event.keyCode === 229) return;
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  event.currentTarget.blur();
-                } else if (event.key === "Escape") {
-                  event.preventDefault();
-                  editingRef.current = false;
-                  setEditing(false);
-                }
+              onChange={setDraft}
+              history={history}
+              onCommit={saveName}
+              onCancel={() => { editingRef.current = false; setEditing(false); }}
+              onSelect={(choice) => {
+                editingRef.current = false;
+                onRename(choice.title, running.startedAt, { aspirationId: choice.aspirationId });
+                setEditing(false);
               }}
-              className="w-full min-w-0 rounded-md border border-[var(--color-primary)] bg-[var(--color-bg-white)] px-1.5 py-0.5 text-[13px] font-semibold text-[var(--color-text-primary)] outline-none"
             /> : <button type="button"
               aria-label={`修改计时名称：${running.title}`}
               onClick={() => { setDraft(running.title); editingRef.current = true; setEditing(true); }}
@@ -95,6 +94,10 @@ export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRena
             <span className="text-[11px] text-[var(--color-text-tertiary)]">
               {editing ? "回车或点空白保存 · Esc 取消" : `从 ${hhmm(new Date(running.startedAt))} 开始`}
             </span>
+            {!editing && running.attribution && <span className="truncate text-[11px] text-[var(--color-text-secondary)]">
+              {aspirations.find((goal) => goal.id === running.attribution?.aspirationId)?.title
+                ?? (running.attribution.aspirationId ? "原目标已删除" : "未归属目标")}
+            </span>}
           </div>
           <span
             className="shrink-0 text-center text-[24px] font-bold tabular-nums tracking-wide sm:text-[28px]"
