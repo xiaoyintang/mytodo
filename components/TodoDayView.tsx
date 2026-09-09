@@ -222,21 +222,21 @@ export default function TodoDayView({
       <div>
         {groups.map(({ goal, index, tasks: groupedTasks }) => (
           <section key={goal.id} aria-label={`${goal.title}的待办`} className="mt-2">
-            <div className="flex min-h-7 items-center gap-1.5 rounded-md bg-[var(--color-bg-gray-lighter)] px-2">
+            <div className="flex min-h-8 items-center gap-1.5 px-1">
               <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: goalColor(goal, index) }} />
               <h3 className="min-w-0 flex-1 truncate text-[11px] font-semibold text-[var(--color-text-secondary)]" data-full-text={goal.title}>{goal.title}</h3>
               {mainIds.includes(goal.id) && <span className="text-[9px] text-[var(--color-primary)]">主线</span>}
               <span className="text-[10px] tabular-nums text-[var(--color-text-tertiary)]">{groupedTasks.length} 项</span>
             </div>
-            <div className="divide-y divide-[var(--color-border)]">{groupedTasks.map((task) => renderTaskCard(task, showTime))}</div>
+            <div className="ui-group divide-y divide-[var(--color-border)]">{groupedTasks.map((task) => renderTaskCard(task, showTime))}</div>
           </section>
         ))}
         {unassigned.length > 0 && (
           <section aria-label="未归属目标的待办" className="mt-2">
-            <h3 className="flex min-h-7 items-center justify-between rounded-md bg-[var(--color-bg-gray-lighter)] px-2 text-[11px] font-medium text-[var(--color-text-tertiary)]">
+            <h3 className="flex min-h-8 items-center justify-between px-1 text-[11px] font-medium text-[var(--color-text-secondary)]">
               <span>未归属目标</span><span className="text-[10px]">{unassigned.length} 项</span>
             </h3>
-            <div className="divide-y divide-[var(--color-border)]">{unassigned.map((task) => renderTaskCard(task, showTime))}</div>
+            <div className="ui-group divide-y divide-[var(--color-border)]">{unassigned.map((task) => renderTaskCard(task, showTime))}</div>
           </section>
         )}
       </div>
@@ -583,13 +583,13 @@ export default function TodoDayView({
       <ViewTabs value={viewMode} onChange={onChangeViewMode} />
       <WeekDateStrip days={days} selectedDate={selectedDate} today={today} onSelect={onSelectDate} />
 
-      <div className="flex w-full flex-col gap-5 px-[18px] pb-6 pt-1">
+      <div className="app-content flex w-full flex-col gap-5">
         <div className="flex items-start gap-2">
           <QuickAddTask onCreate={onCreateTask} />
           <button
             type="button"
             onClick={onOpenTemplates}
-            className="flex h-9 flex-shrink-0 items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-white px-3 text-[12px] font-semibold text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-primary)] hover:bg-[var(--color-primary-light)] hover:text-[var(--color-primary)]"
+            className="ui-press flex h-10 flex-shrink-0 items-center gap-1.5 rounded-xl bg-[var(--color-bg-white)] px-3 text-[12px] font-medium text-[var(--color-text-secondary)]"
             aria-label="打开日计划模板"
           >
             <LayoutTemplate className="h-3.5 w-3.5" />
@@ -606,7 +606,7 @@ export default function TodoDayView({
         >
           {anytimeTasks.length > 0 && (
             <section className={useDesktopSplit ? "w-full md:col-start-1 md:row-start-1" : "w-full"}>
-              <div className="flex h-7 items-center justify-between border-b border-[var(--color-border)]">
+              <div className="ui-section-heading flex h-7 items-center justify-between">
                 <h2 className="text-[12px] font-semibold text-[var(--color-text-primary)]">
                   {selectedDate === today ? "今日待办" : "当天待办"}
                 </h2>
@@ -624,11 +624,11 @@ export default function TodoDayView({
                   : "w-full"
               }
             >
-              <div className="flex h-7 items-center justify-between border-b border-[var(--color-border)]">
+              <div className="ui-section-heading mb-2 flex h-7 items-center justify-between">
                 <h2 className="text-[12px] font-semibold text-[var(--color-text-primary)]">日程</h2>
                 <span className="text-[10px] font-medium text-[var(--color-text-tertiary)]">{scheduledTasks.length} 项</span>
               </div>
-              <div>
+              <div className="ui-group">
                 {scheduledTasks.map((task, index) => (
                   <div key={task.id} className="flex border-b border-[var(--color-border)] last:border-b-0">
                     <button type="button" onClick={() => setScheduleEditor({ taskId: task.id, focusTime: true })}

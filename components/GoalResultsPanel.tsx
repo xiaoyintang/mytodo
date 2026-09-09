@@ -391,7 +391,7 @@ export default function GoalResultsPanel({
   }
 
   return (
-    <div className="flex w-full flex-col gap-2.5 rounded-[12px] border border-[#D9E5FF] bg-[#F8FAFF] p-3">
+    <div className="flex w-full flex-col gap-2.5 rounded-[16px] bg-[var(--color-bg-white)] p-3">
       <div className="flex items-start gap-2">
         <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary-light)] text-[var(--color-primary)]">
           <FolderTree className="h-4 w-4" />
@@ -664,8 +664,8 @@ export default function GoalResultsPanel({
                 className={[
                   "relative flex items-center gap-1.5 rounded-[10px] border p-2 transition-[opacity,box-shadow,border-color,background-color]",
                   active
-                    ? "border-[var(--color-primary)] bg-white shadow-sm"
-                    : "border-[var(--color-border)] bg-white/70",
+                    ? "border-transparent bg-[var(--color-primary-light)]"
+                    : "border-transparent bg-[var(--color-bg-gray-lighter)]",
                   isDragging ? "opacity-45" : "",
                   isTarget ? "shadow-[0_3px_10px_rgba(37,99,235,0.14)]" : "",
                 ].join(" ")}

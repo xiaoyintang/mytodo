@@ -6,20 +6,26 @@
 
 :root {
   /* Colors */
-  --color-primary: #2563EB;
-  --color-success: #16A34A;
-  --color-danger: #DC2626;
-  --color-text-primary: #18181B;
-  --color-text-secondary: #71717A;
-  --color-text-tertiary: #A1A1AA;
+  --color-primary: #007AFF;
+  --color-success: #248A3D;
+  --color-danger: #D70015;
+  --color-text-primary: #1C1C1E;
+  --color-text-secondary: #63636B;
+  --color-text-tertiary: #85858D;
   --color-text-quaternary: #D4D4D8;
   --color-bg-white: #FFFFFF;
-  --color-bg-gray-light: #F4F4F5;
-  --color-bg-gray-lighter: #F9FAFB;
-  --color-border: #E4E4E7;
-  --color-primary-light: #EFF6FF;
+  --color-bg-gray-light: #F2F2F7;
+  --color-bg-gray-lighter: #F7F7FA;
+  --color-border: #E5E5EA;
+  --color-primary-light: #EBF4FF;
   --color-success-light: #DCFCE7;
   --color-danger-light: #FEF2F2;
+  --color-canvas: #EDEDF2;
+  --color-fill: #E9E9EF;
+  --color-material: rgba(250, 250, 252, 0.94);
+  --shadow-surface: 0 1px 2px rgba(28, 28, 30, 0.03), 0 12px 40px rgba(28, 28, 30, 0.04);
+  --shadow-popover: 0 0 0 1px rgba(28, 28, 30, 0.04), 0 12px 40px rgba(28, 28, 30, 0.14);
+  --ease-ui: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 @layer base {
@@ -37,13 +43,101 @@
   }
 
   .font-inter {
-    font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", system-ui, "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    font-optical-sizing: auto;
   }
 
   .font-lucide {
     font-family: "lucide";
     font-feature-settings: "liga";
   }
+}
+
+/* Shared iOS-inspired surfaces. These are visual primitives only: no data or navigation changes. */
+.app-canvas { background: var(--color-bg-gray-light); }
+.app-shell {
+  background: var(--color-bg-gray-light);
+  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+}
+.app-header { padding: 1.5rem 1.25rem 1rem; }
+.app-title { font-size: 1.75rem; line-height: 1.2; letter-spacing: -0.035em; }
+.app-content { padding: 0.75rem 1.25rem 1.5rem; }
+.ui-group {
+  background: var(--color-bg-white);
+  border-radius: 0.875rem;
+  padding-inline: 0.75rem;
+  box-shadow: 0 1px 2px rgba(28, 28, 30, 0.025);
+}
+.ui-section-heading {
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding-inline: 0.25rem;
+}
+.ui-field {
+  background: var(--color-bg-white);
+  border: 1px solid transparent;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px rgba(28, 28, 30, 0.025);
+}
+.ui-field:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+.ui-press { transition: transform 140ms var(--ease-ui), background-color 140ms ease, color 140ms ease; }
+.ui-press:active:not(:disabled) { transform: scale(0.97); }
+.ui-icon-button {
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  border-radius: 50%;
+  background: var(--color-bg-white);
+}
+.ui-sheet {
+  border-color: transparent;
+  border-radius: 1.25rem;
+  box-shadow: var(--shadow-popover);
+}
+.ui-material {
+  background: var(--color-material);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+}
+.view-segments { margin: 0 1.25rem 0.5rem; padding: 3px; background: var(--color-fill); border-radius: 0.75rem; }
+.view-segment { min-height: 2.125rem; border-radius: 0.6rem; font-size: 0.8125rem; }
+.view-segment[aria-current="page"] { background: var(--color-bg-white); box-shadow: 0 2px 5px rgba(28, 28, 30, 0.08), 0 0 1px rgba(28, 28, 30, 0.14); color: var(--color-text-primary); }
+.goal-card { box-shadow: 0 1px 2px rgba(28, 28, 30, 0.03); }
+.focus-card { border-radius: 0.75rem; }
+.focus-card-title { font-size: 0.8125rem; }
+.habit-list { border: 0; border-radius: 0.875rem; }
+.habit-row { padding: 0.625rem 0.75rem; }
+.habit-title { font-size: 0.8125rem; line-height: 1.35; }
+.timer-running { border: 0; background: var(--color-bg-white); border-radius: 1rem; box-shadow: var(--shadow-surface); }
+.timer-choice { border: 0; background: var(--color-bg-white); border-radius: 0.875rem; }
+.time-field { border-radius: 0.625rem; }
+button { -webkit-tap-highlight-color: transparent; }
+button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+@media (min-width: 640px) {
+  .app-canvas { background: var(--color-canvas); }
+  .app-shell { border: 1px solid rgba(255,255,255,0.85); border-radius: 1.5rem; box-shadow: var(--shadow-surface); padding-bottom: 1rem; }
+  .app-header { padding: 1.5rem 1.5rem 1rem; }
+  .app-content { padding-inline: 1.5rem; }
+  .view-segments { max-width: 28rem; margin-inline: 1.5rem; }
+}
+@media (max-width: 639px) {
+  .ui-sheet { max-width: none; border-radius: 1.5rem 1.5rem 0 0; padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+}
+@media (pointer: coarse) {
+  /* Prevent iOS focus zoom without making static lists larger. */
+  input:not([type="range"]):not([type="checkbox"]), textarea, select { font-size: 16px; }
+  .view-segment, .ui-icon-button { min-height: 44px; }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .ui-material { background: var(--color-bg-white); backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-press { transition: none; }
+  .ui-press:active:not(:disabled) { transform: none; }
 }
 
 /* 打卡的"庆祝"动效 —— 福格：习惯固化靠的是做完那一瞬间的正反馈，

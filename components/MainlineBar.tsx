@@ -47,9 +47,9 @@ export default function MainlineBar({
   const mains = mainlinesOf(date, dayPlans, aspirations);
 
   return (
-    <div className="flex w-full flex-col gap-1.5 px-[18px] pb-2">
+    <div className="flex w-full flex-col gap-2 px-5 pb-3 sm:px-6">
       {running && (
-        <div className="flex w-full items-center gap-2 rounded-lg bg-[#EFF6FF] px-2.5 py-1.5">
+        <div className="flex w-full items-center gap-2 rounded-xl bg-[var(--color-primary-light)] px-3 py-2">
           <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] animate-pulse flex-shrink-0" />
           <span
             className="min-w-0 truncate text-[12px] font-semibold text-[var(--color-primary)]"
@@ -72,11 +72,11 @@ export default function MainlineBar({
         </div>
       )}
 
-      <div className="flex min-h-8 w-full items-stretch gap-1.5">
+      <div className="flex min-h-9 w-full items-stretch gap-2">
         <button
           type="button"
           onClick={onOpenGoals}
-          className="flex flex-shrink-0 items-center gap-1 rounded-lg border border-[var(--color-border)] bg-white px-2 py-1.5 text-[10px] font-semibold text-[var(--color-text-secondary)] transition-colors hover:border-[#BFDBFE] hover:bg-[var(--color-primary-light)] hover:text-[var(--color-primary)]"
+          className="ui-press flex flex-shrink-0 items-center gap-1.5 rounded-xl bg-[var(--color-bg-white)] px-2.5 py-2 text-[11px] font-semibold text-[var(--color-primary)]"
           aria-label="打开我的目标"
         >
           <Target className="h-3 w-3 text-[var(--color-primary)]" />
@@ -84,8 +84,8 @@ export default function MainlineBar({
           <ChevronRight className="h-3 w-3" />
         </button>
 
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg bg-[var(--color-bg-gray-lighter)] px-2 py-1">
-          <span className="flex-shrink-0 text-[9px] font-medium text-[var(--color-text-tertiary)]">主线</span>
+        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-1 py-1">
+          <span className="flex-shrink-0 text-[10px] font-medium text-[var(--color-text-secondary)]">主线</span>
           {mains.length > 0 ? (
             <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {mains.map((aspiration, index) => (
@@ -93,7 +93,7 @@ export default function MainlineBar({
                   key={aspiration.id}
                   type="button"
                   onClick={() => onOpenGoal(aspiration.id)}
-                  className="flex max-w-[138px] flex-shrink-0 items-center gap-1 rounded-md bg-white px-1.5 py-1 text-left transition-colors hover:bg-[var(--color-primary-light)]"
+                  className="ui-press flex max-w-[150px] flex-shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-left hover:bg-[var(--color-bg-white)]"
                   aria-label={`打开主线 ${index + 1}：${aspiration.title}`}
                   title={`直接从「${aspiration.title}」的焦点地图选择行动`}
                 >

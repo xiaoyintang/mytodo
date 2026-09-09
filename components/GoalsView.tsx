@@ -497,7 +497,7 @@ export default function GoalsView({
         key={a.id}
         data-aspiration-id={a.id}
         className={[
-          "group relative w-full overflow-hidden rounded-[12px] border bg-white transition-[border-color,box-shadow,transform,opacity] hover:-translate-y-px hover:shadow-sm",
+          "goal-card group relative w-full overflow-hidden rounded-[14px] border border-transparent bg-white transition-[box-shadow,opacity] hover:shadow-sm",
           archived ? "opacity-75" : "",
           isDragging ? "opacity-45" : "",
           isDropTarget && goalDropPlacement?.edge === "before"
@@ -507,18 +507,11 @@ export default function GoalsView({
             ? "after:absolute after:inset-x-2 after:bottom-0 after:z-20 after:h-0.5 after:bg-[var(--color-primary)]"
             : "",
         ].join(" ")}
-        style={{ borderColor: archived ? "var(--color-border)" : `${color}35` }}
       >
         <span
-          className="absolute inset-y-0 left-0 w-1"
+          className="absolute bottom-3 left-0 top-3 w-[3px] rounded-full"
           style={{ backgroundColor: archived ? "#A1A1AA" : color }}
         />
-        {!archived && (
-          <div
-            className="pointer-events-none absolute inset-0 opacity-60"
-            style={{ background: `linear-gradient(90deg, ${color}0D 0%, transparent 48%)` }}
-          />
-        )}
         <div className="relative flex min-h-[58px] w-full items-center gap-1 py-2 pl-2 pr-2">
           {!archived && (
             <button
@@ -614,13 +607,13 @@ export default function GoalsView({
   }
 
   return (
-    <div className="flex min-h-full w-full max-w-[460px] flex-col overflow-clip bg-[var(--color-bg-white)] pb-14 sm:min-h-0 sm:rounded-[16px] sm:border sm:border-[var(--color-border)] sm:pb-0 md:min-h-[calc(100vh-48px)] md:max-w-[960px] lg:max-w-[1040px]">
+    <div className="app-shell flex min-h-full w-full max-w-[460px] flex-col overflow-clip sm:min-h-0 md:min-h-[calc(100vh-48px)] md:max-w-[960px] lg:max-w-[1040px]">
       <EdgeSwipeBack onBack={handleBack} />
       <div className="w-full flex items-center gap-2 px-6 pt-6 pb-4">
         <button
           type="button"
           onClick={handleBack}
-          className="w-9 h-9 rounded-lg border-[1.5px] border-[var(--color-border)] flex items-center justify-center bg-white hover:bg-[var(--color-bg-gray-light)] transition-colors flex-shrink-0"
+          className="ui-icon-button ui-press flex items-center justify-center text-[var(--color-primary)] flex-shrink-0"
           aria-label="返回"
         >
           <ArrowLeft className="w-4 h-4 text-[var(--color-text-secondary)]" />
@@ -702,7 +695,7 @@ export default function GoalsView({
             {openResults.length > 0 && (
               <nav
                 data-testid="sticky-result-nav"
-                className="sticky top-0 z-30 -mx-6 flex items-center gap-2 border-y border-[var(--color-border)] bg-white/95 px-6 py-2 shadow-[0_4px_12px_rgba(0,0,0,0.04)] backdrop-blur-md"
+                className="ui-material sticky top-0 z-30 -mx-6 flex items-center gap-2 px-6 py-2 shadow-[0_2px_8px_rgba(0,0,0,0.03)]"
                 aria-label="快速切换关键结果"
               >
                 <span className="flex-shrink-0 text-[10px] font-semibold text-[var(--color-text-tertiary)]">
@@ -973,9 +966,9 @@ export default function GoalsView({
                   这事对目标有多大用 / 你有多容易做到。
                   <br />
                   <br />
-                  <strong>4. 落在右上角的就是黄金行为</strong>
+                  <strong>4. 挑少数值得优先推进的行动</strong>
                   <br />
-                  又有用、又做得到的那几条。一次性行为安排到某天成为任务，可重复行为加入习惯。
+                  评分用来帮助比较，不是通行证。可以排进日程，也可以把适合重复的行为加入习惯。
                 </p>
               </div>
             ) : matchingAspirations.length === 0 ? (

@@ -104,7 +104,7 @@ export default function QuickAddTask({ onCreate }: { onCreate: (task: Omit<Task,
   );
 
   return (
-    <div className="w-full flex flex-col gap-2">
+    <div className="min-w-0 w-full flex flex-col gap-2">
       <div className="flex gap-1.5">
         <input
           type="text"
@@ -117,14 +117,14 @@ export default function QuickAddTask({ onCreate }: { onCreate: (task: Omit<Task,
             if (e.key === "Enter" && !e.nativeEvent.isComposing) handleParse();
           }}
           placeholder="添加任务，时间也可以直接写在这里"
-          className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-white px-3 text-[13px] placeholder:text-[var(--color-text-tertiary)] focus:border-[var(--color-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
+          className="ui-field h-10 min-w-0 flex-1 px-3 text-[13px] placeholder:text-[var(--color-text-tertiary)] focus:outline-none"
         />
         <button
           type="button"
           onClick={handleParse}
           disabled={!input.trim() || parsing}
           className={[
-            "flex h-9 items-center gap-1 rounded-lg px-2.5 text-[12px] font-semibold transition-colors whitespace-nowrap",
+            "ui-press flex h-10 items-center gap-1 rounded-xl px-3 text-[12px] font-semibold transition-colors whitespace-nowrap",
             input.trim() && !parsing
               ? "bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8]"
               : "bg-[var(--color-bg-gray-light)] text-[var(--color-text-tertiary)] cursor-not-allowed",

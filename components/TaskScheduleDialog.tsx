@@ -54,7 +54,7 @@ export default function TaskScheduleDialog({ task, today, focusTime, onApply, on
     <dialog ref={dialog} aria-labelledby="task-schedule-title" data-no-tab-swipe
       onCancel={onClose}
       onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
-      className="fixed inset-x-0 bottom-0 top-auto m-0 mx-auto w-full max-w-[360px] overflow-visible rounded-t-[20px] border border-[var(--color-border)] bg-white p-4 text-[var(--color-text-primary)] shadow-lg backdrop:bg-black/20 sm:inset-0 sm:m-auto sm:rounded-xl">
+      className="ui-sheet fixed inset-x-0 bottom-0 top-auto m-0 mx-auto w-full max-w-[360px] overflow-visible bg-[var(--color-bg-white)] p-4 text-[var(--color-text-primary)] backdrop:bg-black/20 sm:inset-0 sm:m-auto">
       <div className="mx-auto mb-3 h-1 w-8 rounded-full bg-[var(--color-border)] sm:hidden" />
       <div className="mb-3 flex items-center gap-2">
         <h2 id="task-schedule-title" className="flex-1 text-[13px] font-semibold">调整安排</h2>
