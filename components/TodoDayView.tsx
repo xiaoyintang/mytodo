@@ -478,9 +478,9 @@ export default function TodoDayView({
           <button type="button" onClick={(event) => {
             event.stopPropagation();
             setScheduleEditor({ taskId: t.id, focusTime: false });
-          }} aria-label={`改期：${t.title}`}
-            className="flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-[11px] text-[var(--color-text-secondary)] hover:bg-[var(--color-primary-light)] hover:text-[var(--color-primary)]">
-            <CalendarDays className="h-3.5 w-3.5" /><span>改期</span>
+          }} aria-label={`改期：${t.title}`} data-full-text="调整日期与时间"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--color-text-tertiary)] transition-[opacity,background-color] hover:bg-[var(--color-bg-gray-light)] hover:text-[var(--color-primary)] sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 focus-visible:opacity-100">
+            <CalendarDays className="h-4 w-4" />
           </button>
           <button
             type="button"
