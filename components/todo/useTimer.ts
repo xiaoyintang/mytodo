@@ -9,7 +9,7 @@ import { historyEntryFields } from "./entryHistory";
 // 历史上字段名是 category，这里兼容读取。
 const RUN_KEY = "mytodo.timer.v1";
 
-export type TimerAttribution = { aspirationId?: string };
+export type TimerAttribution = { aspirationId?: string; taskId?: string };
 export type RunningTimer = { title: string; startedAt: number; attribution?: TimerAttribution };
 
 /**
@@ -40,7 +40,10 @@ function read(): TimerState {
         r && typeof r.startedAt === "number" && r.title ? {
           title: r.title, startedAt: r.startedAt,
           ...(r.attribution && typeof r.attribution === "object" ? {
-            attribution: { aspirationId: typeof r.attribution.aspirationId === "string" ? r.attribution.aspirationId : undefined },
+            attribution: {
+              aspirationId: typeof r.attribution.aspirationId === "string" ? r.attribution.aspirationId : undefined,
+              taskId: typeof r.attribution.taskId === "string" ? r.attribution.taskId : undefined,
+            },
           } : {}),
         } : null;
       return { running, updatedAt: Number(p.updatedAt) || 0 };

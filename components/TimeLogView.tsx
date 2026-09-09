@@ -192,7 +192,7 @@ export default function TimeLogView({
 
   // 标题 → 大类 查表（手动改过的 > 已分类的同名记录 > 关键词规则）
   const titleCategory = useMemo(() => buildTitleCategoryMap(entries), [entries]);
-  const entryHistory = useMemo(() => buildEntryHistory(entries, aspirations), [entries, aspirations]);
+  const entryHistory = useMemo(() => buildEntryHistory(entries, aspirations, tasks, todayISO), [entries, aspirations, tasks, todayISO]);
 
   // 汇总辅助：按（关联任务标题 或 记录标题）聚合一组记录
   function aggregate(list: TimeEntry[]): SummaryRow[] {
@@ -509,7 +509,7 @@ export default function TimeLogView({
           history={entryHistory}
           onSelect={(choice) => { setEditTitle(choice.title); setEditHistoryChoice(choice); }}
         />
-        {editHistoryChoice && <div className="text-[11px] text-[var(--color-text-secondary)]">保存后归属：{editHistoryChoice.goalLabel}</div>}
+        {editHistoryChoice && <div className="text-[11px] text-[var(--color-text-secondary)]">保存后归属：{editHistoryChoice.goalLabel} · {editHistoryChoice.taskLabel ? `计入「${editHistoryChoice.taskLabel}」` : "不计入任务"}</div>}
         <div className="flex items-center gap-2">
           <TimePicker value={editStart} onChange={(v) => handleEditTime("start", v)} placeholder="开始" label="开始时间" />
           <span className="text-[13px] text-[var(--color-text-tertiary)]">—</span>
@@ -665,6 +665,7 @@ export default function TimeLogView({
             onRename={timer.rename}
             history={entryHistory}
             aspirations={aspirations}
+            tasks={tasks}
           />
         )}
 

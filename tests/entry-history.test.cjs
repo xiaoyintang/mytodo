@@ -19,24 +19,31 @@ function loadTs(relative, mocks = {}) {
 }
 
 const { buildEntryHistory, historyEntryFields } = loadTs('components/todo/entryHistory.ts');
-test('history sorts by date/time, deduplicates only within the same goal, and keeps attribution snapshots', () => {
+test('only today is shown; duplicates preserve distinct task and goal attribution', () => {
   const entries = [
     { id: '1', title: '阅读', date: '2026-09-08', aspirationId: 'a', minutes: 30 },
     { id: '2', title: '阅读', date: '2026-09-09', aspirationId: 'b', startTime: '10:00', minutes: 20 },
     { id: '3', title: ' 阅读 ', date: '2026-09-09', aspirationId: 'a', startTime: '11:00', minutes: 10 },
     { id: '4', title: '阅读', date: '2026-09-09', startTime: '12:00', minutes: 5 },
     { id: '5', title: '写作', date: '2026-09-07', aspirationId: 'deleted', minutes: 5 },
+    { id: '6', title: '阅读', date: '2026-09-09', aspirationId: 'a', taskId: 'task-a', startTime: '14:00', minutes: 5 },
+    { id: '7', title: '阅读', date: '2026-09-09', aspirationId: 'a', taskId: 'task-b', startTime: '13:00', minutes: 5 },
+    { id: '8', title: '阅读', date: '2026-09-09', aspirationId: 'a', taskId: 'task-a', startTime: '15:00', minutes: 5 },
+    { id: '9', title: '明天的事项', date: '2026-09-10', minutes: 5 },
   ];
   const before = JSON.stringify(entries);
-  const choices = buildEntryHistory(entries, [{ id: 'a', title: '学习' }, { id: 'b', title: '放松', archived: true }]);
-  assert.deepEqual(choices.map(c => c.goalLabel), ['未归属目标', '学习', '放松（已归档）', '原目标已删除']);
-  assert.equal(choices[3].aspirationId, 'deleted');
+  const choices = buildEntryHistory(entries, [{ id: 'a', title: '学习' }, { id: 'b', title: '放松', archived: true }], [{ id: 'task-a', title: '读专业书' }, { id: 'task-b', title: '读论文' }], '2026-09-09');
+  assert.deepEqual(choices.map(c => c.goalLabel), ['学习', '学习', '未归属目标', '学习', '放松（已归档）']);
+  assert.deepEqual(choices.map(c => c.taskId), ['task-a', 'task-b', undefined, undefined, undefined]);
+  assert.equal(choices[0].taskLabel, '读专业书');
   assert.equal(JSON.stringify(entries), before);
-  assert.deepEqual(historyEntryFields(choices[1]), { aspirationId: 'a', taskId: undefined, taskLinkMode: 'none' });
-  assert.deepEqual(buildEntryHistory([], []), []);
+  assert.deepEqual(historyEntryFields(choices[0]), { aspirationId: 'a', taskId: 'task-a', taskLinkMode: 'manual' });
+  assert.deepEqual(historyEntryFields(choices[2]), { aspirationId: undefined, taskId: undefined, taskLinkMode: 'none' });
+  assert.deepEqual(buildEntryHistory(entries, [], [], '2026-09-11'), []);
+  assert.deepEqual(buildEntryHistory([], [], [], '2026-09-09'), []);
 });
 
-test('timer selection persists goal without restarting; same-title goal changes and explicit unassigned survive reload', () => {
+test('timer persists goal AND linked task without restarting; association survives reload and counts toward task', () => {
   let saved = null;
   global.window = { localStorage: { getItem: () => saved, setItem: (_, value) => { saved = value; } } };
   function mount(records) {
@@ -58,7 +65,7 @@ test('timer selection persists goal without restarting; same-title goal changes 
   const startedAt = JSON.parse(saved).running.startedAt;
   timer.rename('阅读', startedAt, { aspirationId: 'a' });
   assert.equal(JSON.parse(saved).running.startedAt, startedAt);
-  timer.rename('阅读', startedAt, { aspirationId: 'b' });
+  timer.rename('阅读', startedAt, { aspirationId: 'b', taskId: 'task-b' });
   assert.equal(JSON.parse(saved).running.attribution.aspirationId, 'b');
   const previous = saved;
   timer.rename('旧设备的草稿', startedAt - 1, { aspirationId: 'wrong' });
@@ -68,8 +75,10 @@ test('timer selection persists goal without restarting; same-title goal changes 
   assert.equal(records.length, 1);
   assert.equal(records[0].title, '阅读');
   assert.equal(records[0].aspirationId, 'b');
-  assert.equal(records[0].taskId, undefined);
-  assert.equal(records[0].taskLinkMode, 'none');
+  assert.equal(records[0].taskId, 'task-b');
+  assert.equal(records[0].taskLinkMode, 'manual');
+  const { taskLoggedMinutes } = loadTs('components/todo/time.ts');
+  assert.equal(taskLoggedMinutes({ id: 'task-b', title: '名称不同的任务' }, records), records[0].minutes);
   timer.start('阅读');
   timer.rename('阅读', JSON.parse(saved).running.startedAt, {});
   timer = mount(records);

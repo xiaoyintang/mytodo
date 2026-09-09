@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { Pencil, Square, Timer as TimerIcon } from "lucide-react";
 import type { RunningTimer, TimerAttribution } from "@/components/todo/useTimer";
 import type { EntryHistoryChoice } from "@/components/todo/entryHistory";
-import type { Aspiration } from "@/components/todo/types";
+import type { Aspiration, Task } from "@/components/todo/types";
 import EntryNameInput from "@/components/EntryNameInput";
 import { CATEGORY_LIST, CATEGORY_STYLE } from "@/components/todo/category";
 
@@ -38,9 +38,10 @@ type Props = {
   onRename: (title: string, startedAt: number, attribution?: TimerAttribution) => void;
   history: EntryHistoryChoice[];
   aspirations: Aspiration[];
+  tasks: Task[];
 };
 
-export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRename, history, aspirations }: Props) {
+export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRename, history, aspirations, tasks }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const editingRef = useRef(false);
@@ -78,7 +79,7 @@ export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRena
               onCancel={() => { editingRef.current = false; setEditing(false); }}
               onSelect={(choice) => {
                 editingRef.current = false;
-                onRename(choice.title, running.startedAt, { aspirationId: choice.aspirationId });
+                onRename(choice.title, running.startedAt, { aspirationId: choice.aspirationId, taskId: choice.taskId });
                 setEditing(false);
               }}
             /> : <button type="button"
@@ -97,6 +98,11 @@ export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRena
             {!editing && running.attribution && <span className="truncate text-[11px] text-[var(--color-text-secondary)]">
               {aspirations.find((goal) => goal.id === running.attribution?.aspirationId)?.title
                 ?? (running.attribution.aspirationId ? "原目标已删除" : "未归属目标")}
+            </span>}
+            {!editing && running.attribution?.taskId && <span className="truncate text-[11px] text-[var(--color-text-secondary)]">
+              {tasks.some((task) => task.id === running.attribution?.taskId)
+                ? `计入「${tasks.find((task) => task.id === running.attribution?.taskId)?.title}」`
+                : "原任务已删除"}
             </span>}
           </div>
           <span
