@@ -49,6 +49,7 @@ type Props = {
     elapsedMs: number;
     start: (title: string) => void;
     stop: () => void;
+    rename: (title: string, startedAt: number) => void;
   };
   today: ISODate;
   aspirations: Aspiration[];
@@ -646,10 +647,12 @@ export default function TimeLogView({
         {/* 计时器（今天可开始；有计时在跑时始终显示，保证能停止） */}
         {(selectedDate === todayISO || timer.running) && (
           <TimerPanel
+            key={timer.running?.startedAt ?? "idle"}
             running={timer.running}
             elapsedMs={timer.elapsedMs}
             onStart={timer.start}
             onStop={timer.stop}
+            onRename={timer.rename}
           />
         )}
 

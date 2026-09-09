@@ -123,6 +123,18 @@ export function useTimer(onRecord: (entry: Omit<TimeEntry, "id">) => void) {
     });
   }, []);
 
+  // 只修改本次计时的名称；保留 startedAt，不停止、不产生额外记录。
+  // 编辑时若另一台设备已换了计时，不把旧草稿写到新的事件上。
+  const rename = useCallback((title: string, startedAt: number) => {
+    const cur = stateRef.current;
+    const nextTitle = title.trim();
+    if (!cur.running || cur.running.startedAt !== startedAt || !nextTitle || cur.running.title === nextTitle) return;
+    commitRef.current({
+      running: { ...cur.running, title: nextTitle },
+      updatedAt: Math.max(Date.now(), cur.updatedAt + 1),
+    });
+  }, []);
+
   /**
    * 云同步用：直接采纳别的设备的计时状态。
    * **不会记一笔**——那笔记录是在按下停止的那台设备上产生的，会自己同步过来，
@@ -135,5 +147,5 @@ export function useTimer(onRecord: (entry: Omit<TimeEntry, "id">) => void) {
   }, []);
 
   const elapsedMs = state.running ? nowMs - state.running.startedAt : 0;
-  return { running: state.running, elapsedMs, start, stop, state, adopt };
+  return { running: state.running, elapsedMs, start, stop, rename, state, adopt };
 }

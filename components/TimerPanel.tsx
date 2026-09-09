@@ -1,6 +1,7 @@
 "use client";
 
-import { Square, Timer as TimerIcon } from "lucide-react";
+import { useRef, useState } from "react";
+import { Pencil, Square, Timer as TimerIcon } from "lucide-react";
 import type { RunningTimer } from "@/components/todo/useTimer";
 import { CATEGORY_LIST, CATEGORY_STYLE } from "@/components/todo/category";
 
@@ -31,9 +32,19 @@ type Props = {
   elapsedMs: number;
   onStart: (title: string) => void;
   onStop: () => void;
+  onRename: (title: string, startedAt: number) => void;
 };
 
-export default function TimerPanel({ running, elapsedMs, onStart, onStop }: Props) {
+export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRename }: Props) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const editingRef = useRef(false);
+  function saveName() {
+    if (!editingRef.current || !running) return;
+    editingRef.current = false;
+    onRename(draft, running.startedAt);
+    setEditing(false);
+  }
   const style = running
     ? CATEGORIES.find((c) => c.key === running.title) ?? CUSTOM_STYLE
     : undefined;
@@ -51,20 +62,42 @@ export default function TimerPanel({ running, elapsedMs, onStart, onStop }: Prop
           className="w-full flex items-center gap-3 px-4 py-3 rounded-[12px] border-2"
           style={{ backgroundColor: style.bg, borderColor: style.solid }}
         >
-          <div className="flex flex-col gap-0.5 min-w-0">
-            <span
-              className="truncate text-[13px] font-semibold"
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            {editing ? <input
+              autoFocus
+              aria-label="正在计时的事件名称"
+              value={draft}
+              onFocus={(event) => event.currentTarget.select()}
+              onChange={(event) => setDraft(event.target.value)}
+              onBlur={saveName}
+              onKeyDown={(event) => {
+                if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  event.currentTarget.blur();
+                } else if (event.key === "Escape") {
+                  event.preventDefault();
+                  editingRef.current = false;
+                  setEditing(false);
+                }
+              }}
+              className="w-full min-w-0 rounded-md border border-[var(--color-primary)] bg-[var(--color-bg-white)] px-1.5 py-0.5 text-[13px] font-semibold text-[var(--color-text-primary)] outline-none"
+            /> : <button type="button"
+              aria-label={`修改计时名称：${running.title}`}
+              onClick={() => { setDraft(running.title); editingRef.current = true; setEditing(true); }}
+              className="group flex min-w-0 items-center gap-1 rounded-md text-left text-[13px] font-semibold hover:bg-white/50 focus-visible:outline-[var(--color-primary)]"
               style={{ color: style.text }}
-              data-full-text={`${running.title} 进行中`}
+              data-full-text={`${running.title} · 点击改名`}
             >
-              {running.title} 进行中
-            </span>
+              <span className="truncate">{running.title}</span>
+              <Pencil className="h-3 w-3 shrink-0 opacity-50 group-hover:opacity-100" />
+            </button>}
             <span className="text-[11px] text-[var(--color-text-tertiary)]">
-              从 {hhmm(new Date(running.startedAt))} 开始
+              {editing ? "回车或点空白保存 · Esc 取消" : `从 ${hhmm(new Date(running.startedAt))} 开始`}
             </span>
           </div>
           <span
-            className="flex-1 text-center text-[28px] font-bold tabular-nums tracking-wide"
+            className="shrink-0 text-center text-[24px] font-bold tabular-nums tracking-wide sm:text-[28px]"
             style={{ color: style.text }}
           >
             {fmtElapsed(elapsedMs)}
