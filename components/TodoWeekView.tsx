@@ -84,14 +84,14 @@ function WeekTaskRow({
       type="button"
       onClick={onClick}
       className={[
-        "ui-press w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors",
+        "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors",
         isDone
-          ? "bg-[var(--color-bg-gray-lighter)]"
+          ? "bg-[#DCFCE7]"
           : isInProgress
-            ? "bg-[var(--color-primary-light)]"
+            ? "bg-[#EFF6FF]"
             : isHigh
-              ? "bg-[var(--color-danger-light)]"
-              : "bg-[var(--color-bg-gray-lighter)]",
+              ? "bg-[#FEF2F2]"
+              : "bg-[#F4F4F5]",
       ].join(" ")}
     >
       {/* Status icon */}
@@ -112,7 +112,7 @@ function WeekTaskRow({
           className={[
             "truncate text-[13px] font-medium",
             isDone
-              ? "text-[var(--color-text-tertiary)] line-through"
+              ? "text-[#16A34A] line-through"
               : isInProgress
                 ? "text-[#2563EB]"
                 : "text-[var(--color-text-primary)]",
@@ -225,7 +225,7 @@ function DayRow({
   const totalTasks = tasks.length;
 
   return (
-    <div className="ui-group flex gap-3 py-3 md:self-start">
+    <div className="flex gap-3 border-b border-[var(--color-border)] px-4 py-3 last:border-b-0 md:self-start md:rounded-xl md:border md:bg-white md:last:border-b">
       {/* Date column */}
       <div className="w-[56px] flex-shrink-0 flex flex-col items-center gap-0.5 pt-0.5">
         <span
@@ -377,7 +377,7 @@ export default function TodoWeekView({
         />
 
         {/* Week Days List */}
-        <div className="app-content flex flex-1 flex-col gap-3 md:grid md:grid-cols-2 md:items-start">
+        <div className="flex flex-1 flex-col overflow-y-auto border-t border-[var(--color-border)] md:grid md:grid-cols-2 md:items-start md:gap-3 md:border-t-0 md:bg-[var(--color-bg-gray-lighter)] md:p-[18px]">
           {days.map((d) => {
             const iso = toISODate(d);
             const dayTasks = tasks.filter((t) => t.date === iso);

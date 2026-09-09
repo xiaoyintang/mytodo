@@ -1935,17 +1935,17 @@ export default function FocusMapView({
             <div
               key={b.id}
               className={[
-                "focus-card w-full flex flex-col border px-3 transition-[background-color,border-color,box-shadow]",
+                "w-full flex flex-col rounded-lg border px-2.5 transition-[background-color,border-color,box-shadow]",
                 isExpanded ? "py-2 shadow-[0_3px_12px_rgba(15,23,42,0.06)]" : "py-1.5",
                 activeId === b.id
-                  ? "bg-white border-[var(--color-primary)] ring-2 ring-[var(--color-primary-light)]"
+                  ? "bg-white border-[var(--color-text-primary)] ring-1 ring-[var(--color-text-primary)]"
                   : picked
                     ? "bg-[var(--color-primary-light)] border-[var(--color-primary)]"
                     : rank
-                      ? "bg-white border-transparent"
+                      ? "bg-white border-[var(--color-primary)]"
                       : b.impact == null || b.feasibility == null
-                        ? "bg-white border-dashed border-[var(--color-border)]"
-                        : "bg-white border-transparent",
+                        ? "bg-[var(--color-bg-gray-lighter)] border-dashed border-[#A1A1AA]"
+                        : "bg-white border-[var(--color-border)]",
               ].join(" ")}
             >
               <div className="flex min-h-7 w-full items-center gap-1.5">
@@ -1989,7 +1989,7 @@ export default function FocusMapView({
                       setExpandedId((current) => (current === b.id ? null : b.id));
                       setTypingId(null);
                     }}
-                    className="focus-card-title min-w-0 flex-1 truncate text-left font-medium leading-5 text-[var(--color-text-primary)]"
+                    className="min-w-0 flex-1 truncate text-left text-[12px] font-medium leading-5 text-[var(--color-text-primary)]"
                     data-full-text={b.text}
                     aria-expanded={isExpanded}
                   >

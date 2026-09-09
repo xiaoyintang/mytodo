@@ -643,7 +643,7 @@ export default function TimeLogView({
       <WeekDateStrip days={days} selectedDate={selectedDate} today={today} onSelect={onSelectDate} />
 
       {/* Content */}
-      <div className="app-content flex w-full flex-col gap-5 md:mx-auto md:max-w-[760px]">
+      <div className="flex w-full flex-col gap-5 px-[18px] pb-6 pt-2 md:mx-auto md:max-w-[760px]">
         {/* 计时器（今天可开始；有计时在跑时始终显示，保证能停止） */}
         {(selectedDate === todayISO || timer.running) && (
           <TimerPanel
@@ -676,7 +676,7 @@ export default function TimeLogView({
             placeholder="口述或输入：现在养号（开始计时）、刚才复盘面试30分钟、9点到10点做数学"
             enterKeyHint="send"
             rows={2}
-            className="ui-field w-full px-3 py-2.5 text-[14px] leading-relaxed placeholder:text-[var(--color-text-tertiary)] focus:outline-none resize-none"
+            className="w-full px-3 py-2.5 rounded-[10px] border border-[var(--color-border)] text-[14px] leading-relaxed placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] resize-none"
           />
           {parseError && (
             <p className="text-[12px] text-[var(--color-danger)]">{parseError}</p>

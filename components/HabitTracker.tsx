@@ -615,7 +615,7 @@ export default function HabitTracker({
                       )}
 
                       {!resultShut && (
-                        <div className="habit-list divide-y divide-[var(--color-border)] overflow-hidden bg-white">
+                        <div className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[10px] border border-[var(--color-border)] bg-white">
                           {resultGroup.items.map((h) => {
                 const isDuration = h.measure === "duration";
                 const ledger = isDuration ? fromLedger(h, entries, logs, today) : null;
@@ -649,7 +649,7 @@ export default function HabitTracker({
                   <div
                     key={h.id}
                     className={[
-                      "habit-row flex min-h-[64px] w-full items-center gap-2 transition-colors duration-150",
+                      "flex min-h-[64px] w-full items-center gap-1.5 px-2 py-1.5 transition-colors duration-300",
                       flash ? "animate-habit-glow bg-[#F0FDF4]" : count > 0 ? "bg-[#FCFFFD]" : "bg-white",
                     ].join(" ")}
                   >
@@ -724,7 +724,7 @@ export default function HabitTracker({
                         <>
                           <div className="flex min-w-0 items-center gap-1.5">
                             <span
-                              className="habit-title min-w-0 flex-1 truncate font-medium text-[var(--color-text-primary)]"
+                              className="min-w-0 flex-1 truncate text-[12px] font-semibold leading-4 text-[var(--color-text-primary)]"
                               data-full-text={h.title}
                             >
                               {h.title}

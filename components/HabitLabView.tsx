@@ -104,7 +104,7 @@ export default function HabitLabView({
       />
       <ViewTabs value={viewMode} onChange={onChangeViewMode} />
 
-      <div className="app-content flex w-full flex-col gap-4">
+      <div className="flex w-full flex-col gap-4 px-[18px] pb-6 pt-2">
         <div className="w-full flex items-center gap-2">
           <input
             type="text"
@@ -115,14 +115,14 @@ export default function HabitLabView({
             }}
             placeholder="临时想到一个习惯？直接写，回车加进来"
             enterKeyHint="done"
-            className="ui-field h-10 flex-1 min-w-0 px-3 py-2 text-[13px] placeholder:text-[var(--color-text-tertiary)] focus:outline-none"
+            className="flex-1 min-w-0 px-3 py-2 rounded-[10px] border border-[var(--color-border)] text-[13px] placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)]"
           />
           <button
             type="button"
             onClick={handleQuickAdd}
             disabled={!quickHabit.trim()}
             className={[
-              "ui-press h-10 px-3 py-2 rounded-xl text-[13px] font-medium transition-colors flex-shrink-0",
+              "px-3 py-2 rounded-[10px] text-[13px] font-medium transition-colors flex-shrink-0",
               quickHabit.trim()
                 ? "bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8]"
                 : "bg-[var(--color-bg-gray-light)] text-[var(--color-text-tertiary)] cursor-not-allowed",
@@ -158,7 +158,11 @@ export default function HabitLabView({
               还没有要养的习惯
             </span>
             <p className="text-[12px] leading-relaxed text-[var(--color-text-secondary)]">
-              从一件愿意重复的小事开始。可以直接添加，也可以去「我的目标」里挑选。
+              想到什么直接往上面那个框里写。
+              <br />
+              不过真要挑该养哪几个，习惯不是想出来的、是<strong>筛出来的</strong>——
+              点上面那条「今天主线」进目标，把行为都倒进去，排一遍焦点地图，
+              落在右上角的才配占你一个格子。
             </p>
             <button
               type="button"

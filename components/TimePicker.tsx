@@ -276,17 +276,17 @@ export default function TimePicker({ value, onChange, placeholder = "选择时�
       {/* 可直接键盘输入，也可以点开滚轮。 */}
       <div
         className={[
-          "time-field w-full flex items-center gap-2 px-3 py-2 border transition-[border-color,box-shadow] bg-white",
+          "w-full flex items-center gap-2 px-3 py-2 rounded-md border transition-all bg-white",
           invalid
-            ? "border-[var(--color-danger)] ring-1 ring-[var(--color-danger)]"
-            : isOpen
-              ? "border-[var(--color-primary)] ring-2 ring-[var(--color-primary-light)]"
+            ? "border-[#EF4444] border-2"
+            : isOpen || hasValue
+              ? "border-[var(--color-primary)] border-2 bg-[var(--color-primary-light)]"
               : "border-[var(--color-border)]",
         ].join(" ")}
       >
         <Clock className={[
           "w-4 h-4",
-          isOpen ? "text-[var(--color-primary)]" : "text-[var(--color-text-tertiary)]"
+          hasValue ? "text-[var(--color-primary)]" : "text-[var(--color-text-tertiary)]"
         ].join(" ")} />
         <input
           type="text"
@@ -299,7 +299,7 @@ export default function TimePicker({ value, onChange, placeholder = "选择时�
           aria-label={label || placeholder}
           className={[
             "min-w-0 flex-1 bg-transparent text-[14px] tabular-nums outline-none placeholder:text-[var(--color-text-tertiary)]",
-            hasValue ? "font-medium text-[var(--color-text-primary)]" : "text-[var(--color-text-primary)]",
+            hasValue ? "font-semibold text-[var(--color-primary)]" : "text-[var(--color-text-primary)]",
           ].join(" ")}
         />
       </div>

@@ -53,7 +53,7 @@ export default function MainlinePlanner({ days, today, aspirations, dayPlans, on
   return (
     <div
       ref={rootRef}
-      className="app-content w-full flex flex-col gap-2"
+      className="w-full flex flex-col gap-2 px-4 py-3 border-b border-[var(--color-border)]"
     >
       <div className="w-full flex items-center gap-1.5">
         <Target className="w-3.5 h-3.5 text-[var(--color-primary)]" />
@@ -197,7 +197,7 @@ export default function MainlinePlanner({ days, today, aspirations, dayPlans, on
           );
         })}
         <span className="text-[10px] text-[var(--color-text-tertiary)]">
-          每周上限在「我的目标」里设置；超出只提示，不拦你
+          每周上限在目标页设（点上面那条主线进去）。超了只提示，不拦你
         </span>
       </div>
     </div>

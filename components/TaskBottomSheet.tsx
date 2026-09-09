@@ -488,7 +488,7 @@ export default function TaskBottomSheet({
       />
 
       {/* Bottom Sheet */}
-      <div data-no-tab-swipe className="ui-sheet fixed bottom-0 left-0 right-0 z-[101] mx-auto w-full max-w-[640px] bg-white max-h-[85dvh] flex flex-col sm:bottom-6">
+      <div data-no-tab-swipe className="fixed bottom-0 left-0 right-0 z-[101] bg-white rounded-t-[20px] shadow-[0_-4px_24px_rgba(0,0,0,0.12)] animate-slide-up max-h-[85vh] flex flex-col">
         {/* Handle */}
         <div className="flex justify-center pt-3 pb-2 flex-shrink-0">
           <div className="w-10 h-1 bg-[#E4E4E7] rounded-full" />

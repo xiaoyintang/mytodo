@@ -2006,7 +2006,7 @@ export default function TodoApp() {
       onPointerCancel={() => {
         tabSwipeRef.current = null;
       }}
-      className={`app-canvas flex h-full w-full items-start justify-center overflow-x-hidden overflow-y-auto p-0 sm:p-6 ${goalsOpen ? "" : "touch-pan-y"}`}
+      className={`flex h-full w-full items-start justify-center overflow-x-hidden overflow-y-auto bg-white p-0 sm:bg-[#F5F5F5] sm:p-6 ${goalsOpen ? "" : "touch-pan-y"}`}
     >
       <FastTooltip />
       {goalsOpen ? (

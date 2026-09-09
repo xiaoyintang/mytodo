@@ -14,7 +14,7 @@ const TABS: Array<[ViewMode, string]> = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
-    <div className="app-shell workspace-view-enter flex min-h-full w-full max-w-[460px] flex-col overflow-hidden sm:min-h-0 md:min-h-[calc(100vh-48px)] md:max-w-[960px] lg:max-w-[1040px]">
+    <div className="workspace-view-enter flex min-h-full w-full max-w-[460px] flex-col overflow-hidden bg-white pb-14 sm:min-h-0 sm:rounded-[16px] sm:border sm:border-[var(--color-border)] sm:pb-0 md:min-h-[calc(100vh-48px)] md:max-w-[960px] lg:max-w-[1040px]">
       {children}
     </div>
   );
@@ -32,9 +32,9 @@ type HeaderProps = {
 
 export function AppHeader({ title, subtitle, onPrev, onNext, onToday, onTitleClick, onAdd }: HeaderProps) {
   return (
-    <header className="app-header flex w-full items-center justify-between gap-3">
+    <header className="flex w-full items-center justify-between gap-3 px-[18px] pb-3 pt-4 sm:pt-[18px]">
       <div className="min-w-0">
-        <h1 className="app-title min-w-0 font-bold text-[var(--color-text-primary)]">
+        <h1 className="min-w-0 text-[22px] font-bold leading-7 tracking-[-0.35px] text-[var(--color-text-primary)]">
           {onTitleClick ? (
             <button
               type="button"
@@ -51,7 +51,7 @@ export function AppHeader({ title, subtitle, onPrev, onNext, onToday, onTitleCli
         </h1>
         {subtitle && (
           <p
-            className="mt-1 truncate text-[12px] leading-4 text-[var(--color-text-secondary)]"
+            className="mt-0.5 truncate text-[12px] font-medium leading-4 text-[var(--color-text-tertiary)]"
             data-full-text={subtitle}
           >
             {subtitle}
@@ -64,7 +64,7 @@ export function AppHeader({ title, subtitle, onPrev, onNext, onToday, onTitleCli
           <button
             type="button"
             onClick={onToday}
-            className="ui-press mr-1 flex h-9 items-center gap-1 rounded-full bg-[var(--color-bg-white)] px-2.5 text-[11px] font-semibold text-[var(--color-primary)]"
+            className="mr-1 flex h-8 items-center gap-1 rounded-lg border border-[var(--color-primary)] px-2 text-[11px] font-semibold text-[var(--color-primary)] transition-colors hover:bg-[var(--color-primary-light)]"
             aria-label="回到今天"
           >
             <CalendarDays className="h-3.5 w-3.5" />
@@ -75,7 +75,7 @@ export function AppHeader({ title, subtitle, onPrev, onNext, onToday, onTitleCli
           <button
             type="button"
             onClick={onPrev}
-            className="ui-icon-button ui-press flex items-center justify-center text-[var(--color-text-secondary)]"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-gray-light)]"
             aria-label="上一周"
           >
             <ChevronLeft className="h-[18px] w-[18px]" />
@@ -85,7 +85,7 @@ export function AppHeader({ title, subtitle, onPrev, onNext, onToday, onTitleCli
           <button
             type="button"
             onClick={onNext}
-            className="ui-icon-button ui-press flex items-center justify-center text-[var(--color-text-secondary)]"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-gray-light)]"
             aria-label="下一周"
           >
             <ChevronRight className="h-[18px] w-[18px]" />
@@ -95,7 +95,7 @@ export function AppHeader({ title, subtitle, onPrev, onNext, onToday, onTitleCli
           <button
             type="button"
             onClick={onAdd}
-            className="ui-press ml-1 flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-primary)] text-white"
+            className="ml-1 flex h-8 w-8 items-center justify-center rounded-[10px] bg-[var(--color-primary)] text-white transition-colors hover:bg-[#1D4ED8]"
             aria-label="新增任务"
           >
             <Plus className="h-[17px] w-[17px]" strokeWidth={2.2} />
@@ -152,7 +152,7 @@ export function MonthDatePicker({ selectedDate, today, onSelect, onClose }: Mont
         role="dialog"
         aria-modal="true"
         aria-labelledby="month-date-picker-title"
-        className="ui-sheet w-full max-w-[380px] bg-white p-4"
+        className="w-full max-w-[380px] rounded-t-[20px] border border-[var(--color-border)] bg-white p-4 shadow-[0_18px_60px_rgba(15,23,42,0.2)] sm:rounded-[18px]"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-3">
@@ -247,18 +247,17 @@ export function MonthDatePicker({ selectedDate, today, onSelect, onClose }: Mont
 
 export function ViewTabs({ value, onChange }: { value: ViewMode; onChange: (mode: ViewMode) => void }) {
   return (
-    <nav className="view-segments flex items-stretch" aria-label="视图切换">
+    <nav className="flex h-9 w-full items-stretch border-b border-[var(--color-border)] px-[18px]" aria-label="视图切换">
       {TABS.map(([mode, label]) => (
         <button
           key={mode}
           type="button"
           onClick={() => onChange(mode)}
-          aria-current={value === mode ? "page" : undefined}
           className={[
-            "view-segment ui-press relative flex flex-1 items-center justify-center transition-colors",
+            "relative flex flex-1 items-center justify-center text-[13px] transition-colors",
             value === mode
-              ? "font-semibold text-[var(--color-text-primary)]"
-              : "font-medium text-[var(--color-text-secondary)]",
+              ? "workspace-tab-active font-semibold text-[var(--color-text-primary)] after:absolute after:bottom-[-1px] after:h-0.5 after:w-5 after:rounded-full after:bg-[var(--color-primary)]"
+              : "font-medium text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]",
           ].join(" ")}
         >
           {label}
@@ -277,7 +276,7 @@ type DateStripProps = {
 
 export function WeekDateStrip({ days, selectedDate, today, onSelect }: DateStripProps) {
   return (
-    <div className="flex w-full items-start px-4 py-2">
+    <div className="flex w-full items-start px-3 py-2">
       {days.map((day) => {
         const iso = toISODate(day);
         const selected = iso === selectedDate;
@@ -287,8 +286,7 @@ export function WeekDateStrip({ days, selectedDate, today, onSelect }: DateStrip
             key={iso}
             type="button"
             onClick={() => onSelect(iso)}
-            className="ui-press flex flex-1 flex-col items-center gap-1 rounded-xl py-0.5"
-            aria-current={selected ? "date" : undefined}
+            className="flex flex-1 flex-col items-center gap-1 py-0.5"
             aria-label={`${CN_WEEKDAY[day.getDay()]} ${day.getDate()}日`}
           >
             <span
@@ -301,7 +299,7 @@ export function WeekDateStrip({ days, selectedDate, today, onSelect }: DateStrip
             </span>
             <span
               className={[
-                "flex h-8 w-8 items-center justify-center rounded-full text-[14px] font-semibold tabular-nums transition-colors",
+                "flex h-7 w-7 items-center justify-center rounded-full text-[13px] font-semibold tabular-nums transition-colors",
                 selected
                   ? "bg-[var(--color-primary)] text-white"
                   : isToday

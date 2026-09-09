@@ -183,7 +183,7 @@ export default function AddTaskModal({ mode, isOpen, onClose, onSubmit, selected
   const weekLabel = `${pickerWeekStart.getFullYear()}年 第${getWeekNumber(pickerWeekStart)}周`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/30 backdrop-blur-sm"
@@ -191,7 +191,7 @@ export default function AddTaskModal({ mode, isOpen, onClose, onSubmit, selected
       />
 
       {/* Modal */}
-      <div role="dialog" aria-modal="true" aria-label="新增任务" className="ui-sheet relative w-full max-w-[440px] max-h-[90dvh] bg-white flex flex-col">
+      <div className="relative w-[440px] max-h-[90vh] bg-white rounded-2xl shadow-[0_8px_32px_-4px_rgba(0,0,0,0.15),0_4px_12px_rgba(0,0,0,0.1)] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5">
           <div className="flex flex-col gap-1">
@@ -201,10 +201,8 @@ export default function AddTaskModal({ mode, isOpen, onClose, onSubmit, selected
             </p>
           </div>
           <button
-            type="button"
             onClick={onClose}
-            aria-label="关闭新增任务"
-            className="ui-icon-button ui-press flex items-center justify-center bg-[var(--color-bg-gray-light)]"
+            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-gray-light)] transition-colors"
           >
             <X className="w-[18px] h-[18px] text-[var(--color-text-secondary)]" />
           </button>

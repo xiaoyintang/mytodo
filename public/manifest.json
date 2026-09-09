@@ -4,8 +4,8 @@
   "description": "日程与待办事项管理",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#F2F2F7",
-  "theme_color": "#F2F2F7",
+  "background_color": "#ffffff",
+  "theme_color": "#2563EB",
   "orientation": "portrait",
   "icons": [
     {

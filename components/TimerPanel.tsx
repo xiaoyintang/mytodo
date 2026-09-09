@@ -59,7 +59,8 @@ export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRena
 
       {running && style ? (
         <div
-          className="timer-running w-full flex items-center gap-3 px-4 py-3"
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-[12px] border-2"
+          style={{ backgroundColor: style.bg, borderColor: style.solid }}
         >
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             {editing ? <input
@@ -104,7 +105,8 @@ export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRena
           <button
             type="button"
             onClick={onStop}
-            className="ui-press flex items-center gap-1.5 px-4 py-2.5 rounded-full bg-[var(--color-primary)] text-white text-[14px] font-semibold flex-shrink-0"
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-white text-[14px] font-semibold transition-opacity hover:opacity-90 flex-shrink-0"
+            style={{ backgroundColor: style.solid }}
           >
             <Square className="w-4 h-4" fill="currentColor" strokeWidth={0} />
             停止
@@ -117,9 +119,9 @@ export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRena
               key={c.key}
               type="button"
               onClick={() => onStart(c.key)}
-              className="timer-choice ui-press flex-1 flex items-center justify-center gap-2 py-3 text-[14px] font-medium text-[var(--color-text-primary)]"
+              className="flex-1 flex items-center justify-center py-3 rounded-[12px] border-[1.5px] text-[15px] font-semibold transition-colors"
+              style={{ backgroundColor: c.bg, borderColor: c.border, color: c.text }}
             >
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: c.solid }} />
               {c.key}
             </button>
           ))}
