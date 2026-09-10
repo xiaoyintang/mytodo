@@ -491,7 +491,7 @@ export default function TodoDayView({
             <CalendarDays className="h-4 w-4" />
           </button>
           <TaskQuickActions title={t.title} onRename={() => setRenamingTaskId(t.id)}
-            onDetails={() => openTaskDetails(t)} onDelete={() => setDeletingTaskId(t.id)} />
+            onDelete={() => setDeletingTaskId(t.id)} />
         </div>
 
         {isExpanded && subs.length > 0 && (
