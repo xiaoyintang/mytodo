@@ -17,7 +17,10 @@ import { CN_WEEKDAY, addDays, parseISODate, startOfWeek } from "@/components/tod
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
 import { goalColor, mainlinesOf } from "@/components/todo/goal";
 import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
-import { CalendarDays, Check, ChevronDown, LayoutTemplate, ListChecks, MoreHorizontal, Timer, X } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, LayoutTemplate, ListChecks, Timer, X } from "lucide-react";
+import TaskQuickActions from "@/components/TaskQuickActions";
+import TaskTitleEditor from "@/components/TaskTitleEditor";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import TaskScheduleDialog, { type TaskSchedule } from "@/components/TaskScheduleDialog";
 import TaskBottomSheet from "@/components/TaskBottomSheet";
 import QuickAddTask from "@/components/QuickAddTask";
@@ -130,6 +133,9 @@ export default function TodoDayView({
   onNextWeek,
 }: Props) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [renamingTaskId, setRenamingTaskId] = useState<string | null>(null);
+  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
+  const deletingTask = tasks.find((task) => task.id === deletingTaskId);
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [scheduleEditor, setScheduleEditor] = useState<{ taskId: string; focusTime: boolean } | null>(null);
@@ -161,8 +167,7 @@ export default function TodoDayView({
 
   // Get the latest task data from tasks array
   const selectedTask = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) ?? null : null;
-  function handleStartEdit(e: React.MouseEvent, task: Task) {
-    e.stopPropagation();
+  function openTaskDetails(task: Task) {
     setSelectedTaskId(task.id);
     setIsBottomSheetOpen(true);
   }
@@ -243,7 +248,7 @@ export default function TodoDayView({
     );
   }
 
-  // 任务行：默认只露出执行所需的信息，详情和删除收进右侧的更多入口。
+  // 标题打开详情；圆圈改状态，步骤按钮展开，更多只提供轻量快捷操作。
   function renderTaskCard(t: Task, showTime = true) {
     const isDone = t.status === "done";
     const isInProgress = t.status === "in_progress";
@@ -290,26 +295,27 @@ export default function TodoDayView({
     return (
       <div key={t.id} className={isInProgress ? "bg-[#F8FBFF]" : "bg-white"}>
         <div
-          className="group flex w-full cursor-pointer items-start gap-2.5 px-1 py-2.5"
-          onClick={() => {
-            if (subs.length > 0) toggleTaskExpanded(t.id);
-            else onCycleTaskStatus(t.id);
-          }}
+          className="group flex w-full items-start gap-2.5 px-1 py-2.5"
         >
           <span className="pt-0.5">
             <StatusIndicator status={t.status} onClick={() => onCycleTaskStatus(t.id)} />
           </span>
 
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span
+            {renamingTaskId === t.id ? <TaskTitleEditor title={t.title}
+              onSave={(title) => onUpdateTask(t.id, { title })}
+              onClose={() => setRenamingTaskId(null)} /> : <button
+              type="button"
+              aria-label={`查看任务详情：${t.title}`}
+              onClick={() => openTaskDetails(t)}
               className={[
-                "truncate text-[14px] font-medium leading-5",
+                "truncate rounded text-left text-[14px] font-medium leading-5 focus-visible:outline-[var(--color-primary)]",
                 isDone ? "text-[var(--color-text-tertiary)] line-through" : "text-[var(--color-text-primary)]",
               ].join(" ")}
               data-full-text={t.title}
             >
               {t.title}
-            </span>
+            </button>}
 
             {nextSubtask && !isExpanded && (
               <button
@@ -457,6 +463,8 @@ export default function TodoDayView({
                       e.stopPropagation();
                       toggleTaskExpanded(t.id);
                     }}
+                    aria-label={`${isExpanded ? "收起" : "展开"}任务步骤：${t.title}`}
+                    aria-expanded={isExpanded}
                     className="flex items-center gap-0.5 text-[var(--color-text-secondary)]"
                   >
                     <ListChecks className="h-3 w-3" />
@@ -482,14 +490,8 @@ export default function TodoDayView({
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--color-text-tertiary)] transition-[opacity,background-color] hover:bg-[var(--color-bg-gray-light)] hover:text-[var(--color-primary)] sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 focus-visible:opacity-100">
             <CalendarDays className="h-4 w-4" />
           </button>
-          <button
-            type="button"
-            onClick={(e) => handleStartEdit(e, t)}
-            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-[var(--color-text-tertiary)] opacity-50 transition-[opacity,background-color] hover:bg-[var(--color-bg-gray-light)] sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
-            aria-label={`编辑${t.title}`}
-          >
-            <MoreHorizontal className="h-4 w-4" />
-          </button>
+          <TaskQuickActions title={t.title} onRename={() => setRenamingTaskId(t.id)}
+            onDetails={() => openTaskDetails(t)} onDelete={() => setDeletingTaskId(t.id)} />
         </div>
 
         {isExpanded && subs.length > 0 && (
@@ -705,6 +707,10 @@ export default function TodoDayView({
       </div>
 
       {/* Bottom Sheet for editing */}
+      {deletingTask && createPortal(<ConfirmDialog isOpen title="删除这个任务？"
+        description={`「${deletingTask.title}」删除后无法恢复`}
+        onConfirm={() => { onDeleteTask(deletingTask.id); setDeletingTaskId(null); }}
+        onCancel={() => setDeletingTaskId(null)} />, document.body)}
       {schedulingTask && scheduleEditor && <TaskScheduleDialog key={schedulingTask.id}
         task={schedulingTask} today={today} focusTime={scheduleEditor.focusTime}
         onApply={applySchedule} onClose={() => setScheduleEditor(null)} />}

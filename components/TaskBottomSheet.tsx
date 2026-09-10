@@ -201,6 +201,7 @@ export default function TaskBottomSheet({
   const [isEditingTarget, setIsEditingTarget] = useState(false);
   const [targetInput, setTargetInput] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [aiToolsOpen, setAiToolsOpen] = useState(false);
   const [subDraft, setSubDraft] = useState("");
   const [insertingBeforeNext, setInsertingBeforeNext] = useState(false);
   const [insertDraft, setInsertDraft] = useState("");
@@ -253,6 +254,8 @@ export default function TaskBottomSheet({
     setReviewingFlow(false);
     setFlowReview(null);
   }, [task?.id]);
+
+  useEffect(() => { setAiToolsOpen(false); }, [task?.id, isOpen]);
 
   // Focus input when editing starts
   useEffect(() => {
@@ -488,7 +491,7 @@ export default function TaskBottomSheet({
       />
 
       {/* Bottom Sheet */}
-      <div data-no-tab-swipe className="fixed bottom-0 left-0 right-0 z-[101] bg-white rounded-t-[20px] shadow-[0_-4px_24px_rgba(0,0,0,0.12)] animate-slide-up max-h-[85vh] flex flex-col">
+      <div data-no-tab-swipe role="dialog" aria-modal="true" aria-label="任务详情" className="fixed bottom-0 left-0 right-0 z-[101] bg-white rounded-t-[20px] shadow-[0_-4px_24px_rgba(0,0,0,0.12)] animate-slide-up max-h-[85vh] flex flex-col">
         {/* Handle */}
         <div className="flex justify-center pt-3 pb-2 flex-shrink-0">
           <div className="w-10 h-1 bg-[#E4E4E7] rounded-full" />
@@ -515,6 +518,7 @@ export default function TaskBottomSheet({
               onChange={(e) => setEditTitle(e.target.value)}
               onBlur={handleSaveTitle}
               onKeyDown={(e) => {
+                if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                 if (e.key === "Enter") handleSaveTitle();
                 if (e.key === "Escape") {
                   setEditTitle(task.title);
@@ -707,10 +711,17 @@ export default function TaskBottomSheet({
           </div>
 
           {/* 所属目标：决定它算不算"今天主线"里的任务 */}
-          {renderTargetControl()}
-
           {aspirations.length > 0 && (
-            <div className="mb-4">
+            <details key={`goal-${task.id}`} className="group/goal mb-4 rounded-lg border border-[var(--color-border)] px-3 py-2">
+              <summary className="flex cursor-pointer list-none items-start gap-2 text-[12px] text-[var(--color-text-secondary)] [&::-webkit-details-marker]:hidden">
+                <Target className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-primary)]" />
+                <span className="min-w-0 flex-1 break-words">{aspirations.find((goal) => goal.id === task.aspirationId)?.title ?? "未归属目标"}
+                  {selectedTaskResult && <span className="text-[var(--color-text-tertiary)]"> › {selectedTaskResult.title}</span>}
+                </span>
+                <span className="shrink-0 text-[11px] text-[var(--color-text-tertiary)]">修改归属</span>
+                <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 transition-transform group-open/goal:rotate-90" />
+              </summary>
+              <div className="mt-3">
               <div className="mb-1.5 flex min-h-7 items-center justify-between gap-3">
                 <span className="flex items-center gap-1.5 text-[13px] font-medium text-[var(--color-text-primary)]">
                   <Target className="w-4 h-4 text-[var(--color-primary)]" />
@@ -789,7 +800,8 @@ export default function TaskBottomSheet({
                   不选也行——不归属任何目标的任务永远不会被折起来
                 </p>
               )}
-            </div>
+              </div>
+            </details>
           )}
 
           {/* 成果可以作为父任务，但执行现场要明确当前下一步。 */}
@@ -1096,7 +1108,13 @@ export default function TaskBottomSheet({
                       </span>
                     )}
                   </span>
-                  <div className="flex flex-shrink-0 items-center gap-1.5">
+                  <button type="button" aria-expanded={aiToolsOpen} onClick={() => setAiToolsOpen(!aiToolsOpen)}
+                    className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-gray-lighter)]">
+                    <Sparkles className="h-3.5 w-3.5" />AI 辅助
+                    <ChevronRight className={`h-3 w-3 transition-transform ${aiToolsOpen ? "rotate-90" : ""}`} />
+                  </button>
+                </div>
+                  {aiToolsOpen && <div className="mb-2 flex flex-wrap items-center gap-1.5 rounded-lg bg-[var(--color-bg-gray-lighter)] p-2">
                     {subs.length > 0 && (
                       <button
                         type="button"
@@ -1131,8 +1149,7 @@ export default function TaskBottomSheet({
                       <Wand2 className="w-3 h-3" />
                       {breaking ? "拆解中…" : subs.length > 0 ? "重新拆解" : "AI 拆成步骤"}
                     </button>
-                  </div>
-                </div>
+                  </div>}
 
                 {subs.length === 0 && (
                   <div className="mb-1.5">
@@ -1500,6 +1517,15 @@ export default function TaskBottomSheet({
 
           {/* 完成进度（非时长目标任务，可拖动）。
               有子任务时不显示——进度由打勾算出来，别让你维护两套账 */}
+          <details key={`progress-${task.id}`} className="group/progress mb-4 rounded-lg border border-[var(--color-border)] px-3 py-2">
+            <summary className="flex cursor-pointer list-none items-center gap-2 text-[12px] text-[var(--color-text-secondary)] [&::-webkit-details-marker]:hidden">
+              <Gauge className="h-3.5 w-3.5" />
+              <span className="flex-1">进度与时长设置</span>
+              <span className="text-[11px] text-[var(--color-text-tertiary)]">{task.targetMinutes ? `目标 ${formatMinutes(task.targetMinutes)}` : task.progress ? `${task.progress}%` : "可选"}</span>
+              <ChevronRight className="h-3.5 w-3.5 transition-transform group-open/progress:rotate-90" />
+            </summary>
+            <div className="mt-3">
+            {renderTargetControl()}
           {!task.targetMinutes && (task.subtasks ?? []).length === 0 && (
             <div className="mb-4">
               <div className="flex items-center justify-between mb-1">
@@ -1536,6 +1562,9 @@ export default function TaskBottomSheet({
               </div>
             </div>
           )}
+
+            </div>
+          </details>
 
           {/* 时长目标进度 + 记一笔（柳比歇夫模式） */}
           {(() => {
