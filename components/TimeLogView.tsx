@@ -79,6 +79,7 @@ type SummaryRow = {
  * taskId 是系统给出的关联建议，用户可以在确认前手动改掉。
  */
 type PendingEntry = ParsedEntry & {
+  date: ISODate;
   taskId?: string;
   taskLinkMode?: TimeEntry["taskLinkMode"];
 };
@@ -317,12 +318,14 @@ export default function TimeLogView({
 
     let parsed: ParsedEntry[] | null = null;
     let source: "ai" | "rule" = "rule";
+    // 在提交解析时冻结日期和时间，避免等 AI / 确认期间跨分钟或切日期改变落账。
+    const d = new Date();
+    const parsedToday = toISODate(d);
+    const now = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 
     if (useAI) {
-      const d = new Date();
-      const now = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
       const aiResult = await fetchAIParse(text, now);
-      if (aiResult) {
+      if (aiResult?.length) {
         parsed = aiResult;
         source = "ai";
       } else {
@@ -331,7 +334,7 @@ export default function TimeLogView({
     }
 
     if (!parsed) {
-      parsed = parseTimeEntries(text);
+      parsed = parseTimeEntries(text, now);
     }
 
     setParsing(false);
@@ -344,8 +347,9 @@ export default function TimeLogView({
     setPending(
       parsed.map((entry) => ({
         ...entry,
+        date: entry.endsNow ? parsedToday : selectedDate,
         ...(() => {
-          const matched = matchTaskByTitle(entry.title, selectedDate, tasks);
+          const matched = matchTaskByTitle(entry.title, entry.endsNow ? parsedToday : selectedDate, tasks);
           return matched
             ? { taskId: matched.id, taskLinkMode: "auto" as const }
             : { taskLinkMode: "none" as const };
@@ -358,7 +362,7 @@ export default function TimeLogView({
     if (!pending || pending.length === 0) return;
     onAddEntries(
       pending.map((p) => ({
-        date: selectedDate,
+        date: p.date,
         title: p.title,
         minutes: p.minutes,
         startTime: p.startTime,
@@ -367,6 +371,9 @@ export default function TimeLogView({
         taskLinkMode: p.taskLinkMode,
       })),
     );
+    if (pending.every((p) => p.date === pending[0].date) && pending[0].date !== selectedDate) {
+      onSelectDate(pending[0].date);
+    }
     setPending(null);
     setInput("");
     setParseSource(null);
@@ -626,7 +633,7 @@ export default function TimeLogView({
   }
 
   function entryTimeLabel(e: { startTime?: string; endTime?: string }): string {
-    if (e.startTime && e.endTime) return `${e.startTime} - ${e.endTime}`;
+    if (e.startTime && e.endTime) return `${timeToMinutes(e.startTime) > timeToMinutes(e.endTime) ? "前一天 " : ""}${e.startTime} - ${e.endTime}`;
     if (e.startTime) return e.startTime;
     return "补记";
   }
@@ -706,7 +713,7 @@ export default function TimeLogView({
               </div>
               {pending.map((p, i) => {
                 const matched = p.taskId ? tasks.find((task) => task.id === p.taskId) : undefined;
-                const availableTasks = tasks.filter((task) => task.date === selectedDate);
+                const availableTasks = tasks.filter((task) => task.date === p.date);
                 return (
                   <div key={i} className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white px-3 py-2">
                     <div className="flex-1 flex flex-col min-w-0">
@@ -717,7 +724,7 @@ export default function TimeLogView({
                         {p.title}
                       </span>
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[11px] text-[var(--color-text-tertiary)]">{entryTimeLabel(p)}</span>
+                        <span className="text-[11px] text-[var(--color-text-tertiary)]">{p.date !== selectedDate ? `${p.date} · ` : ""}{entryTimeLabel(p)}</span>
                         <span className="text-[11px] font-medium text-[var(--color-primary)]">{formatMinutes(p.minutes)}</span>
                         <label className="flex min-w-0 items-center gap-1 text-[10px] text-[var(--color-text-tertiary)]">
                           <Link2 className="h-3 w-3 flex-shrink-0" />

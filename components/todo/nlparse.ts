@@ -9,6 +9,8 @@ export interface ParsedEntry {
   startTime?: string; // "HH:mm"
   endTime?: string; // "HH:mm"
   minutes: number;
+  /** 明确说刚结束：归到解析时的今天（与计时器按结束日期记账一致）。不持久化此字段。 */
+  endsNow?: boolean;
 }
 
 const CN_DIGITS: Record<string, number> = {
@@ -102,22 +104,60 @@ function cleanTitle(raw: string): string {
   t = t.replace(/^(我|今天|上午|下午|中午|晚上|晚间|早上|凌晨|然后|接着|之后|还|又|再|先|开始|刚才|刚刚|方才|刚)+/, "");
   // 只剥"动词+了"形式，不剥单字动词——"刷题""背单词"本身就是事项名
   t = t.replace(/^(做了|做完|学了|写了|看了|背了|复习了|练了|刷了|干了|搞了|进行了|花了|用了)/, "");
-  t = t.replace(/(花了|用了|大概|左右|差不多|吧|了)$/, "");
+  t = t.replace(/(?:总共|一共|总计)?\s*(?:花了|用了|耗时|用时)?\s*(?:大概|左右|差不多|吧|了)?\s*$/, "");
   return t.trim();
+}
+
+/** 逗号后的“花了 15 分钟”是上一件事的补充，不是另一笔无名记录。 */
+function entrySegments(input: string): string[] {
+  const normalized = input.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/：/g, ":");
+  const segments: string[] = [];
+  for (const raw of normalized.split(/[,，;；。\n]|然后|接着|之后再/)) {
+    const part = raw.trim();
+    if (!part) continue;
+    const duration = parseDuration(part);
+    const remainder = duration ? part.replace(duration[1], "").replace(/(?:总共|一共|总计|花了|用了|耗时|用时|大概|左右|差不多|了|吧|\s)/g, "") : part;
+    if (duration && !remainder && segments.length && !parseDuration(segments[segments.length - 1])) {
+      segments[segments.length - 1] += ` ${part}`;
+    } else segments.push(part);
+  }
+  return segments;
+}
+
+function recentWindow(segment: string, now: string): Partial<ParsedEntry> | null {
+  // 只认“刚做完”的时间语义，不把“刚好”或明确的历史/未来日期改到现在。
+  if (!/^(?:我|今天|\s)*(?:刚才|刚刚|方才|刚(?!好|性|强|毅|铁))/.test(segment) ||
+      /昨天|前天|昨晚|上周|上个月|明天|后天|下周|\d{4}-\d{1,2}-\d{1,2}|\d+月\d+|\d+[日号]/.test(segment) ||
+      new RegExp(TIME_POINT).test(segment)) return null;
+  const duration = parseDuration(segment);
+  if (!duration || duration[0] <= 0 || duration[0] >= 1440) return null;
+  const start = (timeToMinutes(now) - duration[0] + 1440) % 1440;
+  return { startTime: minutesToTime(start)!, endTime: now, minutes: duration[0], endsNow: true };
+}
+
+/** AI 负责事项语义；明确的“刚结束 + 时长”由代码计算，避免模型漏掉或算错时间。 */
+export function resolveRecentTimeEntries(input: string, entries: ParsedEntry[], now: string): ParsedEntry[] {
+  const segments = entrySegments(input);
+  // 不把一句“刚才”扩散给其他活动；无法可靠逐条对应时保留模型结果。
+  const timed = segments.filter((segment) => parseDuration(segment) || new RegExp(TIME_POINT).test(segment));
+  if (timed.length !== entries.length) return entries;
+  return entries.map((entry, index) => {
+    if (entries.length > 1) {
+      const duration = parseDuration(timed[index]);
+      const sourceTitle = cleanTitle(timed[index].replace(duration?.[1] ?? "", ""));
+      if (!duration || duration[0] !== entry.minutes || !sourceTitle ||
+          !(sourceTitle.includes(entry.title) || entry.title.includes(sourceTitle))) return entry;
+    }
+    const window = recentWindow(timed[index], now);
+    return window ? { ...entry, ...window } : entry;
+  });
 }
 
 /** 解析一整段口述/输入文字，返回多笔时间记录。now 为 "HH:mm"（默认取当前时间），用于"只说了开始时间"的场景 */
 export function parseTimeEntries(input: string, now?: string): ParsedEntry[] {
   const d = new Date();
   const nowTime = now ?? `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-  const normalized = input
-    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
-    .replace(/：/g, ":");
-
-  const segments = normalized
-    .split(/[,，;；。\n]|然后|接着|之后再/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const segments = entrySegments(input);
 
   const entries: ParsedEntry[] = [];
 
@@ -171,13 +211,10 @@ export function parseTimeEntries(input: string, now?: string): ParsedEntry[] {
     // "刚才做了30分钟X"：说了"刚才/刚刚"但没写时刻 → 把这段时长贴到"现在"结束
     // （现在-时长 → 现在），而不是记成一段没有时刻的纯时长
     // "刚"默认按"刚才"处理；只排除真不表"刚才"的词（刚好=正好、刚性/刚强/刚毅）
-    const justNow = /刚才|刚刚|方才|刚(?!好|性|强|毅|铁)/.test(seg);
-    if (justNow && minutes > 0 && !startTime && !endTime) {
-      const startMin = timeToMinutes(nowTime) - minutes;
-      if (startMin >= 0) {
-        startTime = minutesToTime(startMin) ?? undefined;
-        endTime = nowTime;
-      }
+    const recent = recentWindow(seg, nowTime);
+    if (recent && !startTime && !endTime) {
+      startTime = recent.startTime;
+      endTime = recent.endTime;
     }
 
     // 时间点 + 时长 → 推出结束时间
@@ -197,7 +234,7 @@ export function parseTimeEntries(input: string, now?: string): ParsedEntry[] {
     if (minutes <= 0) continue; // 没有任何时间信息的片段跳过
 
     const title = cleanTitle(rest) || "未命名事项";
-    entries.push({ title, startTime, endTime, minutes });
+    entries.push({ title, startTime, endTime, minutes, ...(recent ? { endsNow: true } : {}) });
   }
 
   return entries;

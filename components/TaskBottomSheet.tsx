@@ -21,6 +21,7 @@ import TimePicker from "@/components/TimePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
 import StartActionEditor from "@/components/StartActionEditor";
+import TaskNotes from "@/components/TaskNotes";
 
 // 可拖动的完成进度滑块（0-100，指哪填哪）
 function ProgressSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
@@ -803,6 +804,10 @@ export default function TaskBottomSheet({
               </div>
             </details>
           )}
+
+          <TaskNotes key={task.id} task={task}
+            goal={aspirations.find((goal) => goal.id === task.aspirationId)}
+            result={selectedTaskResult} onChange={(notes) => onUpdate(task.id, { notes })} />
 
           {/* 成果可以作为父任务，但执行现场要明确当前下一步。 */}
           {(() => {

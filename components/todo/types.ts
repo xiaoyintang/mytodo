@@ -40,6 +40,26 @@ export interface StartAction {
   done?: boolean;
 }
 
+/** 执行现场随记；只属于本次任务，不复制进模板或下一次执行。 */
+export interface TaskNote {
+  id: string;
+  text: string;
+  createdAt: number;
+  updatedAt?: number;
+  /** 保存现场快照，后续改期、改名或更换归属不改写历史。 */
+  context: {
+    taskId: string;
+    taskTitle: string;
+    taskDate: ISODate;
+    aspirationId?: string;
+    aspirationTitle?: string;
+    resultId?: string;
+    resultTitle?: string;
+    stepId?: string;
+    stepTitle?: string;
+  };
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -69,6 +89,8 @@ export interface Task {
   startAction?: StartAction;
   /** 手动完成进度 0-100（非时长目标任务用；与状态联动：0=待办 100=已完成 其余=进行中） */
   progress?: number;
+  /** 可选的追加式随记。旧数据没有时视为空，沿用 tasks 的持久化与同步。 */
+  notes?: TaskNote[];
 }
 
 /**

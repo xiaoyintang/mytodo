@@ -289,6 +289,7 @@ export default function TodoDayView({
       !!t.sourceHabitId ||
       !!t.sourceBehaviorId ||
       !!t.tag ||
+      !!t.notes?.length ||
       isHigh ||
       logged > 0;
 
@@ -472,6 +473,8 @@ export default function TodoDayView({
                     <ChevronDown className={["h-2.5 w-2.5 transition-transform", isExpanded ? "rotate-180" : ""].join(" ")} />
                   </button>
                 )}
+                {!!t.notes?.length && <button type="button" onClick={(event) => { event.stopPropagation(); openTaskDetails(t); }}
+                  aria-label={`查看任务随记：${t.title}`} className="min-h-7 rounded px-1 text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-gray-light)]">随记 {t.notes.length}</button>}
                 {isMainlineTask(t) && !isDone && <span className="font-semibold text-[var(--color-primary)]">主线</span>}
                 {t.sourceHabitId && !isDone && <span className="font-medium text-[#7C3AED]">习惯</span>}
                 {t.sourceBehaviorId && !t.sourceHabitId && !isDone && (
