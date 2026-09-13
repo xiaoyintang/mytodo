@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const ts = require('typescript');
 
-function harness() {
+function harness(options = {}) {
   const values = []; let cursor = 0; let tree;
   const calls = [];
   const react = {
@@ -23,7 +23,8 @@ function harness() {
   }, module, module.exports, { innerWidth: 390, innerHeight: 844 }, { body: {} });
   function render() {
     cursor = 0;
-    tree = module.exports.default({ title: '任务', onRename: () => calls.push('rename'), onDelete: () => calls.push('delete') });
+    tree = module.exports.default({ title: '任务', onRename: () => calls.push('rename'), onDelete: () => calls.push('delete'),
+      onToggleDailyFocus: options.withDailyFocus ? () => calls.push('focus') : undefined, isDailyFocus: options.isDailyFocus });
   }
   function nodes(n = tree) {
     if (Array.isArray(n)) return n.flatMap(item => nodes(item));
@@ -70,5 +71,13 @@ test('outside tap and Escape still dismiss without selecting an action', () => {
   for (const exit of ['outside', 'escape']) {
     const h = harness(); h.open(); h[exit]();
     assert.equal(h.menu(), undefined); assert.deepEqual(h.calls, []);
+  }
+});
+
+test('daily focus menu action supports touch selection and cancellation without affecting rename/delete', () => {
+  for (const isDailyFocus of [false, true]) {
+    const h = harness({ withDailyFocus: true, isDailyFocus }); h.open(); h.blur(null);
+    h.click(isDailyFocus ? '取消关键任务' : '设为当天关键任务');
+    assert.deepEqual(h.calls, ['focus']); assert.equal(h.menu(), undefined);
   }
 });

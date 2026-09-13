@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { MoreHorizontal, Pencil, Target, Trash2 } from "lucide-react";
 
-export default function TaskQuickActions({ title, onRename, onDelete }: {
+export default function TaskQuickActions({ title, onRename, onDelete, isDailyFocus, onToggleDailyFocus }: {
   title: string;
   onRename: () => void;
   onDelete: () => void;
+  isDailyFocus?: boolean;
+  onToggleDailyFocus?: () => void;
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -36,6 +38,7 @@ export default function TaskQuickActions({ title, onRename, onDelete }: {
     };
   }, [position]);
   const actions = [
+    ...(onToggleDailyFocus ? [{ label: isDailyFocus ? "取消关键任务" : "设为当天关键任务", Icon: Target, run: onToggleDailyFocus, destructive: false }] : []),
     { label: "改名", Icon: Pencil, run: onRename, destructive: false },
     { label: "删除任务", Icon: Trash2, run: onDelete, destructive: true },
   ];
@@ -47,8 +50,9 @@ export default function TaskQuickActions({ title, onRename, onDelete }: {
         if (event.detail === 0) openingPointer.current = null;
         if (position) { close(); return; }
         const rect = event.currentTarget.getBoundingClientRect();
+        const menuHeight = actions.length * 44 + 10;
         setPosition({ left: Math.max(8, Math.min(rect.right - 168, window.innerWidth - 176)),
-          top: rect.bottom + 108 <= window.innerHeight ? rect.bottom + 4 : Math.max(8, rect.top - 104) });
+          top: rect.bottom + menuHeight + 4 <= window.innerHeight ? rect.bottom + 4 : Math.max(8, rect.top - menuHeight - 4) });
       }}
       className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[var(--color-text-tertiary)] opacity-60 transition-[opacity,background-color] hover:bg-[var(--color-bg-gray-light)] sm:h-7 sm:w-7 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 focus-visible:opacity-100">
       <MoreHorizontal className="h-4 w-4" />

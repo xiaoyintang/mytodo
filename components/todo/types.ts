@@ -167,7 +167,7 @@ export interface DayPlan {
   date: ISODate;
   /** 今日主线，可多条 */
   primaryAspirationIds: string[];
-  /** 今天那 1 件必做（阶段二用），全局每天最多 1 个 */
+  /** 当天的关键任务，最多一件，也可以不选；引用现有 Task，不复制任务。 */
   mustDoTaskId?: string;
 }
 

@@ -23,6 +23,8 @@ import TaskTitleEditor from "@/components/TaskTitleEditor";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import TaskScheduleDialog, { type TaskSchedule } from "@/components/TaskScheduleDialog";
 import TaskBottomSheet from "@/components/TaskBottomSheet";
+import DailyFocusSection from "@/components/DailyFocusSection";
+import { dailyFocusTask } from "@/components/todo/dailyFocus";
 import QuickAddTask from "@/components/QuickAddTask";
 import MainlineBar from "@/components/MainlineBar";
 import { AppHeader, AppShell, MonthDatePicker, ViewTabs, WeekDateStrip } from "@/components/ViewChrome";
@@ -44,7 +46,7 @@ type Props = {
   onOpenTemplates: () => void;
   onCreateTask: (task: Omit<Task, "id">) => void;
   onDeleteTask: (taskId: string) => void;
-  onUpdateTask: (taskId: string, updates: Partial<Omit<Task, "id">>) => void;
+  onUpdateTask: (taskId: string, updates: Partial<Omit<Task, "id">>, options?: { restoreDailyFocus?: boolean }) => void;
   onAddEntry: (entry: Omit<TimeEntry, "id">) => void;
   today: ISODate;
   aspirations: Aspiration[];
@@ -52,6 +54,7 @@ type Props = {
   behaviors: BehaviorCard[];
   habits: Habit[];
   dayPlans: Record<string, DayPlan>;
+  onSetDailyFocus: (date: ISODate, taskId: string | null) => void;
   onOpenGoals: () => void;
   onOpenGoal: (aspirationId: string, resultId?: string) => void;
   running: { title: string; startedAt: number } | null;
@@ -124,6 +127,7 @@ export default function TodoDayView({
   behaviors,
   habits,
   dayPlans,
+  onSetDailyFocus,
   onOpenGoals,
   onOpenGoal,
   running,
@@ -139,7 +143,7 @@ export default function TodoDayView({
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [scheduleEditor, setScheduleEditor] = useState<{ taskId: string; focusTime: boolean } | null>(null);
-  const [scheduleUndo, setScheduleUndo] = useState<{ taskId: string; before: TaskSchedule; message: string } | null>(null);
+  const [scheduleUndo, setScheduleUndo] = useState<{ taskId: string; before: TaskSchedule; wasDailyFocus: boolean; message: string } | null>(null);
   const schedulingTask = tasks.find((task) => task.id === scheduleEditor?.taskId);
 
   function applySchedule(schedule: TaskSchedule) {
@@ -149,7 +153,7 @@ export default function TodoDayView({
     setScheduleEditor(null);
     if (Object.keys(before).every((key) => before[key as keyof TaskSchedule] === schedule[key as keyof TaskSchedule])) return;
     onUpdateTask(schedulingTask.id, schedule);
-    setScheduleUndo({ taskId: schedulingTask.id, before,
+    setScheduleUndo({ taskId: schedulingTask.id, before, wasDailyFocus: dayPlans[schedulingTask.date]?.mustDoTaskId === schedulingTask.id,
       message: `已安排到 ${schedule.date}${schedule.startTime ? ` ${schedule.startTime}` : " · 不限时段"}` });
   }
   const [offOpen, setOffOpen] = useState(false);        // 非主线任务默认折起来
@@ -211,8 +215,9 @@ export default function TodoDayView({
   const isOffMainline = (t: Task) =>
     mainIds.length > 0 && !!t.aspirationId && !mainIds.includes(t.aspirationId);
 
-  const focusTasks = dayTasks.filter((t) => !isOffMainline(t));
-  const offTasks = dayTasks.filter(isOffMainline);
+  const keyTask = dailyFocusTask(selectedDate, dayPlans, dayTasks);
+  const focusTasks = dayTasks.filter((t) => t.id !== keyTask?.id && !isOffMainline(t));
+  const offTasks = dayTasks.filter((t) => t.id !== keyTask?.id && isOffMainline(t));
 
   const anytimeTasks = focusTasks.filter((task) => !task.startTime);
   const scheduledTasks = focusTasks.filter((task) => !!task.startTime);
@@ -494,6 +499,8 @@ export default function TodoDayView({
             <CalendarDays className="h-4 w-4" />
           </button>
           <TaskQuickActions title={t.title} onRename={() => setRenamingTaskId(t.id)}
+            isDailyFocus={keyTask?.id === t.id}
+            onToggleDailyFocus={t.status !== "done" || keyTask?.id === t.id ? () => onSetDailyFocus(selectedDate, keyTask?.id === t.id ? null : t.id) : undefined}
             onDelete={() => setDeletingTaskId(t.id)} />
         </div>
 
@@ -589,6 +596,10 @@ export default function TodoDayView({
       <WeekDateStrip days={days} selectedDate={selectedDate} today={today} onSelect={onSelectDate} />
 
       <div className="flex w-full flex-col gap-5 px-[18px] pb-6 pt-1">
+        <DailyFocusSection key={selectedDate} task={keyTask} tasks={dayTasks} aspirations={aspirations}
+          isToday={selectedDate === today} onSelect={(id) => onSetDailyFocus(selectedDate, id)}>
+          {keyTask && renderTaskCard(keyTask)}
+        </DailyFocusSection>
         <div className="flex items-start gap-2">
           <QuickAddTask onCreate={onCreateTask} />
           <button
@@ -720,7 +731,10 @@ export default function TodoDayView({
       {scheduleUndo && tasks.some((task) => task.id === scheduleUndo.taskId) && createPortal(
         <div role="status" className="fixed bottom-16 left-1/2 z-[110] flex w-max max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-3 rounded-xl border border-[var(--color-border)] bg-white px-3 py-2 shadow-lg" data-no-tab-swipe>
           <span className="min-w-0 text-[12px] text-[var(--color-text-secondary)]">{scheduleUndo.message}</span>
-          <button type="button" onClick={() => { onUpdateTask(scheduleUndo.taskId, scheduleUndo.before); setScheduleUndo(null); }} className="shrink-0 text-[12px] font-semibold text-[var(--color-primary)]">撤回改期</button>
+          <button type="button" onClick={() => {
+            onUpdateTask(scheduleUndo.taskId, scheduleUndo.before, { restoreDailyFocus: scheduleUndo.wasDailyFocus });
+            setScheduleUndo(null);
+          }} className="shrink-0 text-[12px] font-semibold text-[var(--color-primary)]">撤回改期</button>
           <button type="button" onClick={() => setScheduleUndo(null)} aria-label="关闭改期提示"><X className="h-3.5 w-3.5" /></button>
         </div>, document.body
       )}

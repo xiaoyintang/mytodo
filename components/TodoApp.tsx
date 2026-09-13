@@ -35,6 +35,7 @@ import { toISODate, parseISODate, addDays, startOfWeek, useToday } from "@/compo
 import { useLocalStorageState } from "@/components/todo/storage";
 import { useCloudSync } from "@/components/todo/sync";
 import { nextGoalColor } from "@/components/todo/goal";
+import { clearDailyFocus, moveDailyFocus, setDailyFocus } from "@/components/todo/dailyFocus";
 import { isRepeatable } from "@/components/todo/behavior";
 import type {
   AIBehaviorImportApply,
@@ -761,6 +762,7 @@ export default function TodoApp() {
 
   // Delete task
   function deleteTask(taskId: string) {
+    setDayPlans((prev) => clearDailyFocus(prev, taskId));
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
     // 一次性推进项会记住自己排出去的任务。任务被单独删除后要解除关联，
     // 否则焦点地图虽然重新显示「排日程」，底层仍会被旧 taskId 卡住。
@@ -772,10 +774,19 @@ export default function TodoApp() {
   }
 
   // Update task (for editing)
-  function updateTask(taskId: string, updates: Partial<Omit<Task, "id">>) {
+  function updateTask(taskId: string, updates: Partial<Omit<Task, "id">>, options?: { restoreDailyFocus?: boolean }) {
+    const task = tasks.find((item) => item.id === taskId);
+    if (updates.date && task) {
+      const date = updates.date;
+      setDayPlans((prev) => moveDailyFocus(prev, task, date, options?.restoreDailyFocus));
+    }
     setTasks((prev) =>
       prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t))
     );
+  }
+
+  function selectDailyFocus(date: ISODate, taskId: string | null) {
+    setDayPlans((prev) => setDailyFocus(prev, date, taskId, tasks));
   }
 
   // 改动记录前先存快照，供撤回（本地云同步的替换不走这里，不会污染撤回栈）
@@ -2092,6 +2103,7 @@ export default function TodoApp() {
           behaviors={safeBehaviors}
           habits={safeHabits}
           dayPlans={safeDayPlans}
+          onSetDailyFocus={selectDailyFocus}
           onOpenGoals={openGoals}
           onOpenGoal={openGoal}
           running={timer.running}
