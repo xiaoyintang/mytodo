@@ -54,6 +54,8 @@ export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRena
   const style = running
     ? CATEGORIES.find((c) => c.key === running.title) ?? CUSTOM_STYLE
     : undefined;
+  const linkedTask = tasks.find(task => task.id === running?.attribution?.taskId);
+  const runningGoalId = linkedTask ? linkedTask.aspirationId : running?.attribution?.aspirationId;
 
   return (
     <div className="w-full flex flex-col gap-2">
@@ -96,8 +98,8 @@ export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRena
               {editing ? "回车或点空白保存 · Esc 取消" : `从 ${hhmm(new Date(running.startedAt))} 开始`}
             </span>
             {!editing && running.attribution && <span className="truncate text-[11px] text-[var(--color-text-secondary)]">
-              {aspirations.find((goal) => goal.id === running.attribution?.aspirationId)?.title
-                ?? (running.attribution.aspirationId ? "原目标已删除" : "未归属目标")}
+              {aspirations.find((goal) => goal.id === runningGoalId)?.title
+                ?? (runningGoalId ? "原目标已删除" : "未归属目标")}
             </span>}
             {!editing && running.attribution?.taskId && <span className="truncate text-[11px] text-[var(--color-text-secondary)]">
               {tasks.some((task) => task.id === running.attribution?.taskId)

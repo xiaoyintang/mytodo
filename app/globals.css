@@ -38,6 +38,20 @@
 .daily-focus-celebrate { animation: daily-focus-celebrate 700ms ease-out; }
 .daily-focus-sparkle { animation: daily-focus-sparkle 1100ms ease-out both; }
 
+/* A task entry opens details; its goal/time controls stay independent. */
+.task-details-entry { transition: background-color 150ms ease; }
+.task-details-entry:has(> .task-details-trigger:focus-visible) {
+  background: var(--color-bg-gray-light);
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .task-details-chevron { opacity: 0; transition: opacity 150ms ease; }
+  .task-details-entry:has(> .task-details-trigger:hover) { background: var(--color-bg-gray-light); }
+  .task-details-trigger:hover .task-details-chevron,
+  .task-details-trigger:focus-visible .task-details-chevron { opacity: 1; }
+}
+
 @layer base {
   html, body {
     height: 100%;
@@ -128,6 +142,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .task-details-entry, .task-details-chevron { transition: none; }
   .daily-focus-celebrate, .daily-focus-sparkle { animation: none; }
   .animate-habit-float-up,
   .animate-habit-pop,

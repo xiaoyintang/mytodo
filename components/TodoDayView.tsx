@@ -310,6 +310,7 @@ export default function TodoDayView({
           </span>
 
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <div className="task-details-entry relative isolate -mx-1 rounded-lg px-1 py-0.5">
             {renamingTaskId === t.id ? <TaskTitleEditor title={t.title}
               onSave={(title) => onUpdateTask(t.id, { title })}
               onClose={() => setRenamingTaskId(null)} /> : <button
@@ -317,13 +318,88 @@ export default function TodoDayView({
               aria-label={`查看任务详情：${t.title}`}
               onClick={() => openTaskDetails(t)}
               className={[
-                "-mx-1 cursor-pointer truncate rounded px-1 text-left text-[14px] font-medium leading-5 transition-colors duration-150 hover:bg-[var(--color-primary-light)] focus-visible:bg-[var(--color-primary-light)] focus-visible:outline-[var(--color-primary)] motion-reduce:transition-none",
+                "task-details-trigger flex w-full min-w-0 cursor-pointer items-center gap-2 rounded text-left text-[14px] font-medium leading-5 after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none",
                 isDone ? "text-[var(--color-text-tertiary)] line-through" : "text-[var(--color-text-primary)]",
               ].join(" ")}
               data-full-text={t.title}
             >
-              {t.title}
+              <span className="min-w-0 flex-1 truncate">{t.title}</span>
+              <ChevronRight aria-hidden="true" className="task-details-chevron h-3.5 w-3.5 shrink-0 text-[var(--color-text-tertiary)]" />
             </button>}
+
+            {hasMeta && (
+              <div className="pointer-events-none relative z-10 mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] leading-4 [&_button]:pointer-events-auto">
+                {t.id === keyTask?.id && <span className={`font-semibold ${isDone ? "text-[var(--color-success)]" : "text-[var(--color-focus)]"}`}>关键任务</span>}
+                {showTime && time && (
+                  <button type="button" aria-label={`修改时间：${t.title}`} onClick={(event) => {
+                    event.stopPropagation();
+                    setScheduleEditor({ taskId: t.id, focusTime: true });
+                  }} className={`rounded hover:bg-[var(--color-primary-light)] ${isInProgress ? "font-medium text-[var(--color-primary)]" : "text-[var(--color-text-tertiary)]"}`}>
+                    {time}
+                  </button>
+                )}
+                {target <= 0 && logged > 0 && (
+                  <span className="flex items-center gap-0.5 font-medium text-[var(--color-primary)]">
+                    <Timer className="h-2.5 w-2.5" />
+                    已投入 {formatMinutes(logged)}
+                  </span>
+                )}
+                {(() => {
+                  const gi = aspirations.findIndex((a) => a.id === t.aspirationId);
+                  if (gi < 0) return null;
+                  const color = goalColor(aspirations[gi], gi);
+                  return (
+                    <button
+                      type="button"
+                      onClick={(event) => handleOpenTaskGoal(event, t)}
+                      className="flex min-w-0 max-w-[220px] items-center gap-1 rounded-sm transition-opacity hover:opacity-70"
+                      style={{ color }}
+                      aria-label={`打开${aspirations[gi].title}${taskResult ? `的关键结果：${taskResult.title}` : "的焦点地图"}`}
+                    >
+                      <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                      <span
+                        className="truncate font-medium"
+                        data-full-text={taskResult ? `${aspirations[gi].title} › ${taskResult.title}` : aspirations[gi].title}
+                      >
+                        {aspirations[gi].title}
+                        {taskResult && (
+                          <>
+                            <span className="mx-1 opacity-45">›</span>
+                            <span className="font-normal">{taskResult.title}</span>
+                          </>
+                        )}
+                      </span>
+                    </button>
+                  );
+                })()}
+                {subs.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleTaskExpanded(t.id);
+                    }}
+                    aria-label={`${isExpanded ? "收起" : "展开"}任务步骤：${t.title}`}
+                    aria-expanded={isExpanded}
+                    className="flex items-center gap-0.5 text-[var(--color-text-secondary)]"
+                  >
+                    <ListChecks className="h-3 w-3" />
+                    <span className="font-medium tabular-nums">{subDone}/{subs.length}</span>
+                    <ChevronDown className={["h-2.5 w-2.5 transition-transform", isExpanded ? "rotate-180" : ""].join(" ")} />
+                  </button>
+                )}
+                {!!t.notes?.length && <button type="button" onClick={(event) => { event.stopPropagation(); openTaskDetails(t); }}
+                  aria-label={`查看任务随记：${t.title}`} className="min-h-7 rounded px-1 text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-gray-light)]">随记 {t.notes.length}</button>}
+                {isMainlineTask(t) && !isDone && <span className="font-semibold text-[var(--color-primary)]">主线</span>}
+                {t.sourceHabitId && !isDone && <span className="font-medium text-[#7C3AED]">习惯</span>}
+                {t.sourceBehaviorId && !t.sourceHabitId && !isDone && (
+                  <span className="font-medium text-[#4F46E5]">重复</span>
+                )}
+                {t.tag && !isDone && !isInProgress && <span className="text-[var(--color-text-secondary)]">{t.tag}</span>}
+                {isHigh && !isDone && <span className="font-medium text-[var(--color-danger)]">高优</span>}
+              </div>
+            )}
+            </div>
 
             {nextSubtask && !isExpanded && (
               <button
@@ -417,79 +493,6 @@ export default function TodoDayView({
                   <div className="h-full rounded-full bg-[var(--color-primary)]" style={{ width: `${manualPct}%` }} />
                 </div>
                 <span className="text-[10px] font-medium text-[var(--color-text-tertiary)]">{manualPct}%</span>
-              </div>
-            )}
-
-            {hasMeta && (
-              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] leading-4">
-                {t.id === keyTask?.id && <span className={`font-semibold ${isDone ? "text-[var(--color-success)]" : "text-[var(--color-focus)]"}`}>关键任务</span>}
-                {showTime && time && (
-                  <button type="button" aria-label={`修改时间：${t.title}`} onClick={(event) => {
-                    event.stopPropagation();
-                    setScheduleEditor({ taskId: t.id, focusTime: true });
-                  }} className={`rounded hover:bg-[var(--color-primary-light)] ${isInProgress ? "font-medium text-[var(--color-primary)]" : "text-[var(--color-text-tertiary)]"}`}>
-                    {time}
-                  </button>
-                )}
-                {target <= 0 && logged > 0 && (
-                  <span className="flex items-center gap-0.5 font-medium text-[var(--color-primary)]">
-                    <Timer className="h-2.5 w-2.5" />
-                    已投入 {formatMinutes(logged)}
-                  </span>
-                )}
-                {(() => {
-                  const gi = aspirations.findIndex((a) => a.id === t.aspirationId);
-                  if (gi < 0) return null;
-                  const color = goalColor(aspirations[gi], gi);
-                  return (
-                    <button
-                      type="button"
-                      onClick={(event) => handleOpenTaskGoal(event, t)}
-                      className="flex min-w-0 max-w-[220px] items-center gap-1 rounded-sm transition-opacity hover:opacity-70"
-                      style={{ color }}
-                      aria-label={`打开${aspirations[gi].title}${taskResult ? `的关键结果：${taskResult.title}` : "的焦点地图"}`}
-                    >
-                      <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ backgroundColor: color }} />
-                      <span
-                        className="truncate font-medium"
-                        data-full-text={taskResult ? `${aspirations[gi].title} › ${taskResult.title}` : aspirations[gi].title}
-                      >
-                        {aspirations[gi].title}
-                        {taskResult && (
-                          <>
-                            <span className="mx-1 opacity-45">›</span>
-                            <span className="font-normal">{taskResult.title}</span>
-                          </>
-                        )}
-                      </span>
-                    </button>
-                  );
-                })()}
-                {subs.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleTaskExpanded(t.id);
-                    }}
-                    aria-label={`${isExpanded ? "收起" : "展开"}任务步骤：${t.title}`}
-                    aria-expanded={isExpanded}
-                    className="flex items-center gap-0.5 text-[var(--color-text-secondary)]"
-                  >
-                    <ListChecks className="h-3 w-3" />
-                    <span className="font-medium tabular-nums">{subDone}/{subs.length}</span>
-                    <ChevronDown className={["h-2.5 w-2.5 transition-transform", isExpanded ? "rotate-180" : ""].join(" ")} />
-                  </button>
-                )}
-                {!!t.notes?.length && <button type="button" onClick={(event) => { event.stopPropagation(); openTaskDetails(t); }}
-                  aria-label={`查看任务随记：${t.title}`} className="min-h-7 rounded px-1 text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-gray-light)]">随记 {t.notes.length}</button>}
-                {isMainlineTask(t) && !isDone && <span className="font-semibold text-[var(--color-primary)]">主线</span>}
-                {t.sourceHabitId && !isDone && <span className="font-medium text-[#7C3AED]">习惯</span>}
-                {t.sourceBehaviorId && !t.sourceHabitId && !isDone && (
-                  <span className="font-medium text-[#4F46E5]">重复</span>
-                )}
-                {t.tag && !isDone && !isInProgress && <span className="text-[var(--color-text-secondary)]">{t.tag}</span>}
-                {isHigh && !isDone && <span className="font-medium text-[var(--color-danger)]">高优</span>}
               </div>
             )}
           </div>

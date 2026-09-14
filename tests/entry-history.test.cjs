@@ -18,7 +18,7 @@ function loadTs(relative, mocks = {}) {
   return module.exports;
 }
 
-const { buildEntryHistory, historyEntryFields } = loadTs('components/todo/entryHistory.ts');
+const { buildEntryHistory, buildTimerChoices, reassignTaskEntries, historyEntryFields } = loadTs('components/todo/entryHistory.ts');
 test('only today is shown; duplicates preserve distinct task and goal attribution', () => {
   const entries = [
     { id: '1', title: '阅读', date: '2026-09-08', aspirationId: 'a', minutes: 30 },
@@ -32,7 +32,7 @@ test('only today is shown; duplicates preserve distinct task and goal attributio
     { id: '9', title: '明天的事项', date: '2026-09-10', minutes: 5 },
   ];
   const before = JSON.stringify(entries);
-  const choices = buildEntryHistory(entries, [{ id: 'a', title: '学习' }, { id: 'b', title: '放松', archived: true }], [{ id: 'task-a', title: '读专业书' }, { id: 'task-b', title: '读论文' }], '2026-09-09');
+  const choices = buildEntryHistory(entries, [{ id: 'a', title: '学习' }, { id: 'b', title: '放松', archived: true }], [{ id: 'task-a', title: '读专业书', aspirationId: 'a' }, { id: 'task-b', title: '读论文', aspirationId: 'a' }], '2026-09-09');
   assert.deepEqual(choices.map(c => c.goalLabel), ['学习', '学习', '未归属目标', '学习', '放松（已归档）']);
   assert.deepEqual(choices.map(c => c.taskId), ['task-a', 'task-b', undefined, undefined, undefined]);
   assert.equal(choices[0].taskLabel, '读专业书');
@@ -41,6 +41,49 @@ test('only today is shown; duplicates preserve distinct task and goal attributio
   assert.deepEqual(historyEntryFields(choices[2]), { aspirationId: undefined, taskId: undefined, taskLinkMode: 'none' });
   assert.deepEqual(buildEntryHistory(entries, [], [], '2026-09-11'), []);
   assert.deepEqual(buildEntryHistory([], [], [], '2026-09-09'), []);
+});
+
+test('timer offers today’s planned tasks without records and preserves distinct IDs for identical titles', () => {
+  const today = '2026-09-14';
+  const tasks = [
+    { id: 'a', title: '阅读', aspirationId: 'new', date: today, status: 'todo' },
+    { id: 'b', title: '阅读', date: today, status: 'done' },
+    { id: 'c', title: '明天的事', date: '2026-09-15', status: 'todo' },
+  ];
+  const entries = [
+    { id: 'e1', title: '阅读', date: today, taskId: 'a', aspirationId: 'old', minutes: 12 },
+    { id: 'e2', title: '读第一章', date: today, taskId: 'a', aspirationId: 'old', minutes: 5 },
+    { id: 'e3', title: '阅读', date: today, minutes: 3 },
+    { id: 'e4', title: '昨天的记录', date: '2026-09-13', minutes: 3 },
+  ];
+  assert.equal(buildTimerChoices([], [], tasks, today).length, 2);
+  const choices = buildTimerChoices(entries, [{ id: 'new', title: '新主线' }], tasks, today);
+  assert.equal(choices.length, 4);
+  assert.deepEqual(choices.slice(0, 2).map(c => [c.taskId, c.source]), [['a', 'task'], ['b', 'task']]);
+  assert.equal(choices[0].goalLabel, '新主线');
+  assert.equal(choices.find(c => c.title === '读第一章').aspirationId, 'new');
+  assert.deepEqual(historyEntryFields(choices[1]), { taskId: 'b', aspirationId: undefined, taskLinkMode: 'manual' });
+});
+
+test('changing a task goal updates all explicitly linked records, including removal, not same-title independent records', () => {
+  const entries = [
+    { id: 'e1', taskId: 'a', taskLinkMode: 'manual', aspirationId: 'old', date: '2026-09-01', title: '阅读', minutes: 12 },
+    { id: 'e2', taskId: 'a', taskLinkMode: 'auto', aspirationId: 'old', date: '2026-09-14', title: '另一名称', minutes: 5 },
+    { id: 'e3', aspirationId: 'old', title: '阅读', minutes: 3 },
+    { id: 'e4', taskId: 'b', aspirationId: 'old', title: '阅读', minutes: 3 },
+    { id: 'e5', taskId: 'a', taskLinkMode: 'none', aspirationId: 'old', title: '阅读', minutes: 3 },
+  ];
+  const before = JSON.stringify(entries);
+  const changed = reassignTaskEntries(entries, { id: 'a', aspirationId: 'new' });
+  assert.equal(JSON.stringify(entries), before);
+  assert.deepEqual(changed.map(e => e.aspirationId), ['new', 'new', 'old', 'old', 'old']);
+  assert.deepEqual(changed[0], { ...entries[0], aspirationId: 'new' });
+  assert.equal(changed[2], entries[2]);
+  assert.equal(reassignTaskEntries(changed, { id: 'a', aspirationId: 'new' }), changed);
+  const cleared = reassignTaskEntries(changed, { id: 'a' });
+  assert.equal(cleared[0].aspirationId, undefined);
+  assert.equal(cleared[0].taskId, 'a'); assert.equal(cleared[0].minutes, 12);
+  assert.equal(JSON.parse(JSON.stringify(cleared))[0].aspirationId, undefined);
 });
 
 test('timer persists goal AND linked task without restarting; association survives reload and counts toward task', () => {
@@ -70,11 +113,15 @@ test('timer persists goal AND linked task without restarting; association surviv
   const previous = saved;
   timer.rename('旧设备的草稿', startedAt - 1, { aspirationId: 'wrong' });
   assert.equal(saved, previous);
+  // 同一任务换主线时仍是这一段计时，不重置起点、不丢失计入任务。
+  timer.rename('阅读', startedAt, { aspirationId: 'new-goal', taskId: 'task-b' });
+  assert.equal(JSON.parse(saved).running.startedAt, startedAt);
+  assert.equal(JSON.parse(saved).running.attribution.taskId, 'task-b');
   timer = mount(records);
   timer.stop();
   assert.equal(records.length, 1);
   assert.equal(records[0].title, '阅读');
-  assert.equal(records[0].aspirationId, 'b');
+  assert.equal(records[0].aspirationId, 'new-goal');
   assert.equal(records[0].taskId, 'task-b');
   assert.equal(records[0].taskLinkMode, 'manual');
   const { taskLoggedMinutes } = loadTs('components/todo/time.ts');

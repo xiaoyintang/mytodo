@@ -43,6 +43,7 @@ import type {
 } from "@/components/todo/aiBridge";
 import { useTimer } from "@/components/todo/useTimer";
 import { matchTaskByTitle } from "@/components/todo/time";
+import { reassignTaskEntries } from "@/components/todo/entryHistory";
 import {
   instantiateTemplateTasks,
   tasksToTemplateItems,
@@ -776,6 +777,15 @@ export default function TodoApp() {
   // Update task (for editing)
   function updateTask(taskId: string, updates: Partial<Omit<Task, "id">>, options?: { restoreDailyFocus?: boolean }) {
     const task = tasks.find((item) => item.id === taskId);
+    if (task && Object.prototype.hasOwnProperty.call(updates, "aspirationId")) {
+      const updatedTask = { ...task, ...updates };
+      setEntries(prev => reassignTaskEntries(prev, updatedTask));
+      // 撤回某笔记录的编辑，也不应把已经调整的任务归属变回旧目标。
+      setEntriesHistory(history => history.map(snapshot => reassignTaskEntries(snapshot, updatedTask)));
+      if (timer.running?.attribution?.taskId === taskId) {
+        timer.rename(timer.running.title, timer.running.startedAt, { taskId, aspirationId: updatedTask.aspirationId });
+      }
+    }
     if (updates.date && task) {
       const date = updates.date;
       setDayPlans((prev) => moveDailyFocus(prev, task, date, options?.restoreDailyFocus));
@@ -796,16 +806,18 @@ export default function TodoApp() {
 
   // 新增时间记录（批量，用于自然语言解析出多笔的场景）
   /**
-   * 一笔记录属于哪个目标：**从关联的 task / habit 复制过来（快照）**，没有关联就留空。
+   * 一笔记录属于哪个目标：关联任务时跟随任务；否则保留手动归属或同名习惯归属。
    * 就这一条，没有别的推导（规格 §10.1）：
    * - 不做"默认填今日主线"的兜底——那会把杂事算进主线，污染"本周实际投入"
    * - 不在开始计时前弹窗问归属——计时是进入工作状态的扳机，前面加任何一道门都会毁掉它
    * 归属可以事后在台账里点一下改。
    *
-   * 用复制不用 join 查：任务删了历史记录不会变孤儿；任务后来改了归属，
-   * **已发生的记录不该跟着变**——台账记的是当时的事实。
+   * 保留落盘的目标字段，任务删除后历史记录仍有归属。
+   * 任务调整归属时，由 updateTask 同步它明确关联的记录。
    */
   function resolveEntryAspiration(e: Omit<TimeEntry, "id">): string | undefined {
+    const linkedTask = e.taskLinkMode !== "none" && e.taskId ? tasks.find(t => t.id === e.taskId) : undefined;
+    if (linkedTask) return linkedTask.aspirationId;
     if (e.aspirationId) return e.aspirationId;
     // 历史选择允许明确沿用“未归属”，不要又按同名习惯补上另一个目标。
     if (e.taskLinkMode === "none" && Object.prototype.hasOwnProperty.call(e, "aspirationId")) return undefined;

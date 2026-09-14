@@ -24,7 +24,7 @@ import TimePicker from "@/components/TimePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import TimerPanel from "@/components/TimerPanel";
 import EntryNameInput from "@/components/EntryNameInput";
-import { buildEntryHistory, historyEntryFields, type EntryHistoryChoice } from "@/components/todo/entryHistory";
+import { buildEntryHistory, buildTimerChoices, historyEntryFields, type EntryHistoryChoice } from "@/components/todo/entryHistory";
 import type { RunningTimer, TimerAttribution } from "@/components/todo/useTimer";
 import MainlineBar from "@/components/MainlineBar";
 import CategoryDonut, { type DonutSlice } from "@/components/CategoryDonut";
@@ -194,6 +194,7 @@ export default function TimeLogView({
   // 标题 → 大类 查表（手动改过的 > 已分类的同名记录 > 关键词规则）
   const titleCategory = useMemo(() => buildTitleCategoryMap(entries), [entries]);
   const entryHistory = useMemo(() => buildEntryHistory(entries, aspirations, tasks, todayISO), [entries, aspirations, tasks, todayISO]);
+  const timerChoices = useMemo(() => buildTimerChoices(entries, aspirations, tasks, todayISO), [entries, aspirations, tasks, todayISO]);
 
   // 汇总辅助：按（关联任务标题 或 记录标题）聚合一组记录
   function aggregate(list: TimeEntry[]): SummaryRow[] {
@@ -670,7 +671,7 @@ export default function TimeLogView({
             onStart={timer.start}
             onStop={timer.stop}
             onRename={timer.rename}
-            history={entryHistory}
+            history={timerChoices}
             aspirations={aspirations}
             tasks={tasks}
           />

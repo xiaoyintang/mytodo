@@ -66,8 +66,8 @@ export default function EntryNameInput({ value, onChange, history, onSelect, onC
       className="w-full min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-white)] px-2.5 py-1.5 text-[13px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-primary)]"
     />
     {open && <div className="absolute left-0 top-full z-40 mt-1 w-full min-w-[min(18rem,calc(100vw-4rem))] rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-white)] p-1 shadow-lg">
-      <div className="px-2 py-1 text-[11px] text-[var(--color-text-tertiary)]">今天做过 · 沿用目标和计入任务</div>
-      <div id={listId} role="listbox" aria-label="历史事项" className="max-h-52 overflow-y-auto overscroll-contain">
+      <div className="px-2 py-1 text-[11px] text-[var(--color-text-tertiary)]">{history.some(item => item.source === "task") ? "今日任务与记录 · 自动关联目标和任务" : "今天做过 · 沿用目标和计入任务"}</div>
+      <div id={listId} role="listbox" aria-label="可沿用的事项" className="max-h-52 overflow-y-auto overscroll-contain">
         {options.map((item, index) => <button
           key={JSON.stringify([item.title, item.aspirationId, item.taskId])}
           id={`${listId}-${index}`}
@@ -77,7 +77,9 @@ export default function EntryNameInput({ value, onChange, history, onSelect, onC
           onClick={() => choose(item)}
           className={`flex w-full flex-col gap-0.5 rounded-md px-2 py-2 text-left hover:bg-[var(--color-bg-gray-lighter)] focus-visible:outline-[var(--color-primary)] ${active === index ? "bg-[var(--color-bg-gray-lighter)]" : ""}`}
         >
-          <span className="line-clamp-2 text-[13px] text-[var(--color-text-primary)]">{item.title}</span>
+          <span className="flex w-full items-start gap-2"><span className="line-clamp-2 min-w-0 flex-1 text-[13px] text-[var(--color-text-primary)]">{item.title}</span>
+            {item.source && <span className="shrink-0 rounded bg-[var(--color-bg-gray-light)] px-1 text-[10px] text-[var(--color-text-secondary)]">{item.source === "task" ? "今日任务" : "今天做过"}</span>}
+          </span>
           <span className="line-clamp-1 text-[11px] text-[var(--color-text-secondary)]">{item.goalLabel}</span>
           <span className="line-clamp-1 text-[11px] text-[var(--color-text-tertiary)]">{item.taskLabel ? `计入「${item.taskLabel}」` : "不计入任务"}</span>
         </button>)}
