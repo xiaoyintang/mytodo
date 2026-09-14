@@ -18,8 +18,8 @@ export function buildTimerChoices(entries: TimeEntry[], goals: Aspiration[], tas
     return { title: task.title.trim(), taskId: task.id, taskLabel: task.title, aspirationId: task.aspirationId,
       goalLabel: goal ? `${goal.title}${goal.archived ? "（已归档）" : ""}` : task.aspirationId ? "原目标已删除" : "未归属目标", source: "task" };
   });
-  const history = buildEntryHistory(entries, goals, tasks, today).filter(choice =>
-    !taskChoices.some(task => task.taskId === choice.taskId && task.title === choice.title));
+  // 两个来源分别展示：已做过的今日任务也应能在“今日做过”中找到。
+  const history = buildEntryHistory(entries, goals, tasks, today);
   return [...taskChoices, ...history.map(choice => ({ ...choice, source: "history" as const }))];
 }
 

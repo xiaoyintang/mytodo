@@ -58,7 +58,8 @@ test('timer offers today’s planned tasks without records and preserves distinc
   ];
   assert.equal(buildTimerChoices([], [], tasks, today).length, 2);
   const choices = buildTimerChoices(entries, [{ id: 'new', title: '新主线' }], tasks, today);
-  assert.equal(choices.length, 4);
+  assert.equal(choices.length, 5);
+  assert.ok(choices.some(c => c.source === 'history' && c.taskId === 'a' && c.title === '阅读'));
   assert.deepEqual(choices.slice(0, 2).map(c => [c.taskId, c.source]), [['a', 'task'], ['b', 'task']]);
   assert.equal(choices[0].goalLabel, '新主线');
   assert.equal(choices.find(c => c.title === '读第一章').aspirationId, 'new');
