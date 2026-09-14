@@ -17,7 +17,7 @@ import { CN_WEEKDAY, addDays, parseISODate, startOfWeek } from "@/components/tod
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
 import { goalColor, mainlinesOf } from "@/components/todo/goal";
 import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
-import { CalendarDays, Check, ChevronDown, LayoutTemplate, ListChecks, Timer, X } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, ChevronRight, LayoutTemplate, ListChecks, Timer, X } from "lucide-react";
 import TaskQuickActions from "@/components/TaskQuickActions";
 import TaskTitleEditor from "@/components/TaskTitleEditor";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -216,8 +216,9 @@ export default function TodoDayView({
     mainIds.length > 0 && !!t.aspirationId && !mainIds.includes(t.aspirationId);
 
   const keyTask = dailyFocusTask(selectedDate, dayPlans, dayTasks);
-  const focusTasks = dayTasks.filter((t) => t.id !== keyTask?.id && !isOffMainline(t));
-  const offTasks = dayTasks.filter((t) => t.id !== keyTask?.id && isOffMainline(t));
+  // 关键任务只是强调，不从原有日程/待办中移走。
+  const focusTasks = dayTasks.filter((t) => !isOffMainline(t));
+  const offTasks = dayTasks.filter((t) => isOffMainline(t));
 
   const anytimeTasks = focusTasks.filter((task) => !task.startTime);
   const scheduledTasks = focusTasks.filter((task) => !!task.startTime);
@@ -287,6 +288,7 @@ export default function TodoDayView({
     const taskResult = resolveTaskGoalResult(t, goalResults, behaviors, habits);
 
     const hasMeta =
+      t.id === keyTask?.id ||
       (showTime && !!time) ||
       !!t.aspirationId ||
       subs.length > 0 ||
@@ -299,7 +301,7 @@ export default function TodoDayView({
       logged > 0;
 
     return (
-      <div key={t.id} className={isInProgress ? "bg-[#F8FBFF]" : "bg-white"}>
+      <div key={t.id} className={t.id === keyTask?.id ? `rounded-lg ${isDone ? "bg-[var(--color-success-light)]" : "bg-[var(--color-focus-light)]"}` : isInProgress ? "bg-[#F8FBFF]" : "bg-white"}>
         <div
           className="group flex w-full items-start gap-2.5 px-1 py-2.5"
         >
@@ -315,7 +317,7 @@ export default function TodoDayView({
               aria-label={`查看任务详情：${t.title}`}
               onClick={() => openTaskDetails(t)}
               className={[
-                "truncate rounded text-left text-[14px] font-medium leading-5 focus-visible:outline-[var(--color-primary)]",
+                "-mx-1 cursor-pointer truncate rounded px-1 text-left text-[14px] font-medium leading-5 transition-colors duration-150 hover:bg-[var(--color-primary-light)] focus-visible:bg-[var(--color-primary-light)] focus-visible:outline-[var(--color-primary)] motion-reduce:transition-none",
                 isDone ? "text-[var(--color-text-tertiary)] line-through" : "text-[var(--color-text-primary)]",
               ].join(" ")}
               data-full-text={t.title}
@@ -420,6 +422,7 @@ export default function TodoDayView({
 
             {hasMeta && (
               <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] leading-4">
+                {t.id === keyTask?.id && <span className={`font-semibold ${isDone ? "text-[var(--color-success)]" : "text-[var(--color-focus)]"}`}>关键任务</span>}
                 {showTime && time && (
                   <button type="button" aria-label={`修改时间：${t.title}`} onClick={(event) => {
                     event.stopPropagation();
@@ -598,7 +601,13 @@ export default function TodoDayView({
       <div className="flex w-full flex-col gap-5 px-[18px] pb-6 pt-1">
         <DailyFocusSection key={selectedDate} task={keyTask} tasks={dayTasks} aspirations={aspirations}
           isToday={selectedDate === today} onSelect={(id) => onSetDailyFocus(selectedDate, id)}>
-          {keyTask && renderTaskCard(keyTask)}
+          {keyTask && <button type="button" onClick={() => openTaskDetails(keyTask)}
+            aria-label={`查看关键任务详情：${keyTask.title}`}
+            className="my-1 flex min-h-11 w-full min-w-0 items-center gap-2 rounded-lg px-1 py-1.5 text-left transition-colors hover:bg-[var(--color-bg-white)]/60 focus-visible:outline-[var(--color-primary)]">
+            <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-[var(--color-text-primary)]" data-full-text={keyTask.title}>{keyTask.title}</span>
+            <span className="shrink-0 text-[11px] tabular-nums text-[var(--color-text-secondary)]">{timeLabel(keyTask) || "不限时段"}</span>
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--color-text-secondary)]" />
+          </button>}
         </DailyFocusSection>
         <div className="flex items-start gap-2">
           <QuickAddTask onCreate={onCreateTask} />

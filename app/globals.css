@@ -20,7 +20,23 @@
   --color-primary-light: #EFF6FF;
   --color-success-light: #DCFCE7;
   --color-danger-light: #FEF2F2;
+  --color-focus: #B45309;
+  --color-focus-light: #FFFBEB;
+  --color-focus-border: #FBBF24;
 }
+
+@keyframes daily-focus-celebrate {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.008); box-shadow: 0 0 0 5px var(--color-success-light); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 transparent; }
+}
+@keyframes daily-focus-sparkle {
+  0% { opacity: 0; transform: scale(0.5) rotate(-15deg); }
+  35% { opacity: 1; transform: scale(1.2) rotate(8deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+.daily-focus-celebrate { animation: daily-focus-celebrate 700ms ease-out; }
+.daily-focus-sparkle { animation: daily-focus-sparkle 1100ms ease-out both; }
 
 @layer base {
   html, body {
@@ -112,6 +128,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .daily-focus-celebrate, .daily-focus-sparkle { animation: none; }
   .animate-habit-float-up,
   .animate-habit-pop,
   .animate-habit-glow,
