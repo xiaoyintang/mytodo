@@ -646,6 +646,7 @@ export default function TimeLogView({
         subtitle={`${selected.getMonth() + 1}月${selected.getDate()}日 · ${CN_WEEKDAY[selected.getDay()]}`}
         onPrev={onPrevWeek}
         onNext={onNextWeek}
+        onToday={selectedDate !== todayISO ? () => onSelectDate(todayISO) : undefined}
       />
       <MainlineBar
         date={selectedDate}
