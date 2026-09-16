@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const ts = require('typescript');
 
-function harness() {
+function harness(taskDate = '2026-09-16') {
   const values = []; let cursor = 0, tree; const calls = [];
   const react = {
     useEffect() {},
@@ -26,7 +26,7 @@ function harness() {
     return mod.exports;
   }
   const Component = load('components/TaskCopyDialog.tsx').default;
-  function render() { cursor = 0; tree = Component({ task: { id: 't', title: '写提纲', date: '2026-09-16' }, today: '2026-09-16', onApply: dates => calls.push(dates), onClose: () => calls.push('close') }); }
+  function render() { cursor = 0; tree = Component({ task: { id: 't', title: '写提纲', date: taskDate }, today: '2026-09-16', onApply: dates => calls.push(dates), onClose: () => calls.push('close') }); }
   function nodes(node = tree) { return Array.isArray(node) ? node.flatMap(n => nodes(n ?? null)) : !node || typeof node !== 'object' ? [] : [node, ...nodes(node.props?.children ?? null)]; }
   function click(label) { const node = nodes().find(n => n.type === 'button' && n.props.children === label); assert.ok(node); node.props.onClick(); render(); }
   render();
@@ -52,4 +52,14 @@ test('invalid/source dates are blocked; cancel never creates a copy', () => {
   const h = harness(); h.custom('2026-09-16'); h.submit(); assert.equal(h.calls.length, 0);
   assert.ok(h.nodes().some(n => n.props.role === 'alert'));
   h.click('取消'); assert.deepEqual(h.calls, ['close']);
+});
+
+test('copying a past task starts after its date, not after today', () => {
+  const h = harness('2026-09-14'); h.click('这七天'); h.submit();
+  assert.deepEqual(h.calls, [['2026-09-15', '2026-09-16', '2026-09-17', '2026-09-18', '2026-09-19', '2026-09-20', '2026-09-21']]);
+});
+
+test('planning a future task uses its following seven days, including year rollover', () => {
+  const h = harness('2026-12-30'); h.click('这七天'); h.submit();
+  assert.deepEqual(h.calls, [['2026-12-31', '2027-01-01', '2027-01-02', '2027-01-03', '2027-01-04', '2027-01-05', '2027-01-06']]);
 });

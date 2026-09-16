@@ -740,7 +740,7 @@ export default function TodoDayView({
       </div>
 
       {/* Bottom Sheet for editing */}
-      {copyingTask && <TaskCopyDialog key={copyingTask.id} task={copyingTask} today={today}
+      {copyingTask && <TaskCopyDialog key={copyingTask.id} task={copyingTask}
         onClose={() => setCopyingTaskId(null)} onApply={dates => {
           onCopyTask(copyingTask.id, dates); setCopyingTaskId(null);
           setCopyNotice({ date: dates[0], count: dates.length });

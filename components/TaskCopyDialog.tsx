@@ -7,12 +7,12 @@ import type { ISODate, Task } from "@/components/todo/types";
 import { addDays, CN_WEEKDAY, parseISODate, toISODate } from "@/components/todo/date";
 import { validCopyDate } from "@/components/todo/taskCopy";
 
-export default function TaskCopyDialog({ task, today, onApply, onClose }: {
-  task: Task; today: ISODate; onApply: (dates: ISODate[]) => void; onClose: () => void;
+export default function TaskCopyDialog({ task, onApply, onClose }: {
+  task: Task; onApply: (dates: ISODate[]) => void; onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const submitted = useRef(false);
-  const first = toISODate(addDays(parseISODate(task.date > today ? task.date : today), 1));
+  const first = toISODate(addDays(parseISODate(task.date), 1));
   const [dates, setDates] = useState<ISODate[]>([first]);
   const [customDate, setCustomDate] = useState("");
   const [error, setError] = useState("");
