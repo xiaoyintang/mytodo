@@ -24,6 +24,7 @@ function harness(options = {}) {
   function render() {
     cursor = 0;
     tree = module.exports.default({ title: '任务', onRename: () => calls.push('rename'), onDelete: () => calls.push('delete'),
+      onCopy: options.withCopy ? () => calls.push('copy') : undefined,
       onToggleDailyFocus: options.withDailyFocus ? () => calls.push('focus') : undefined, isDailyFocus: options.isDailyFocus });
   }
   function nodes(n = tree) {
@@ -80,4 +81,9 @@ test('daily focus menu action supports touch selection and cancellation without 
     h.click(isDailyFocus ? '取消关键任务' : '设为当天关键任务');
     assert.deepEqual(h.calls, ['focus']); assert.equal(h.menu(), undefined);
   }
+});
+
+test('copy action survives mobile blur and closes the menu before opening date selection', () => {
+  const h = harness({ withCopy: true }); h.open(); h.blur(null); h.click('复制到…');
+  assert.deepEqual(h.calls, ['copy']); assert.equal(h.menu(), undefined);
 });

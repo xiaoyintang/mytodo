@@ -44,6 +44,7 @@ import type {
 import { useTimer } from "@/components/todo/useTimer";
 import { matchTaskByTitle } from "@/components/todo/time";
 import { reassignTaskEntries } from "@/components/todo/entryHistory";
+import { copyTaskToDates } from "@/components/todo/taskCopy";
 import {
   instantiateTemplateTasks,
   tasksToTemplateItems,
@@ -602,6 +603,13 @@ export default function TodoApp() {
       id: `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     };
     setTasks((prev) => [...prev, newTask]);
+  }
+
+  function copyTask(taskId: string, dates: ISODate[]) {
+    const source = tasks.find(task => task.id === taskId);
+    if (!source) return;
+    const copies = copyTaskToDates(source, dates);
+    setTasks(prev => prev.some(task => task.id === taskId) ? [...prev, ...copies] : prev);
   }
 
   /**
@@ -2105,6 +2113,7 @@ export default function TodoApp() {
           onReorderSubtask={reorderSubtask}
           onOpenAddModal={() => setIsModalOpen(true)}
           onOpenTemplates={() => setIsTemplateOpen(true)}
+          onCopyTask={copyTask}
           onCreateTask={createTask}
           onDeleteTask={deleteTask}
           onUpdateTask={updateTask}

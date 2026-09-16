@@ -19,6 +19,7 @@ import { goalColor, mainlinesOf } from "@/components/todo/goal";
 import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
 import { CalendarDays, Check, ChevronDown, ChevronRight, LayoutTemplate, ListChecks, Timer, X } from "lucide-react";
 import TaskQuickActions from "@/components/TaskQuickActions";
+import TaskCopyDialog from "@/components/TaskCopyDialog";
 import TaskTitleEditor from "@/components/TaskTitleEditor";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import TaskScheduleDialog, { type TaskSchedule } from "@/components/TaskScheduleDialog";
@@ -45,6 +46,7 @@ type Props = {
   onOpenAddModal: () => void;
   onOpenTemplates: () => void;
   onCreateTask: (task: Omit<Task, "id">) => void;
+  onCopyTask: (taskId: string, dates: ISODate[]) => void;
   onDeleteTask: (taskId: string) => void;
   onUpdateTask: (taskId: string, updates: Partial<Omit<Task, "id">>, options?: { restoreDailyFocus?: boolean }) => void;
   onAddEntry: (entry: Omit<TimeEntry, "id">) => void;
@@ -118,6 +120,7 @@ export default function TodoDayView({
   onOpenAddModal,
   onOpenTemplates,
   onCreateTask,
+  onCopyTask,
   onDeleteTask,
   onUpdateTask,
   onAddEntry,
@@ -138,6 +141,9 @@ export default function TodoDayView({
 }: Props) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [renamingTaskId, setRenamingTaskId] = useState<string | null>(null);
+  const [copyingTaskId, setCopyingTaskId] = useState<string | null>(null);
+  const [copyNotice, setCopyNotice] = useState<{ date: ISODate; count: number } | null>(null);
+  const copyingTask = tasks.find(task => task.id === copyingTaskId);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
   const deletingTask = tasks.find((task) => task.id === deletingTaskId);
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
@@ -505,6 +511,7 @@ export default function TodoDayView({
             <CalendarDays className="h-4 w-4" />
           </button>
           <TaskQuickActions title={t.title} onRename={() => setRenamingTaskId(t.id)}
+            onCopy={() => setCopyingTaskId(t.id)}
             isDailyFocus={keyTask?.id === t.id}
             onToggleDailyFocus={t.status !== "done" || keyTask?.id === t.id ? () => onSetDailyFocus(selectedDate, keyTask?.id === t.id ? null : t.id) : undefined}
             onDelete={() => setDeletingTaskId(t.id)} />
@@ -733,6 +740,16 @@ export default function TodoDayView({
       </div>
 
       {/* Bottom Sheet for editing */}
+      {copyingTask && <TaskCopyDialog key={copyingTask.id} task={copyingTask} today={today}
+        onClose={() => setCopyingTaskId(null)} onApply={dates => {
+          onCopyTask(copyingTask.id, dates); setCopyingTaskId(null);
+          setCopyNotice({ date: dates[0], count: dates.length });
+        }} />}
+      {copyNotice && createPortal(<div role="status" data-no-tab-swipe className="fixed bottom-4 left-1/2 z-[110] flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-white)] px-3 py-2 text-[12px] shadow-lg">
+        <span className="whitespace-nowrap">已复制到 {copyNotice.count} 天</span>
+        <button type="button" className="min-h-9 whitespace-nowrap text-[var(--color-primary)]" onClick={() => { onSelectDate(copyNotice.date); setCopyNotice(null); }}>查看 {copyNotice.date.slice(5)}</button>
+        <button type="button" aria-label="关闭复制提示" className="flex h-9 w-9 items-center justify-center" onClick={() => setCopyNotice(null)}><X className="h-4 w-4" /></button>
+      </div>, document.body)}
       {deletingTask && createPortal(<ConfirmDialog isOpen title="删除这个任务？"
         description={`「${deletingTask.title}」删除后无法恢复`}
         onConfirm={() => { onDeleteTask(deletingTask.id); setDeletingTaskId(null); }}

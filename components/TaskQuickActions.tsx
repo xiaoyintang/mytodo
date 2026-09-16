@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { MoreHorizontal, Pencil, Target, Trash2 } from "lucide-react";
+import { Copy, MoreHorizontal, Pencil, Target, Trash2 } from "lucide-react";
 
-export default function TaskQuickActions({ title, onRename, onDelete, isDailyFocus, onToggleDailyFocus }: {
+export default function TaskQuickActions({ title, onRename, onDelete, onCopy, isDailyFocus, onToggleDailyFocus }: {
   title: string;
   onRename: () => void;
   onDelete: () => void;
+  onCopy?: () => void;
   isDailyFocus?: boolean;
   onToggleDailyFocus?: () => void;
 }) {
@@ -40,6 +41,7 @@ export default function TaskQuickActions({ title, onRename, onDelete, isDailyFoc
   const actions = [
     ...(onToggleDailyFocus ? [{ label: isDailyFocus ? "取消关键任务" : "设为当天关键任务", Icon: Target, run: onToggleDailyFocus, destructive: false }] : []),
     { label: "改名", Icon: Pencil, run: onRename, destructive: false },
+    ...(onCopy ? [{ label: "复制到…", Icon: Copy, run: onCopy, destructive: false }] : []),
     { label: "删除任务", Icon: Trash2, run: onDelete, destructive: true },
   ];
   return <>
