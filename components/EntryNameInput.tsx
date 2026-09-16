@@ -12,9 +12,10 @@ type Props = {
   onCancel?: () => void;
   autoFocus?: boolean;
   label: string;
+  dayLabel?: "今日" | "当天";
 };
 
-export default function EntryNameInput({ value, onChange, history, onSelect, onCommit, onCancel, autoFocus, label }: Props) {
+export default function EntryNameInput({ value, onChange, history, onSelect, onCommit, onCancel, autoFocus, label, dayLabel = "今日" }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(-1);
@@ -76,11 +77,11 @@ export default function EntryNameInput({ value, onChange, history, onSelect, onC
           disabled={source === "task" && !history.some(item => item.source === "task")}
           onClick={() => { setGroup(source); setActive(-1); }}
           className={`flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-md px-2 text-[13px] font-semibold transition-colors focus-visible:outline-[var(--color-primary)] disabled:opacity-40 ${selectedGroup === source ? "bg-[var(--color-bg-white)] text-[var(--color-primary)] shadow-sm" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-white)]/60"}`}>
-          {source === "task" ? "今日任务" : "今日做过"}
+          {source === "task" ? `${dayLabel}任务` : `${dayLabel}做过`}
           <span className="text-[11px] tabular-nums opacity-70">{matched.filter(item => (item.source ?? "history") === source).length}</span>
         </button>)}
-      </div> : <div className="px-2 py-1.5 text-[13px] font-semibold text-[var(--color-text-primary)]">今日做过</div>}
-      <div className="px-2 pb-1 text-[11px] text-[var(--color-text-tertiary)]">{grouped && selectedGroup === "task" ? "今天安排的任务，还没做也可以选" : "今天记录过的事项，可以接着做"}</div>
+      </div> : <div className="px-2 py-1.5 text-[13px] font-semibold text-[var(--color-text-primary)]">{dayLabel}做过</div>}
+      <div className="px-2 pb-1 text-[11px] text-[var(--color-text-tertiary)]">{grouped && selectedGroup === "task" ? "当天安排的任务，还没做也可以选" : "当天记录过的事项，可以沿用名称和关联"}</div>
       <div id={listId} role="listbox" aria-label="可沿用的事项" className="max-h-52 overflow-y-auto overscroll-contain">
         {options.map((item, index) => <button
           key={JSON.stringify([item.title, item.aspirationId, item.taskId])}
@@ -95,7 +96,7 @@ export default function EntryNameInput({ value, onChange, history, onSelect, onC
           <span className="line-clamp-1 text-[11px] text-[var(--color-text-secondary)]">{item.goalLabel}</span>
           <span className="line-clamp-1 text-[11px] text-[var(--color-text-tertiary)]">{item.taskLabel ? `计入「${item.taskLabel}」` : "不计入任务"}</span>
         </button>)}
-        {!options.length && <div className="px-2 py-3 text-[12px] text-[var(--color-text-tertiary)]">{query ? "这一组没有匹配项，可以切换分组或直接输入名称" : grouped && selectedGroup === "task" ? "今天还没有安排任务" : "今天还没有可沿用的记录，可以直接输入名称"}</div>}
+        {!options.length && <div className="px-2 py-3 text-[12px] text-[var(--color-text-tertiary)]">{query ? "这一组没有匹配项，可以切换分组或直接输入名称" : grouped && selectedGroup === "task" ? "当天还没有安排任务" : "当天还没有可沿用的记录，可以直接输入名称"}</div>}
       </div>
       <div className="mt-1 border-t border-[var(--color-border)] px-2 py-1.5 text-[11px] text-[var(--color-text-tertiary)]">选中后自动沿用目标和计入任务</div>
     </div>}

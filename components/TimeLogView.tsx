@@ -24,7 +24,7 @@ import TimePicker from "@/components/TimePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import TimerPanel from "@/components/TimerPanel";
 import EntryNameInput from "@/components/EntryNameInput";
-import { buildEntryHistory, buildTimerChoices, historyEntryFields, type EntryHistoryChoice } from "@/components/todo/entryHistory";
+import { buildTimerChoices, historyEntryFields, type EntryHistoryChoice } from "@/components/todo/entryHistory";
 import type { RunningTimer, TimerAttribution } from "@/components/todo/useTimer";
 import MainlineBar from "@/components/MainlineBar";
 import CategoryDonut, { type DonutSlice } from "@/components/CategoryDonut";
@@ -193,7 +193,8 @@ export default function TimeLogView({
 
   // 标题 → 大类 查表（手动改过的 > 已分类的同名记录 > 关键词规则）
   const titleCategory = useMemo(() => buildTitleCategoryMap(entries), [entries]);
-  const entryHistory = useMemo(() => buildEntryHistory(entries, aspirations, tasks, todayISO), [entries, aspirations, tasks, todayISO]);
+  // 记录编辑和计时使用同一套候选来源，但历史记录按所选日期查找，而非系统今天。
+  const entryHistory = useMemo(() => buildTimerChoices(entries, aspirations, tasks, selectedDate), [entries, aspirations, tasks, selectedDate]);
   const timerChoices = useMemo(() => buildTimerChoices(entries, aspirations, tasks, todayISO), [entries, aspirations, tasks, todayISO]);
 
   // 汇总辅助：按（关联任务标题 或 记录标题）聚合一组记录
@@ -515,6 +516,7 @@ export default function TimeLogView({
           value={editTitle}
           onChange={(value) => { setEditTitle(value); setEditHistoryChoice(null); }}
           history={entryHistory}
+          dayLabel={selectedDate === todayISO ? "今日" : "当天"}
           onSelect={(choice) => { setEditTitle(choice.title); setEditHistoryChoice(choice); }}
         />
         {editHistoryChoice && <div className="text-[11px] text-[var(--color-text-secondary)]">保存后归属：{editHistoryChoice.goalLabel} · {editHistoryChoice.taskLabel ? `计入「${editHistoryChoice.taskLabel}」` : "不计入任务"}</div>}
