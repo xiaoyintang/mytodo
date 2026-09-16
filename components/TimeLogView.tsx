@@ -29,7 +29,7 @@ import type { RunningTimer, TimerAttribution } from "@/components/todo/useTimer"
 import MainlineBar from "@/components/MainlineBar";
 import CategoryDonut, { type DonutSlice } from "@/components/CategoryDonut";
 import GoalInvestChart from "@/components/GoalInvestChart";
-import { AppHeader, AppShell, ViewTabs, WeekDateStrip } from "@/components/ViewChrome";
+import { AppHeader, AppShell, MonthDatePicker, ViewTabs, WeekDateStrip } from "@/components/ViewChrome";
 
 
 type Props = {
@@ -173,16 +173,19 @@ export default function TimeLogView({
   const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null);
   const [copySourceId, setCopySourceId] = useState<string | null>(null); // 复制表单挂在哪条下面
   const [weekOpen, setWeekOpen] = useState(false); // 周汇总默认收起
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [catEditing, setCatEditing] = useState<string | null>(null); // 正在改分类的汇总行（按事项名）
   const [goalEditing, setGoalEditing] = useState<string | null>(null); // 正在改归属目标的那条记录
   const [taskEditing, setTaskEditing] = useState<string | null>(null); // 正在改“计入哪个任务”的记录
   const classifyAskedRef = useRef<Set<string>>(new Set()); // 已问过 AI 的事项名，避免反复请求
 
-  const todayISO = toISODate(new Date());
+  const todayISO = today;
 
   const selected = parseISODate(selectedDate);
   const weekStart = startOfWeek(selected, true);
   const days = Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
+  const dayLabel = selectedDate === todayISO ? "今日" : `${selected.getMonth() + 1}月${selected.getDate()}日`;
+  const isCurrentWeek = toISODate(weekStart) === toISODate(startOfWeek(parseISODate(todayISO), true));
 
   // 今日台账
   const dayEntries = entries
@@ -645,11 +648,16 @@ export default function TimeLogView({
     <AppShell>
       <AppHeader
         title="记录"
-        subtitle={`${selected.getMonth() + 1}月${selected.getDate()}日 · ${CN_WEEKDAY[selected.getDay()]}`}
+        subtitle={`${selected.getFullYear()}年${selected.getMonth() + 1}月${selected.getDate()}日 · ${CN_WEEKDAY[selected.getDay()]}`}
         onPrev={onPrevWeek}
         onNext={onNextWeek}
         onToday={selectedDate !== todayISO ? () => onSelectDate(todayISO) : undefined}
+        onTitleClick={() => setDatePickerOpen(true)}
       />
+      {datePickerOpen && <MonthDatePicker
+        selectedDate={selectedDate} today={todayISO} onSelect={onSelectDate}
+        onClose={() => setDatePickerOpen(false)}
+      />}
       <MainlineBar
         date={selectedDate}
         aspirations={aspirations}
@@ -815,7 +823,7 @@ export default function TimeLogView({
         {/* 今日台账 */}
         <div className="w-full flex flex-col gap-3">
           <div className="w-full flex items-center justify-between">
-            <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">今日台账</span>
+            <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">{dayLabel}台账</span>
             <div className="flex items-center gap-2">
               {canUndoEntries && (
                 <button
@@ -1014,7 +1022,7 @@ export default function TimeLogView({
         {daySummary.length > 0 && (
           <div className="w-full flex flex-col gap-4">
             <div className="w-full flex items-center justify-between">
-              <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">今日汇总</span>
+              <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">{dayLabel}汇总</span>
               <span className="text-[var(--color-text-tertiary)] text-[13px] font-medium">共 {formatMinutes(dayTotal)}</span>
             </div>
 
@@ -1052,7 +1060,7 @@ export default function TimeLogView({
             className="w-full flex items-center justify-between"
           >
             <span className="flex items-center gap-1 text-[var(--color-text-primary)] text-[16px] font-semibold">
-              本周汇总
+              {isCurrentWeek ? "本周汇总" : "所选周汇总"}
               {weekOpen ? (
                 <ChevronUp className="w-4 h-4 text-[var(--color-text-tertiary)]" />
               ) : (
