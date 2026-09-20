@@ -14,6 +14,8 @@ type Props = {
   onOpenGoals: () => void;
   onOpenGoal: (aspirationId: string) => void;
   onToggleMainline: (date: ISODate, aspirationId: string) => void;
+  /** 周视图通过下方七天规划管理主线，顶部仅保留目标入口和计时。 */
+  showMainlines?: boolean;
   /** 有计时在跑时，任何页面都能看见、能停——出门吃饭不用先切回记录页 */
   running: RunningTimer | null;
   elapsedMs: number;
@@ -43,6 +45,7 @@ export default function MainlineBar({
   onOpenGoals,
   onOpenGoal,
   onToggleMainline,
+  showMainlines = true,
   running,
   elapsedMs,
   onStopTimer,
@@ -50,7 +53,7 @@ export default function MainlineBar({
   const mains = mainlinesOf(date, dayPlans, aspirations);
   const activeGoals = aspirations.filter((goal) => !goal.archived);
   const [editingDate, setEditingDate] = useState<ISODate | null>(null);
-  const editing = editingDate === date;
+  const editing = showMainlines && editingDate === date;
   const rootRef = useRef<HTMLDivElement>(null);
   const editButtonRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -108,7 +111,7 @@ export default function MainlineBar({
           <ChevronRight className="h-3 w-3" />
         </button>
 
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg bg-[var(--color-bg-gray-lighter)] px-2 py-1">
+        {showMainlines && <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg bg-[var(--color-bg-gray-lighter)] px-2 py-1">
           <span className="flex-shrink-0 text-[9px] font-medium text-[var(--color-text-tertiary)]">主线</span>
           {mains.length > 0 ? (
             <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -151,7 +154,7 @@ export default function MainlineBar({
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--color-text-tertiary)] hover:bg-[var(--color-primary-light)] hover:text-[var(--color-primary)]">
             <SlidersHorizontal className="h-3.5 w-3.5" />
           </button>}
-        </div>
+        </div>}
       </div>
       {editing && <section aria-label="选择当天主线" data-no-tab-swipe
         className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-white)] p-3">

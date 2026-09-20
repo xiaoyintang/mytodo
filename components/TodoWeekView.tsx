@@ -359,6 +359,7 @@ export default function TodoWeekView({
         {datePickerOpen && <MonthDatePicker selectedDate={selectedDate} today={today} onSelect={onSelectDate} onClose={() => setDatePickerOpen(false)} />}
         <MainlineBar
           date={today}
+          showMainlines={false}
           aspirations={aspirations}
           dayPlans={dayPlans}
           onOpenGoals={onOpenGoals}

@@ -102,6 +102,35 @@ test('no active goals guides to goals rather than an unusable selector', () => {
   h.click('还没有目标，先建一个'); assert.deepEqual(calls, ['goals']);
 });
 
+test('week header hides daily mainlines, preserving goals and timer; week planner uses viewed week', () => {
+  const calls = [];
+  const base = { date: '2026-09-21', aspirations: [{ id: 'g', title: '学习' }], dayPlans: {},
+    showMainlines: false, running: { title: '阅读' }, elapsedMs: 60000,
+    onOpenGoals: () => calls.push('goals'), onStopTimer: () => calls.push('stop'),
+    onToggleMainline: () => calls.push('unexpected toggle'),
+  };
+  const h = harness('components/MainlineBar.tsx', base);
+  for (const dayPlans of [{}, { '2026-09-21': { primaryAspirationIds: ['g'] } }]) {
+    h.render({ dayPlans });
+    assert.ok(!h.nodes().some(n => n.props['aria-expanded'] !== undefined));
+    assert.ok(!h.nodes().some(n => n.props['aria-label']?.startsWith('打开主线')));
+    assert.ok(!h.nodes().some(n => n.type === 'section'));
+  }
+  h.click('打开我的目标');
+  h.nodes().find(n => n.props.onClick === base.onStopTimer).props.onClick();
+  assert.deepEqual(calls, ['goals', 'stop']);
+  const week = harness('components/TodoWeekView.tsx', { selectedDate: '2026-10-05', today: '2026-09-21',
+    tasks: [], entries: [], aspirations: base.aspirations, goalResults: [], behaviors: [], habits: [], dayPlans: {}, running: null,
+    onToggleMainline: (date, id) => calls.push([date, id]),
+  });
+  assert.equal(week.nodes().find(n => n.type === 'MainlineBar').props.showMainlines, false);
+  const planner = week.nodes().find(n => n.type === 'MainlinePlanner');
+  assert.equal(planner.props.days[0].getMonth(), 9);
+  assert.equal(planner.props.days[0].getDate(), 5);
+  planner.props.onToggle('2026-10-07', 'g');
+  assert.deepEqual(calls.at(-1), ['2026-10-07', 'g']);
+});
+
 test('week status control cycles the same task independently of details and updates completion count', () => {
   const date = '2026-09-21'; let task = { id: 'task', title: '写提纲', date, status: 'todo' };
   const calls = [];
