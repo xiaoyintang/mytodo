@@ -13,7 +13,7 @@ import type {
   ViewMode,
 } from "@/components/todo/types";
 import { CN_WEEKDAY, addDays, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
-import { Check, ChevronDown, Flag, Timer } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, Flag, Timer } from "lucide-react";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
 import { mainlinesOf } from "@/components/todo/goal";
 import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
@@ -351,7 +351,10 @@ export default function TodoWeekView({
           <WeekArrow direction="next" onClick={onNextWeek} />
           {toISODate(weekStart) !== toISODate(startOfWeek(parseISODate(today), true)) && <button type="button"
             onClick={() => onSelectDate(today)} aria-label="回到本周"
-            className="min-h-11 rounded-lg px-2 text-[12px] font-medium text-[var(--color-primary)] hover:bg-[var(--color-primary-light)]">回本周</button>}
+            className="flex min-h-11 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-[var(--color-primary)] transition-colors hover:bg-[var(--color-primary-light)]">
+            <CalendarDays className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            回本周
+          </button>}
         </div>
         {datePickerOpen && <MonthDatePicker selectedDate={selectedDate} today={today} onSelect={onSelectDate} onClose={() => setDatePickerOpen(false)} />}
         <MainlineBar

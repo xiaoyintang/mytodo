@@ -651,8 +651,7 @@ export default function TimeLogView({
       <AppHeader
         title="记录"
         subtitle={`${selected.getFullYear()}年${selected.getMonth() + 1}月${selected.getDate()}日 · ${CN_WEEKDAY[selected.getDay()]}`}
-        onPrev={onPrevWeek}
-        onNext={onNextWeek}
+        actionsNearTitle
         onToday={selectedDate !== todayISO ? () => onSelectDate(todayISO) : undefined}
         onTitleClick={() => setDatePickerOpen(true)}
       />
@@ -672,7 +671,8 @@ export default function TimeLogView({
         onStopTimer={onStopTimer}
       />
       <ViewTabs value={viewMode} onChange={onChangeViewMode} />
-      <WeekDateStrip days={days} selectedDate={selectedDate} today={today} onSelect={onSelectDate} />
+      <WeekDateStrip days={days} selectedDate={selectedDate} today={today} onSelect={onSelectDate}
+        onPrevWeek={onPrevWeek} onNextWeek={onNextWeek} />
 
       {/* Content */}
       <div className="flex w-full flex-col gap-5 px-[18px] pb-6 pt-2 md:mx-auto md:max-w-[760px]">

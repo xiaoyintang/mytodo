@@ -11,6 +11,7 @@ function harness(file, initialProps, fetchImpl = () => { throw new Error('Manual
       return [slots[i], v => { slots[i] = typeof v === 'function' ? v(slots[i]) : v; }]; },
     useRef(initial) { const i = cursor++; if (!(i in slots)) slots[i] = { current: initial }; return slots[i]; },
     useEffect() {},
+    useMemo: fn => fn(),
   };
   function load(relative) {
     const mod = { exports: {} };
@@ -19,6 +20,7 @@ function harness(file, initialProps, fetchImpl = () => { throw new Error('Manual
     }).outputText;
     new Function('require', 'module', 'exports', 'fetch', code)(name => {
       if (name === 'react') return react;
+      if (name.startsWith('./')) return load(path.join(path.dirname(relative), name + '.ts'));
       if (name.startsWith('@/components/todo/')) return load(name.slice(2) + '.ts');
       if (name.startsWith('@/components/')) return { default: name.split('/').at(-1) };
       return require(name);
@@ -159,5 +161,26 @@ test('week range opens month picker and return-to-week selects actual today', ()
   h.nodes().find(n => n.type === 'button' && n.props['aria-label']?.startsWith('选择周日期')).props.onClick(); h.render();
   const picker = h.nodes().find(n => n.props.selectedDate === '2026-10-05' && n.props.onClose);
   assert.ok(picker); picker.props.onSelect('2026-12-31'); assert.equal(calls[0], '2026-12-31');
+  const returnButton = h.nodes().find(n => n.props['aria-label'] === '回到本周');
+  assert.ok(h.nodes(returnButton.props.children).some(n => n.props['aria-hidden'] === 'true'));
   h.click('回到本周'); assert.equal(calls[1], '2026-09-21');
+});
+
+test('record navigation matches day: nearby return-to-today and arrows in date strip', () => {
+  const calls = [];
+  const h = harness('components/TimeLogView.tsx', { selectedDate: '2026-09-14', today: '2026-09-21', tasks: [], entries: [],
+    aspirations: [], dayPlans: {}, timer: { running: null }, running: null,
+    onSelectDate: date => calls.push(date), onPrevWeek: () => calls.push('prev'), onNextWeek: () => calls.push('next'),
+  });
+  const header = h.nodes().find(n => n.props.title === '记录');
+  assert.equal(header.props.actionsNearTitle, true);
+  assert.equal(header.props.onPrev, undefined); assert.equal(header.props.onNext, undefined);
+  header.props.onToday(); assert.equal(calls[0], '2026-09-21');
+  const strip = h.nodes().find(n => n.props.days && n.props.onPrevWeek);
+  strip.props.onPrevWeek(); strip.props.onNextWeek();
+  assert.deepEqual(calls, ['2026-09-21', 'prev', 'next']);
+  header.props.onTitleClick(); h.render();
+  assert.ok(h.nodes().some(n => n.props.selectedDate === '2026-09-14' && n.props.onClose));
+  h.render({ selectedDate: '2026-09-21' });
+  assert.equal(h.nodes().find(n => n.props.title === '记录').props.onToday, undefined);
 });
