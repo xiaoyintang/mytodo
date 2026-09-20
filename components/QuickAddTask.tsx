@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { CalendarDays, Check, Clock, Flag, Sparkles, Timer, X } from "lucide-react";
+import { useRef, useState, type RefObject } from "react";
+import { CalendarDays, Check, Clock, Flag, Plus, Sparkles, Timer, X } from "lucide-react";
 import type { ISODate, Task } from "@/components/todo/types";
 import { CN_WEEKDAY, toISODate } from "@/components/todo/date";
 
@@ -44,11 +44,30 @@ async function fetchAITasks(text: string): Promise<ParsedTask[] | null> {
   return null;
 }
 
-export default function QuickAddTask({ onCreate }: { onCreate: (task: Omit<Task, "id">) => void }) {
+export default function QuickAddTask({ onCreate, date, inputRef, compact = false, showDate = false }: {
+  onCreate: (task: Omit<Task, "id">) => void;
+  date: ISODate;
+  inputRef?: RefObject<HTMLInputElement | null>;
+  compact?: boolean;
+  showDate?: boolean;
+}) {
+  const localRef = useRef<HTMLInputElement>(null);
+  const fieldRef = inputRef ?? localRef;
+  const [editing, setEditing] = useState(false);
   const [input, setInput] = useState("");
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState("");
   const [preview, setPreview] = useState<ParsedTask[] | null>(null);
+
+  function createManual() {
+    const title = input.trim();
+    if (!title || parsing) return;
+    onCreate({ title, date, status: "todo" });
+    setInput("");
+    setError("");
+    setPreview(null);
+    fieldRef.current?.focus();
+  }
 
   async function handleParse() {
     const text = input.trim();
@@ -59,7 +78,7 @@ export default function QuickAddTask({ onCreate }: { onCreate: (task: Omit<Task,
     const tasks = await fetchAITasks(text);
     setParsing(false);
     if (!tasks) {
-      setError("AI 解析失败或未配置，可点「新增」手动建");
+      setError("AI 暂时不可用，可直接按回车添加原文");
       return;
     }
     if (tasks.length === 0) {
@@ -105,35 +124,56 @@ export default function QuickAddTask({ onCreate }: { onCreate: (task: Omit<Task,
 
   return (
     <div className="w-full flex flex-col gap-2">
-      <div className="flex gap-1.5">
+      {compact && !editing ? (
+        <button type="button" onClick={() => setEditing(true)}
+          aria-label={`在 ${date} 添加任务`}
+          className="flex min-h-9 w-full items-center gap-1.5 rounded-md px-2 text-left text-[12px] text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-bg-gray-light)] hover:text-[var(--color-primary)]">
+          <Plus className="h-3.5 w-3.5" />添加任务
+        </button>
+      ) : <div className="flex items-center gap-1.5">
         <input
+          ref={fieldRef}
+          autoFocus={compact}
+          aria-label={compact ? `${date} 的任务标题` : "新任务标题"}
           type="text"
           value={input}
+          disabled={parsing}
+          onBlur={() => { if (compact && !input.trim()) setEditing(false); }}
           onChange={(e) => {
             setInput(e.target.value);
             setError("");
           }}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.nativeEvent.isComposing) handleParse();
+            if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+            if (e.key === "Enter") { e.preventDefault(); createManual(); }
+            if (e.key === "Escape" && compact) { setInput(""); setEditing(false); }
           }}
-          placeholder="添加任务，时间也可以直接写在这里"
+          placeholder="写下任务，回车添加"
           className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-white px-3 text-[13px] placeholder:text-[var(--color-text-tertiary)] focus:border-[var(--color-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
         />
-        <button
+        <button type="button" onClick={createManual} disabled={!input.trim() || parsing}
+          aria-label="直接添加任务" data-full-text="直接添加，不经过 AI"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary)] text-white transition-opacity disabled:opacity-35">
+          <Plus className="h-4 w-4" />
+        </button>
+        {!compact && <button
           type="button"
+          aria-label="用 AI 解析复杂安排"
+          data-full-text="用 AI 解析时间、重复或多条任务"
           onClick={handleParse}
           disabled={!input.trim() || parsing}
           className={[
             "flex h-9 items-center gap-1 rounded-lg px-2.5 text-[12px] font-semibold transition-colors whitespace-nowrap",
             input.trim() && !parsing
-              ? "bg-[var(--color-primary)] text-white hover:bg-[#1d4ed8]"
+              ? "border border-[var(--color-border)] text-[var(--color-primary)] hover:bg-[var(--color-primary-light)]"
               : "bg-[var(--color-bg-gray-light)] text-[var(--color-text-tertiary)] cursor-not-allowed",
           ].join(" ")}
         >
           <Sparkles className="h-3.5 w-3.5" />
           {parsing ? "解析中" : "AI"}
-        </button>
-      </div>
+        </button>}
+      </div>}
+      {showDate && <span className="text-[10px] text-[var(--color-text-tertiary)]">直接添加到 {date.slice(5).replace("-", "/")} · 也可在下方每天的卡片里添加</span>}
 
       {error && <p className="text-[12px] text-[var(--color-danger)]">{error}</p>}
 

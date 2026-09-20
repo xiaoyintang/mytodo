@@ -12,12 +12,12 @@ import type {
   SubTask,
   TimeEntry,
 } from "@/components/todo/types";
-import { parseISODate, toISODate, startOfWeek, addDays, CN_WEEKDAY } from "@/components/todo/date";
+import { parseISODate, toISODate } from "@/components/todo/date";
 import { goalColor, sortGoalResults } from "@/components/todo/goal";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
-import { X, Check, Calendar, Clock, Flag, Trash2, ChevronLeft, ChevronRight, GripVertical, Target, Timer, Plus, Gauge, ListChecks, Wand2, Sparkles } from "lucide-react";
+import { X, Check, Calendar, Clock, Flag, Trash2, ChevronRight, GripVertical, Target, Timer, Plus, Gauge, ListChecks, Wand2, Sparkles } from "lucide-react";
 import { callBehaviorAPI } from "@/components/todo/behaviorApi";
-import TimePicker from "@/components/TimePicker";
+import TaskScheduleDialog from "@/components/TaskScheduleDialog";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
 import StartActionEditor from "@/components/StartActionEditor";
@@ -192,11 +192,7 @@ export default function TaskBottomSheet({
 }: Props) {
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState("");
-  const [isEditingDate, setIsEditingDate] = useState(false);
-  const [isEditingTime, setIsEditingTime] = useState(false);
-  const [editStartTime, setEditStartTime] = useState("");
-  const [editEndTime, setEditEndTime] = useState("");
-  const [pickerWeekStart, setPickerWeekStart] = useState(() => startOfWeek(new Date(), true));
+  const [scheduleFocus, setScheduleFocus] = useState<boolean | null>(null);
   const [isLogging, setIsLogging] = useState(false);
   const [customMinutes, setCustomMinutes] = useState("");
   const [isEditingTarget, setIsEditingTarget] = useState(false);
@@ -216,9 +212,6 @@ export default function TaskBottomSheet({
   const [draggingSubId, setDraggingSubId] = useState<string | null>(null);
   const [stepDropPlacement, setStepDropPlacement] = useState<StepDropPlacement | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const timeEditorRef = useRef<HTMLDivElement>(null);
-  const editStartTimeRef = useRef("");
-  const editEndTimeRef = useRef("");
   const clarifyRequestRef = useRef(0);
   const stepDragRef = useRef<{ sourceId: string; placement: StepDropPlacement | null } | null>(null);
 
@@ -226,15 +219,9 @@ export default function TaskBottomSheet({
   useEffect(() => {
     if (task) {
       setEditTitle(task.title);
-      setPickerWeekStart(startOfWeek(parseISODate(task.date), true));
-      setEditStartTime(task.startTime || "");
-      setEditEndTime(task.endTime || "");
-      editStartTimeRef.current = task.startTime || "";
-      editEndTimeRef.current = task.endTime || "";
     }
     setIsEditing(false);
-    setIsEditingDate(false);
-    setIsEditingTime(false);
+    setScheduleFocus(null);
     setIsLogging(false);
     setCustomMinutes("");
     setIsEditingTarget(false);
@@ -265,26 +252,6 @@ export default function TaskBottomSheet({
       inputRef.current.select();
     }
   }, [isEditing]);
-
-  // 时间面板打开后，点面板外的空白处就保存并收起。
-  // 用 click 而不是 mousedown：如果按下时就收起，下面的按钮会移动到光标下，
-  // mouseup 可能形成一次“穿透点击”。完整点击结束后再保存就不会误触。
-  useEffect(() => {
-    if (!isEditingTime || !task) return;
-    function handleOutside(e: MouseEvent) {
-      if (timeEditorRef.current?.contains(e.target as Node)) return;
-      if ((e.target as HTMLElement).closest?.('[data-target-editor]')) return;
-      const taskId = task!.id;
-      onUpdate(taskId, {
-        startTime: editStartTimeRef.current || undefined,
-        endTime: editEndTimeRef.current || undefined,
-        ...(editStartTimeRef.current ? { targetMinutes: undefined } : {}),
-      });
-      setIsEditingTime(false);
-    }
-    document.addEventListener("click", handleOutside);
-    return () => document.removeEventListener("click", handleOutside);
-  }, [isEditingTime, task, onUpdate]);
 
   if (!isOpen || !task) return null;
 
@@ -332,42 +299,6 @@ export default function TaskBottomSheet({
     onCycleStatus(task.id);
   }
 
-  function handleDateSelect(newDate: ISODate) {
-    if (!task) return;
-    onUpdate(task.id, { date: newDate });
-    setIsEditingDate(false);
-  }
-
-  function handleSaveTime() {
-    if (!task) return;
-    onUpdate(task.id, {
-      startTime: editStartTimeRef.current || undefined,
-      endTime: editEndTimeRef.current || undefined,
-      ...(editStartTimeRef.current ? { targetMinutes: undefined } : {}),
-    });
-    setIsEditingTime(false);
-  }
-
-  function updateStartTime(value: string) {
-    editStartTimeRef.current = value;
-    setEditStartTime(value);
-  }
-
-  function updateEndTime(value: string) {
-    editEndTimeRef.current = value;
-    setEditEndTime(value);
-  }
-
-  function cancelTimeEdit() {
-    const start = task?.startTime || "";
-    const end = task?.endTime || "";
-    editStartTimeRef.current = start;
-    editEndTimeRef.current = end;
-    setEditStartTime(start);
-    setEditEndTime(end);
-    setIsEditingTime(false);
-  }
-
   function handleOpenTaskFocusMap() {
     if (!task?.aspirationId) return;
     onOpenGoal(task.aspirationId, directResultId);
@@ -395,9 +326,7 @@ export default function TaskBottomSheet({
   function handleSaveTarget(minutes: number) {
     if (!task || !Number.isFinite(minutes) || minutes <= 0) return;
     onUpdate(task.id, { targetMinutes: Math.round(minutes), startTime: undefined, endTime: undefined });
-    editStartTimeRef.current = "";
-    editEndTimeRef.current = "";
-    setIsEditingTime(false);
+    setScheduleFocus(null);
     setIsEditingTarget(false);
     setTargetInput("");
   }
@@ -465,7 +394,7 @@ export default function TaskBottomSheet({
                   <button
                     type="button"
                     onClick={() => {
-                      cancelTimeEdit();
+                      setScheduleFocus(null);
                       setTargetInput(target > 0 ? String(target) : "");
                       setIsEditingTarget(true);
                     }}
@@ -479,8 +408,6 @@ export default function TaskBottomSheet({
     );
   }
 
-  // Generate week days for the picker
-  const pickerDays = Array.from({ length: 7 }).map((_, i) => addDays(pickerWeekStart, i));
   const today = toISODate(new Date());
 
   return (
@@ -547,168 +474,46 @@ export default function TaskBottomSheet({
             </span>
           </div>
 
-          {/* Tags */}
-          <div className="flex items-center gap-2 flex-wrap mb-4">
-            {isHigh && (
-              <span className="text-[12px] font-medium px-2.5 py-1 rounded-full bg-[#FEF2F2] text-[#DC2626] flex items-center gap-1">
-                <Flag className="w-3 h-3" fill="currentColor" strokeWidth={0} />
-                紧急
-              </span>
-            )}
-            {task.tag && (
-              <span className="text-[12px] font-medium px-2.5 py-1 rounded-full bg-[#EFF6FF] text-[#2563EB]">
-                {task.tag}
-              </span>
-            )}
-          </div>
+          {/* 新建只填标题，原有的优先级/标签能力移到详情按需补充。 */}
+          <details key={task.id} className="mb-3 text-[12px] text-[var(--color-text-secondary)]">
+            <summary className="flex min-h-8 cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+              <Flag className="h-3.5 w-3.5" />
+              <span>{isHigh ? "高优先级" : "优先级与标签"}{task.tag ? ` · ${task.tag}` : ""}</span>
+              <ChevronRight className="h-3 w-3 text-[var(--color-text-tertiary)]" />
+            </summary>
+            <div className="flex flex-wrap gap-2 rounded-lg bg-[var(--color-bg-gray-lighter)] p-2">
+              <label className="flex items-center gap-2">优先级
+                <select aria-label="任务优先级" value={task.priority ?? "normal"}
+                  onChange={(event) => onUpdate(task.id, { priority: event.target.value as Task["priority"] })}
+                  className="min-h-9 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-white)] px-2">
+                  <option value="normal">普通</option><option value="high">高优先级</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-2">标签
+                <select aria-label="任务标签" value={task.tag ?? ""}
+                  onChange={(event) => onUpdate(task.id, { tag: (event.target.value || undefined) as Task["tag"] })}
+                  className="min-h-9 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-white)] px-2">
+                  <option value="">无标签</option>
+                  {["工作", "进行中", "已完成", "学习", "高优先级", "协作", "复盘", "习惯"].map(tag => <option key={tag} value={tag}>{tag}</option>)}
+                </select>
+              </label>
+            </div>
+          </details>
 
-          {/* Date - 可点击编辑 */}
-          <div className="mb-2">
-            <button
-              type="button"
-              onClick={() => setIsEditingDate(!isEditingDate)}
-              className="flex items-center gap-2 text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] transition-colors"
-            >
-              <Calendar className="w-4 h-4 text-[var(--color-text-tertiary)]" />
+          {/* 日期和时间共用列表里的安排编辑器，不再维护另一套表单。 */}
+          <div className="mb-4 flex flex-wrap gap-x-4 gap-y-1">
+            <button type="button" onClick={() => setScheduleFocus(false)}
+              className="flex min-h-9 items-center gap-2 rounded-md text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-primary)]">
+              <Calendar className="h-4 w-4 text-[var(--color-text-tertiary)]" />
               <span>{dateStr}</span>
-              <span className="text-[11px] text-[var(--color-text-quaternary)]">点击修改</span>
+              <ChevronRight className="h-3 w-3" />
             </button>
-
-            {/* Date Picker */}
-            {isEditingDate && (
-              <div className="mt-2 border border-[var(--color-border)] rounded-[10px] overflow-hidden">
-                {/* Week Header */}
-                <div className="flex items-center justify-between px-3 py-2 bg-[var(--color-bg-gray-lighter)]">
-                  <button
-                    type="button"
-                    onClick={() => setPickerWeekStart(addDays(pickerWeekStart, -7))}
-                    className="w-7 h-7 flex items-center justify-center rounded hover:bg-white transition-colors"
-                  >
-                    <ChevronLeft className="w-4 h-4 text-[var(--color-text-secondary)]" />
-                  </button>
-                  <span className="text-[13px] font-medium text-[var(--color-text-primary)]">
-                    {pickerWeekStart.getFullYear()}年{pickerWeekStart.getMonth() + 1}月
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setPickerWeekStart(addDays(pickerWeekStart, 7))}
-                    className="w-7 h-7 flex items-center justify-center rounded hover:bg-white transition-colors"
-                  >
-                    <ChevronRight className="w-4 h-4 text-[var(--color-text-secondary)]" />
-                  </button>
-                </div>
-
-                {/* Date Grid */}
-                <div className="flex justify-between px-2 py-2">
-                  {pickerDays.map((d) => {
-                    const iso = toISODate(d);
-                    const isSelected = task.date === iso;
-                    const isToday = iso === today;
-                    return (
-                      <button
-                        key={iso}
-                        type="button"
-                        onClick={() => handleDateSelect(iso)}
-                        className={[
-                          "flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg transition-colors",
-                          isSelected
-                            ? "bg-[var(--color-primary)] text-white"
-                            : isToday
-                              ? "bg-[var(--color-primary-light)]"
-                              : "hover:bg-[var(--color-bg-gray-light)]",
-                        ].join(" ")}
-                      >
-                        <span className={[
-                          "text-[11px] font-medium",
-                          isSelected ? "text-white" : "text-[var(--color-text-tertiary)]"
-                        ].join(" ")}>
-                          {CN_WEEKDAY[d.getDay()]}
-                        </span>
-                        <span className={[
-                          "text-[14px] font-semibold",
-                          isSelected ? "text-white" : "text-[var(--color-text-primary)]"
-                        ].join(" ")}>
-                          {d.getDate()}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Time - 可点击编辑 */}
-          <div className="mb-4">
-            <button
-              type="button"
-              onClick={() => {
-                setIsEditingTarget(false);
-                setIsEditingTime(!isEditingTime);
-              }}
-              className="flex items-center gap-2 text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-primary)] transition-colors"
-            >
-              <Clock className="w-4 h-4 text-[var(--color-text-tertiary)]" />
-              <span>{timeStr || (task.targetMinutes ? "不限时段 · 可改为固定时间" : "未设置时间")}</span>
-              <span className="text-[11px] text-[var(--color-text-quaternary)]">点击修改</span>
+            <button type="button" onClick={() => { setIsEditingTarget(false); setScheduleFocus(true); }}
+              className="flex min-h-9 items-center gap-2 rounded-md text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-primary)]">
+              <Clock className="h-4 w-4 text-[var(--color-text-tertiary)]" />
+              <span>{timeStr || (task.targetMinutes ? "不限时段 · 可改为固定时间" : "不限时段")}</span>
+              <ChevronRight className="h-3 w-3" />
             </button>
-
-            {/* Time Picker */}
-            {isEditingTime && (
-              <div
-                ref={timeEditorRef}
-                className="mt-3 p-3 border border-[var(--color-border)] rounded-[10px] bg-[var(--color-bg-gray-lighter)]"
-                onClick={(event) => {
-                  const target = event.target as HTMLElement;
-                  // 灰色面板自身的空白也算保存；时间输入器和按钮保持正常交互。
-                  if (target.closest("[data-time-picker], button, input")) return;
-                  handleSaveTime();
-                }}
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="min-w-0 flex-1">
-                    <label className="text-[12px] text-[var(--color-text-tertiary)] mb-1 block">开始时间</label>
-                    <TimePicker
-                      value={editStartTime}
-                      onChange={updateStartTime}
-                      placeholder="开始"
-                      label="选择开始时间"
-                    />
-                  </div>
-                  <span className="text-[var(--color-text-tertiary)] mt-5">—</span>
-                  <div className="min-w-0 flex-1">
-                    <label className="text-[12px] text-[var(--color-text-tertiary)] mb-1 block">结束时间</label>
-                    <TimePicker
-                      value={editEndTime}
-                      onChange={updateEndTime}
-                      placeholder="结束"
-                      label="选择结束时间"
-                    />
-                  </div>
-                </div>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <span className="text-[10px] text-[var(--color-text-tertiary)]">
-                    可直接输入，如 09:30；点空白处自动保存
-                  </span>
-                  <div className="flex flex-shrink-0 items-center justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={cancelTimeEdit}
-                      className="px-3 py-1.5 text-[12px] text-[var(--color-text-secondary)] hover:bg-white rounded transition-colors"
-                    >
-                      取消
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSaveTime}
-                      className="px-3 py-1.5 text-[12px] bg-[var(--color-primary)] text-white rounded hover:bg-[#1d4ed8] transition-colors"
-                    >
-                      保存
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* 所属目标：决定它算不算"今天主线"里的任务 */}
@@ -1698,6 +1503,11 @@ export default function TaskBottomSheet({
           </div>
         </div>
       </div>
+
+      {scheduleFocus !== null && <TaskScheduleDialog key={task.id}
+        task={task} today={today} focusTime={scheduleFocus}
+        onApply={(schedule) => { onUpdate(task.id, schedule); setScheduleFocus(null); }}
+        onClose={() => setScheduleFocus(null)} />}
 
       {/* 删除任务二次确认 */}
       <ConfirmDialog

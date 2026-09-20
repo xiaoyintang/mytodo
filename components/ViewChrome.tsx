@@ -28,11 +28,12 @@ type HeaderProps = {
   onToday?: () => void;
   onTitleClick?: () => void;
   onAdd?: () => void;
+  actionsNearTitle?: boolean;
 };
 
-export function AppHeader({ title, subtitle, onPrev, onNext, onToday, onTitleClick, onAdd }: HeaderProps) {
+export function AppHeader({ title, subtitle, onPrev, onNext, onToday, onTitleClick, onAdd, actionsNearTitle = false }: HeaderProps) {
   return (
-    <header className="flex w-full items-center justify-between gap-3 px-[18px] pb-3 pt-4 sm:pt-[18px]">
+    <header className={`flex w-full items-center gap-3 px-[18px] pb-3 pt-4 sm:pt-[18px] ${actionsNearTitle ? "" : "justify-between"}`}>
       <div className="min-w-0">
         <h1 className="min-w-0 text-[22px] font-bold leading-7 tracking-[-0.35px] text-[var(--color-text-primary)]">
           {onTitleClick ? (
@@ -64,7 +65,7 @@ export function AppHeader({ title, subtitle, onPrev, onNext, onToday, onTitleCli
           <button
             type="button"
             onClick={onToday}
-            className="mr-1 flex h-8 items-center gap-1 rounded-lg border border-[var(--color-primary)] px-2 text-[11px] font-semibold text-[var(--color-primary)] transition-colors hover:bg-[var(--color-primary-light)]"
+            className="mr-1 flex min-h-11 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-[var(--color-primary)] transition-colors hover:bg-[var(--color-primary-light)]"
             aria-label="回到今天"
           >
             <CalendarDays className="h-3.5 w-3.5" />
@@ -272,11 +273,22 @@ type DateStripProps = {
   selectedDate: ISODate;
   today: ISODate;
   onSelect: (date: ISODate) => void;
+  onPrevWeek?: () => void;
+  onNextWeek?: () => void;
 };
 
-export function WeekDateStrip({ days, selectedDate, today, onSelect }: DateStripProps) {
+export function WeekArrow({ direction, onClick }: { direction: "prev" | "next"; onClick: () => void }) {
+  const Icon = direction === "prev" ? ChevronLeft : ChevronRight;
+  return <button type="button" onClick={onClick} aria-label={direction === "prev" ? "上一周" : "下一周"}
+    className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-lg text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-gray-light)] focus-visible:outline-[var(--color-primary)] active:bg-[var(--color-primary-light)]">
+    <Icon className="h-[18px] w-[18px]" />
+  </button>;
+}
+
+export function WeekDateStrip({ days, selectedDate, today, onSelect, onPrevWeek, onNextWeek }: DateStripProps) {
   return (
-    <div className="flex w-full items-start px-3 py-2">
+    <div className="flex w-full items-center px-2 py-2" aria-label="日期与切周">
+      {onPrevWeek && <WeekArrow direction="prev" onClick={onPrevWeek} />}
       {days.map((day) => {
         const iso = toISODate(day);
         const selected = iso === selectedDate;
@@ -286,7 +298,7 @@ export function WeekDateStrip({ days, selectedDate, today, onSelect }: DateStrip
             key={iso}
             type="button"
             onClick={() => onSelect(iso)}
-            className="flex flex-1 flex-col items-center gap-1 py-0.5"
+            className="flex min-w-0 flex-1 flex-col items-center gap-1 py-0.5"
             aria-label={`${CN_WEEKDAY[day.getDay()]} ${day.getDate()}日`}
           >
             <span
@@ -312,6 +324,7 @@ export function WeekDateStrip({ days, selectedDate, today, onSelect }: DateStrip
           </button>
         );
       })}
+      {onNextWeek && <WeekArrow direction="next" onClick={onNextWeek} />}
     </div>
   );
 }

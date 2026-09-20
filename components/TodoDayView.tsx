@@ -43,7 +43,7 @@ type Props = {
   onEditSubtask: (taskId: string, subId: string, title: string) => void;
   onToggleSubtask: (taskId: string, subId: string) => void;
   onReorderSubtask: (taskId: string, subId: string, targetId: string, edge: "before" | "after") => void;
-  onOpenAddModal: () => void;
+  onToggleMainline: (date: ISODate, aspirationId: string) => void;
   onOpenTemplates: () => void;
   onCreateTask: (task: Omit<Task, "id">) => void;
   onCopyTask: (taskId: string, dates: ISODate[]) => void;
@@ -117,7 +117,7 @@ export default function TodoDayView({
   onEditSubtask,
   onToggleSubtask,
   onReorderSubtask,
-  onOpenAddModal,
+  onToggleMainline,
   onOpenTemplates,
   onCreateTask,
   onCopyTask,
@@ -503,13 +503,13 @@ export default function TodoDayView({
             )}
           </div>
 
-          <button type="button" onClick={(event) => {
+          {!t.startTime && <button type="button" onClick={(event) => {
             event.stopPropagation();
             setScheduleEditor({ taskId: t.id, focusTime: false });
           }} aria-label={`改期：${t.title}`} data-full-text="调整日期与时间"
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--color-text-tertiary)] transition-[opacity,background-color] hover:bg-[var(--color-bg-gray-light)] hover:text-[var(--color-primary)] sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 focus-visible:opacity-100">
             <CalendarDays className="h-4 w-4" />
-          </button>
+          </button>}
           <TaskQuickActions title={t.title} onRename={() => setRenamingTaskId(t.id)}
             onCopy={() => setCopyingTaskId(t.id)}
             isDailyFocus={keyTask?.id === t.id}
@@ -581,11 +581,9 @@ export default function TodoDayView({
       <AppHeader
         title={headerTitle}
         subtitle={headerSubtitle}
-        onPrev={onPrevWeek}
-        onNext={onNextWeek}
+        actionsNearTitle
         onToday={selectedDate !== today ? () => onSelectDate(today) : undefined}
         onTitleClick={() => setDatePickerOpen(true)}
-        onAdd={onOpenAddModal}
       />
       {datePickerOpen && (
         <MonthDatePicker
@@ -601,12 +599,14 @@ export default function TodoDayView({
         dayPlans={dayPlans}
         onOpenGoals={onOpenGoals}
         onOpenGoal={onOpenGoal}
+        onToggleMainline={onToggleMainline}
         running={running}
         elapsedMs={elapsedMs}
         onStopTimer={onStopTimer}
       />
       <ViewTabs value={viewMode} onChange={onChangeViewMode} />
-      <WeekDateStrip days={days} selectedDate={selectedDate} today={today} onSelect={onSelectDate} />
+      <WeekDateStrip days={days} selectedDate={selectedDate} today={today} onSelect={onSelectDate}
+        onPrevWeek={onPrevWeek} onNextWeek={onNextWeek} />
 
       <div className="flex w-full flex-col gap-5 px-[18px] pb-6 pt-1">
         <DailyFocusSection key={selectedDate} task={keyTask} tasks={dayTasks} aspirations={aspirations}
@@ -620,7 +620,7 @@ export default function TodoDayView({
           </button>}
         </DailyFocusSection>
         <div className="flex items-start gap-2">
-          <QuickAddTask onCreate={onCreateTask} />
+          <QuickAddTask onCreate={onCreateTask} date={selectedDate} />
           <button
             type="button"
             onClick={onOpenTemplates}

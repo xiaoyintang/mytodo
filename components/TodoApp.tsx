@@ -7,7 +7,6 @@ import TodoWeekView from "@/components/TodoWeekView";
 import TimeLogView from "@/components/TimeLogView";
 import HabitLabView from "@/components/HabitLabView";
 import GoalsView from "@/components/GoalsView";
-import AddTaskModal from "@/components/AddTaskModal";
 import SyncModal from "@/components/SyncModal";
 import DayTemplateModal from "@/components/DayTemplateModal";
 import FastTooltip from "@/components/FastTooltip";
@@ -445,7 +444,6 @@ export default function TodoApp() {
     setSelectedDate((cur) => (cur === prevTodayRef.current ? todayIso : cur));
     prevTodayRef.current = todayIso;
   }, [todayIso]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isTemplateOpen, setIsTemplateOpen] = useState(false);
   const [isSyncOpen, setIsSyncOpen] = useState(false);
   // 时间记录撤回栈：每次用户改动记录前先存一份快照，最多留 30 步
@@ -1972,7 +1970,6 @@ export default function TodoApp() {
   function handleWorkspacePointerDown(event: ReactPointerEvent<HTMLElement>) {
     if (
       goalsOpen ||
-      isModalOpen ||
       isTemplateOpen ||
       isSyncOpen ||
       window.innerWidth >= 640 ||
@@ -2111,7 +2108,7 @@ export default function TodoApp() {
           onEditSubtask={editSubtask}
           onToggleSubtask={toggleSubtask}
           onReorderSubtask={reorderSubtask}
-          onOpenAddModal={() => setIsModalOpen(true)}
+          onToggleMainline={toggleMainline}
           onOpenTemplates={() => setIsTemplateOpen(true)}
           onCopyTask={copyTask}
           onCreateTask={createTask}
@@ -2148,7 +2145,6 @@ export default function TodoApp() {
           onDeleteSubtask={deleteSubtask}
           onEditSubtask={editSubtask}
           onReorderSubtask={reorderSubtask}
-          onOpenAddModal={() => setIsModalOpen(true)}
           onCreateTask={createTask}
           onDeleteTask={deleteTask}
           onUpdateTask={updateTask}
@@ -2169,6 +2165,7 @@ export default function TodoApp() {
         />
       ) : viewMode === "habit" ? (
         <HabitLabView
+          onToggleMainline={toggleMainline}
           viewMode={viewMode}
           onChangeViewMode={changeViewMode}
           today={todayIso}
@@ -2197,6 +2194,7 @@ export default function TodoApp() {
         />
       ) : (
         <TimeLogView
+          onToggleMainline={toggleMainline}
           viewMode={viewMode}
           onChangeViewMode={changeViewMode}
           selectedDate={selectedDate}
@@ -2224,14 +2222,6 @@ export default function TodoApp() {
         />
       )}
 
-      <AddTaskModal
-        mode={viewMode === "week" ? "week" : "day"}
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSubmit={createTask}
-        selectedDate={selectedDate}
-      />
-
       <DayTemplateModal
         isOpen={isTemplateOpen}
         date={selectedDate}
@@ -2251,7 +2241,6 @@ export default function TodoApp() {
        * 都直接落到今天的任务，而不是让用户猜还要退几层。
        */}
       {(goalsOpen || viewMode !== "day" || selectedDate !== todayIso) &&
-        !isModalOpen &&
         !isTemplateOpen &&
         !isSyncOpen && (
           <button

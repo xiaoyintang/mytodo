@@ -13,7 +13,7 @@ import type {
   ViewMode,
 } from "@/components/todo/types";
 import { CN_WEEKDAY, addDays, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
-import { Check, Flag, Timer } from "lucide-react";
+import { Check, ChevronDown, Flag, Timer } from "lucide-react";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
 import { mainlinesOf } from "@/components/todo/goal";
 import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
@@ -21,7 +21,7 @@ import TaskBottomSheet from "@/components/TaskBottomSheet";
 import QuickAddTask from "@/components/QuickAddTask";
 import MainlineBar from "@/components/MainlineBar";
 import MainlinePlanner from "@/components/MainlinePlanner";
-import { AppHeader, AppShell, ViewTabs } from "@/components/ViewChrome";
+import { AppHeader, AppShell, MonthDatePicker, ViewTabs, WeekArrow } from "@/components/ViewChrome";
 
 type Props = {
   viewMode: ViewMode;
@@ -36,7 +36,6 @@ type Props = {
   onDeleteSubtask: (taskId: string, subId: string) => void;
   onEditSubtask: (taskId: string, subId: string, title: string) => void;
   onReorderSubtask: (taskId: string, subId: string, targetId: string, edge: "before" | "after") => void;
-  onOpenAddModal: () => void;
   onCreateTask: (task: Omit<Task, "id">) => void;
   onDeleteTask: (taskId: string) => void;
   onUpdateTask: (taskId: string, updates: Partial<Omit<Task, "id">>) => void;
@@ -57,19 +56,21 @@ type Props = {
   onNextWeek: () => void;
 };
 
-// 单个任务行（始终可见，点击打开详情弹窗）
+// 状态按钮与详情按钮并列，避免嵌套按钮或点圆圈误进详情。
 function WeekTaskRow({
   task,
   entries,
   isMainline,
   resultTitle,
   onClick,
+  onCycleStatus,
 }: {
   task: Task;
   entries: TimeEntry[];
   isMainline: boolean;
   resultTitle?: string;
   onClick: () => void;
+  onCycleStatus: () => void;
 }) {
   const isDone = task.status === "done";
   const isInProgress = task.status === "in_progress";
@@ -80,11 +81,9 @@ function WeekTaskRow({
   const manualPct = target > 0 ? 0 : (task.progress ?? 0);
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <div
       className={[
-        "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors",
+        "w-full flex items-center rounded-lg text-left transition-colors",
         isDone
           ? "bg-[#DCFCE7]"
           : isInProgress
@@ -94,17 +93,16 @@ function WeekTaskRow({
               : "bg-[#F4F4F5]",
       ].join(" ")}
     >
-      {/* Status icon */}
-      {isDone && (
-        <Check className="w-3.5 h-3.5 text-[#16A34A] flex-shrink-0" strokeWidth={2.5} />
-      )}
-      {isInProgress && <span className="w-2 h-2 rounded-full bg-[#2563EB] flex-shrink-0" />}
-      {!isDone && !isInProgress && isHigh && (
-        <Flag className="w-3.5 h-3.5 text-[#DC2626] flex-shrink-0" fill="currentColor" strokeWidth={0} />
-      )}
-      {!isDone && !isInProgress && !isHigh && (
-        <span className="w-2 h-2 rounded-full border-2 border-[#A1A1AA] flex-shrink-0" />
-      )}
+      <button type="button" onClick={onCycleStatus}
+        aria-label={`${isDone ? "设为待办" : isInProgress ? "标记为已完成" : "标记为进行中"}：${task.title}`}
+        className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-lg hover:bg-[var(--color-bg-white)]/60 focus-visible:outline-[var(--color-primary)]">
+        <span className={`flex h-5 w-5 items-center justify-center rounded-full ${isDone ? "bg-[var(--color-success)]" : isInProgress ? "border-2 border-[var(--color-primary)]" : "border-[1.5px] border-[var(--color-text-tertiary)]"}`}>
+          {isDone ? <Check className="h-3 w-3 text-white" strokeWidth={2.7} /> : isInProgress ? <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-primary)]" /> : null}
+        </span>
+      </button>
+      <button type="button" onClick={onClick} aria-label={`查看任务详情：${task.title}`}
+        className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg py-2 pr-3 text-left hover:bg-[var(--color-bg-white)]/40 focus-visible:outline-[var(--color-primary)]">
+      {isHigh && !isDone && <Flag className="h-3 w-3 shrink-0 text-[var(--color-danger)]" />}
 
       {/* 标题 + 所属关键结果。周视图也要能看出这件事在推进什么。 */}
       <span className="flex min-w-0 flex-1 flex-col">
@@ -179,7 +177,8 @@ function WeekTaskRow({
           </span>
         )
       )}
-    </button>
+      </button>
+    </div>
   );
 }
 
@@ -193,6 +192,8 @@ function DayRow({
   habits,
   mainlineIds,
   onTaskClick,
+  onCreateTask,
+  onCycleTaskStatus,
 }: {
   date: Date;
   tasks: Task[];
@@ -202,6 +203,8 @@ function DayRow({
   habits: Habit[];
   mainlineIds: string[];
   onTaskClick: (task: Task) => void;
+  onCreateTask: (task: Omit<Task, "id">) => void;
+  onCycleTaskStatus: (taskId: string) => void;
 }) {
   const iso = toISODate(date);
   const isToday = toISODate(new Date()) === iso;
@@ -262,11 +265,11 @@ function DayRow({
               isMainline={isMainlineTask(task)}
               resultTitle={resolveTaskGoalResult(task, goalResults, behaviors, habits)?.title}
               onClick={() => onTaskClick(task)}
+              onCycleStatus={() => onCycleTaskStatus(task.id)}
             />
           ))
-        ) : (
-          <span className="text-[12px] text-[var(--color-text-quaternary)] py-2">无任务</span>
-        )}
+        ) : null}
+        <QuickAddTask compact date={iso} onCreate={onCreateTask} />
       </div>
     </div>
   );
@@ -285,7 +288,6 @@ export default function TodoWeekView({
   onDeleteSubtask,
   onEditSubtask,
   onReorderSubtask,
-  onOpenAddModal,
   onCreateTask,
   onDeleteTask,
   onUpdateTask,
@@ -305,6 +307,7 @@ export default function TodoWeekView({
   onPrevWeek,
   onNextWeek,
 }: Props) {
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
 
@@ -338,13 +341,26 @@ export default function TodoWeekView({
   return (
     <>
       <AppShell>
-        <AppHeader title="本周" subtitle={rangeLabel} onPrev={onPrevWeek} onNext={onNextWeek} onAdd={onOpenAddModal} />
+        <AppHeader title="周计划" />
+        <div className="flex flex-wrap items-center gap-x-1 px-2 pb-2" aria-label="周日期导航">
+          <WeekArrow direction="prev" onClick={onPrevWeek} />
+          <button type="button" onClick={() => setDatePickerOpen(true)} aria-label={`选择周日期，当前为${rangeLabel}`}
+            className="flex min-h-11 items-center gap-1 rounded-lg px-1 text-[12px] font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-gray-light)]">
+            {rangeLabel}<ChevronDown className="h-3.5 w-3.5 shrink-0" />
+          </button>
+          <WeekArrow direction="next" onClick={onNextWeek} />
+          {toISODate(weekStart) !== toISODate(startOfWeek(parseISODate(today), true)) && <button type="button"
+            onClick={() => onSelectDate(today)} aria-label="回到本周"
+            className="min-h-11 rounded-lg px-2 text-[12px] font-medium text-[var(--color-primary)] hover:bg-[var(--color-primary-light)]">回本周</button>}
+        </div>
+        {datePickerOpen && <MonthDatePicker selectedDate={selectedDate} today={today} onSelect={onSelectDate} onClose={() => setDatePickerOpen(false)} />}
         <MainlineBar
           date={today}
           aspirations={aspirations}
           dayPlans={dayPlans}
           onOpenGoals={onOpenGoals}
           onOpenGoal={onOpenGoal}
+          onToggleMainline={onToggleMainline}
           running={running}
           elapsedMs={elapsedMs}
           onStopTimer={onStopTimer}
@@ -365,7 +381,7 @@ export default function TodoWeekView({
 
         {/* AI 一句话建任务 */}
         <div className="px-[18px] pb-3 pt-2">
-          <QuickAddTask onCreate={onCreateTask} />
+          <QuickAddTask onCreate={onCreateTask} date={selectedDate} showDate />
         </div>
 
         <MainlinePlanner
@@ -394,6 +410,8 @@ export default function TodoWeekView({
                   (aspiration) => aspiration.id,
                 )}
                 onTaskClick={handleTaskClick}
+                onCreateTask={onCreateTask}
+                onCycleTaskStatus={onCycleTaskStatus}
               />
             );
           })}

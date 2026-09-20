@@ -1,9 +1,10 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import type { Aspiration, DayPlan, ISODate } from "@/components/todo/types";
 import { goalColor, mainlinesOf } from "@/components/todo/goal";
 import type { RunningTimer } from "@/components/todo/useTimer";
-import { ChevronRight, Square, Target } from "lucide-react";
+import { Check, ChevronRight, SlidersHorizontal, Square, Target } from "lucide-react";
 
 type Props = {
   /** 当前页面正在表达的日期；日视图/记录跟随所选日期，其余页面传今天。 */
@@ -12,6 +13,7 @@ type Props = {
   dayPlans: Record<string, DayPlan>;
   onOpenGoals: () => void;
   onOpenGoal: (aspirationId: string) => void;
+  onToggleMainline: (date: ISODate, aspirationId: string) => void;
   /** 有计时在跑时，任何页面都能看见、能停——出门吃饭不用先切回记录页 */
   running: RunningTimer | null;
   elapsedMs: number;
@@ -32,7 +34,7 @@ function fmt(ms: number): string {
 /**
  * 常驻作用域条：标题下方、tab 栏上方，四个 tab 通用。
  * “我的目标”和“主线”是两条不同动线：前者进入目标总表，后者直达对应目标的焦点地图。
- * 主线仍然只读——改主线只能去周视图，日常执行时只需要从已排好的目标里挑行为。
+ * 名称直达焦点地图；选择/调整在当前日期原地完成，与周规划共享 DayPlan。
  */
 export default function MainlineBar({
   date,
@@ -40,14 +42,36 @@ export default function MainlineBar({
   dayPlans,
   onOpenGoals,
   onOpenGoal,
+  onToggleMainline,
   running,
   elapsedMs,
   onStopTimer,
 }: Props) {
   const mains = mainlinesOf(date, dayPlans, aspirations);
+  const activeGoals = aspirations.filter((goal) => !goal.archived);
+  const [editingDate, setEditingDate] = useState<ISODate | null>(null);
+  const editing = editingDate === date;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const editButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!editing) return;
+    function closeOutside(event: PointerEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setEditingDate(null);
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") { setEditingDate(null); editButtonRef.current?.focus(); }
+    }
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [editing]);
+  useEffect(() => { setEditingDate(null); }, [date]);
 
   return (
-    <div className="flex w-full flex-col gap-1.5 px-[18px] pb-2">
+    <div ref={rootRef} className="flex w-full flex-col gap-1.5 px-[18px] pb-2">
       {running && (
         <div className="flex w-full items-center gap-2 rounded-lg bg-[#EFF6FF] px-2.5 py-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] animate-pulse flex-shrink-0" />
@@ -113,14 +137,47 @@ export default function MainlineBar({
           ) : (
             <button
               type="button"
-              onClick={onOpenGoals}
+              ref={editButtonRef}
+              aria-expanded={editing}
+              onClick={() => activeGoals.length ? setEditingDate(editing ? null : date) : onOpenGoals()}
               className="min-w-0 flex-1 truncate text-left text-[10px] text-[var(--color-text-secondary)] hover:text-[var(--color-primary)]"
             >
-              还没安排，去目标里看看
+              {activeGoals.length ? "选择当天主线" : "还没有目标，先建一个"}
             </button>
           )}
+          {mains.length > 0 && <button type="button" ref={editButtonRef}
+            aria-label="调整当天主线" aria-expanded={editing}
+            onClick={() => setEditingDate(editing ? null : date)}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--color-text-tertiary)] hover:bg-[var(--color-primary-light)] hover:text-[var(--color-primary)]">
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+          </button>}
         </div>
       </div>
+      {editing && <section aria-label="选择当天主线" data-no-tab-swipe
+        className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-white)] p-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <span className="text-[12px] font-medium text-[var(--color-text-primary)]">{date.slice(5).replace("-", "/")} 的主线</span>
+          <span className="text-[11px] text-[var(--color-text-tertiary)]">已选 {mains.length}/3 · 自动保存</span>
+        </div>
+        <div className="flex max-h-52 flex-wrap gap-1.5 overflow-y-auto">
+          {activeGoals.map((goal) => {
+            const picked = mains.some((item) => item.id === goal.id);
+            const full = !picked && mains.length >= 3;
+            return <button key={goal.id} type="button" aria-pressed={picked} disabled={full}
+              onClick={() => onToggleMainline(date, goal.id)}
+              className={`flex min-h-9 max-w-full items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-left text-[12px] transition-colors disabled:opacity-40 ${picked ? "border-[var(--color-primary)] bg-[var(--color-primary-light)] text-[var(--color-primary)]" : "border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-gray-light)]"}`}>
+              <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: goalColor(goal, aspirations.indexOf(goal)) }} />
+              <span className="break-words">{goal.title}</span>
+              {picked && <Check className="h-3.5 w-3.5 shrink-0" />}
+            </button>;
+          })}
+        </div>
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <span className="text-[10px] text-[var(--color-text-tertiary)]">{mains.length >= 3 ? "已选满，取消一个即可换入其他目标" : "只影响这一天，周视图会同步更新"}</span>
+          <button type="button" onClick={() => { setEditingDate(null); editButtonRef.current?.focus(); }}
+            className="min-h-8 shrink-0 rounded-md px-2 text-[12px] font-medium text-[var(--color-primary)] hover:bg-[var(--color-primary-light)]">完成</button>
+        </div>
+      </section>}
     </div>
   );
 }

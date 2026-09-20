@@ -15,8 +15,7 @@ type Props = {
 };
 
 /**
- * 周视图里排主线。**这里是唯一能改主线的地方**——决策集中在周规划，
- * 日常执行零决策（日视图和常驻条上都只读）。
+ * 周视图批量规划主线；常驻条也可调整单天，共享同一份 DayPlan。
  * 超周上限只标黄提示，不弹窗、不阻止——硬拦截会让人绕过系统。
  */
 export default function MainlinePlanner({ days, today, aspirations, dayPlans, onToggle }: Props) {
@@ -45,7 +44,7 @@ export default function MainlinePlanner({ days, today, aspirations, dayPlans, on
   if (activeAspirations.length === 0) {
     return (
       <div className="w-full px-4 py-3 text-[12px] text-[var(--color-text-secondary)] leading-relaxed">
-        还没有目标，排不了主线。点上面那条「今天主线」去建一个。
+        还没有目标，点上面的「我的目标」建一个，再选择每天的主线。
       </div>
     );
   }

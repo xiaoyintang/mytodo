@@ -118,7 +118,7 @@ test('focus celebration only runs on completion of the same task, cleans up and 
 
 test('daily focus remains in its chronological agenda or anytime list, with a summary linking the same task', () => {
   const slots = []; let cursor = 0;
-  const react = { useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = initial; return [slots[i], value => slots[i] = value]; } };
+  const react = { useRef(initial) { const i = cursor++; if (!(i in slots)) slots[i] = { current: initial }; return slots[i]; }, useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = initial; return [slots[i], value => slots[i] = value]; } };
   const Component = load('components/TodoDayView.tsx', react).default;
   let currentTasks = [...tasks, { id: 'earlier', title: '先开会', date, status: 'todo', startTime: '10:00' }];
   let chosen = 'a';

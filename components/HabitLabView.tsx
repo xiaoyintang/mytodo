@@ -27,6 +27,7 @@ type Props = {
   goalResults: GoalResult[];
   dayPlans: Record<string, DayPlan>;
   onOpenGoals: () => void;
+  onToggleMainline: (date: ISODate, aspirationId: string) => void;
   onOpenGoal: (aspirationId: string, resultId?: string) => void;
   running: { title: string; startedAt: number } | null;
   elapsedMs: number;
@@ -61,6 +62,7 @@ export default function HabitLabView({
   goalResults,
   dayPlans,
   onOpenGoals,
+  onToggleMainline,
   onOpenGoal,
   running,
   elapsedMs,
@@ -97,6 +99,7 @@ export default function HabitLabView({
         aspirations={aspirations}
         dayPlans={dayPlans}
         onOpenGoals={onOpenGoals}
+        onToggleMainline={onToggleMainline}
         onOpenGoal={onOpenGoal}
         running={running}
         elapsedMs={elapsedMs}
