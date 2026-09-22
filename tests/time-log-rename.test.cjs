@@ -74,6 +74,19 @@ test('record header opens calendar on selected historical date and can return to
 });
 
 for (const date of ['2026-09-16', '2026-09-14']) {
+  test(`task picker on ${date} only offers that day's tasks and preserves record content`, () => {
+    const h = harness(date, false);
+    h.nodes().find(n => n.props['aria-label'] === '选择“原记录”计入的任务').props.onClick(); h.render();
+    const picker = h.nodes().find(n => n.type === 'EntryTaskPicker');
+    assert.equal(picker.props.initiallyOpen, true);
+    assert.deepEqual(picker.props.tasks.map(t => t.id), ['planned']);
+    picker.props.onChange('planned'); h.render();
+    assert.deepEqual(h.updates, [['entry', { taskId: 'planned', taskLinkMode: 'manual', aspirationId: 'goal' }]]);
+    assert.ok(!h.nodes().some(n => n.type === 'EntryTaskPicker'));
+    h.nodes().find(n => n.props['aria-label'] === '选择“原记录”计入的任务').props.onClick(); h.render();
+    h.nodes().find(n => n.type === 'EntryTaskPicker').props.onChange(undefined);
+    assert.deepEqual(h.updates[1], ['entry', { taskId: undefined, taskLinkMode: 'none' }]);
+  });
   test(`saved record rename offers tasks on ${date}, and selection persists task AND goal without changing time`, () => {
     const h = harness(date);
     const choices = h.input().props.history;

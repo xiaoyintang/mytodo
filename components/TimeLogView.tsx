@@ -24,6 +24,7 @@ import TimePicker from "@/components/TimePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import TimerPanel from "@/components/TimerPanel";
 import EntryNameInput from "@/components/EntryNameInput";
+import EntryTaskPicker from "@/components/EntryTaskPicker";
 import { buildTimerChoices, historyEntryFields, type EntryHistoryChoice } from "@/components/todo/entryHistory";
 import type { RunningTimer, TimerAttribution } from "@/components/todo/useTimer";
 import MainlineBar from "@/components/MainlineBar";
@@ -741,24 +742,15 @@ export default function TimeLogView({
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[11px] text-[var(--color-text-tertiary)]">{p.date !== selectedDate ? `${p.date} · ` : ""}{entryTimeLabel(p)}</span>
                         <span className="text-[11px] font-medium text-[var(--color-primary)]">{formatMinutes(p.minutes)}</span>
-                        <label className="flex min-w-0 items-center gap-1 text-[10px] text-[var(--color-text-tertiary)]">
-                          <Link2 className="h-3 w-3 flex-shrink-0" />
-                          <span className="flex-shrink-0">计入</span>
-                          <select
+                        <div className="w-full min-w-0">
+                          <EntryTaskPicker
                             value={p.taskId ?? ""}
-                            onChange={(event) => setPendingTask(i, event.target.value || undefined)}
-                            className="min-w-0 max-w-[220px] rounded border border-[var(--color-border)] bg-white px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-text-secondary)] focus:border-[var(--color-primary)] focus:outline-none"
-                            aria-label={`选择“${p.title}”计入的任务`}
-                          >
-                            <option value="">不计入任务</option>
-                            {availableTasks.map((task) => (
-                              <option key={task.id} value={task.id}>
-                                {task.title}
-                              </option>
-                            ))}
-                          </select>
-                          {matched && <span className="text-[var(--color-success)]">已关联</span>}
-                        </label>
+                            tasks={availableTasks} aspirations={aspirations}
+                            onChange={(id) => setPendingTask(i, id)}
+                            label={`选择“${p.title}”计入的任务`}
+                          />
+                          {matched && <span className="text-[10px] text-[var(--color-success)]">已关联</span>}
+                        </div>
                       </div>
                     </div>
                     <button
@@ -881,6 +873,8 @@ export default function TimeLogView({
                                   : "text-[var(--color-text-tertiary)] hover:bg-[var(--color-bg-gray-light)]",
                               ].join(" ")}
                               title={task ? "点一下更改计入的任务" : "点一下手动计入任务"}
+                              aria-label={`选择“${e.title}”计入的任务`}
+                              aria-expanded={taskEditing === e.id}
                             >
                               <Link2 className="w-3 h-3" />
                               <span
@@ -945,12 +939,12 @@ export default function TimeLogView({
                     </div>
                     {/* 任务关联与记录标题是两件事：标题完全不同也可以手动计入。 */}
                     {taskEditing === e.id && (
-                      <div className="flex w-full items-center gap-2 px-3.5 pb-1">
-                        <span className="flex-shrink-0 text-[10px] text-[var(--color-text-tertiary)]">计入任务</span>
-                        <select
+                      <div className="w-full px-3.5 pb-2">
+                        <EntryTaskPicker initiallyOpen
+                          tasks={tasks.filter(candidate => candidate.date === e.date)} aspirations={aspirations}
                           value={e.taskId ?? ""}
-                          onChange={(event) => {
-                            const nextTask = tasks.find((candidate) => candidate.id === event.target.value);
+                          onChange={(id) => {
+                            const nextTask = tasks.find((candidate) => candidate.id === id);
                             onUpdateEntry(e.id, {
                               taskId: nextTask?.id,
                               taskLinkMode: nextTask ? "manual" : "none",
@@ -958,25 +952,9 @@ export default function TimeLogView({
                             });
                             setTaskEditing(null);
                           }}
-                          className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-white px-2 py-1.5 text-[11px] text-[var(--color-text-secondary)] focus:border-[var(--color-primary)] focus:outline-none"
-                          aria-label={`更改“${e.title}”计入的任务`}
-                        >
-                          <option value="">不计入任务</option>
-                          {tasks
-                            .filter((candidate) => candidate.date === e.date)
-                            .map((candidate) => (
-                              <option key={candidate.id} value={candidate.id}>
-                                {candidate.title}
-                              </option>
-                            ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => setTaskEditing(null)}
-                          className="rounded px-2 py-1 text-[10px] text-[var(--color-text-tertiary)] hover:bg-[var(--color-bg-gray-light)]"
-                        >
-                          取消
-                        </button>
+                          onClose={() => setTaskEditing(null)}
+                          label={`更改“${e.title}”计入的任务`}
+                        />
                       </div>
                     )}
                     {/* 改归属目标：就地展开，改完立刻收起 */}
