@@ -367,7 +367,7 @@ export default function TimeLogView({
   }
 
   function handleConfirm() {
-    if (!pending || pending.length === 0) return;
+    if (!pending || !canConfirmPending) return;
     onAddEntries(
       pending.map((p) => ({
         date: p.date,
@@ -402,6 +402,39 @@ export default function TimeLogView({
       ) ?? null,
     );
   }
+
+  function updatePending(index: number, updates: Partial<PendingEntry>) {
+    setPending(current => current?.map((entry, i) => i === index ? { ...entry, ...updates } : entry) ?? null);
+  }
+
+  function setPendingTime(index: number, which: "startTime" | "endTime", value: string) {
+    setPending(current => current?.map((entry, i) => {
+      if (i !== index) return entry;
+      const next = { ...entry, [which]: value || undefined };
+      if (next.startTime && next.endTime) next.minutes = durationBetweenTimes(next.startTime, next.endTime);
+      return next;
+    }) ?? null);
+  }
+
+  function setPendingMinutes(index: number, value: string) {
+    const minutes = Math.round(Number(value));
+    setPending(current => current?.map((entry, i) => {
+      if (i !== index) return entry;
+      if (entry.startTime && minutes > 0 && minutes < 1440) {
+        return { ...entry, minutes, endTime: minutesToTime((timeToMinutes(entry.startTime) + minutes) % 1440) ?? undefined };
+      }
+      // 无具体开始时间时保留纯时长；非法输入暂留在预览中，不能确认。
+      return { ...entry, minutes };
+    }) ?? null);
+  }
+
+  const canConfirmPending = Boolean(pending?.length && pending.every(entry => {
+    const date = parseISODate(entry.date);
+    const validDate = /^\d{4}-\d{2}-\d{2}$/.test(entry.date) && Number.isFinite(date.getTime()) && toISODate(date) === entry.date;
+    const validTimes = [entry.startTime, entry.endTime].every(time => !time || /^([01]\d|2[0-3]):[0-5]\d$/.test(time));
+    return entry.title.trim() && validDate && validTimes && Number.isFinite(entry.minutes) && entry.minutes > 0
+      && (!entry.startTime || !entry.endTime || durationBetweenTimes(entry.startTime, entry.endTime) === entry.minutes);
+  }));
 
   function handleConfirmDeleteEntry() {
     if (!deleteEntryId) return;
@@ -727,12 +760,13 @@ export default function TimeLogView({
                   识别出 {pending.length} 笔记录{parseSource === "rule" ? "（规则解析）" : ""}，确认后计入
                 </span>
               </div>
+              <p className="text-[11px] text-[var(--color-text-tertiary)]">时间识别不对？创建前直接修改；改起止时间会重算时长，改分钟数会调整结束时间。</p>
               {pending.map((p, i) => {
                 const matched = p.taskId ? tasks.find((task) => task.id === p.taskId) : undefined;
                 const availableTasks = tasks.filter((task) => task.date === p.date);
                 return (
                   <div key={i} className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white px-3 py-2">
-                    <div className="flex-1 flex flex-col min-w-0">
+                    <div className="flex-1 flex flex-col min-w-0 gap-2">
                       <span
                         className="truncate text-[13px] font-medium text-[var(--color-text-primary)]"
                         data-full-text={p.title}
@@ -740,8 +774,26 @@ export default function TimeLogView({
                         {p.title}
                       </span>
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[11px] text-[var(--color-text-tertiary)]">{p.date !== selectedDate ? `${p.date} · ` : ""}{entryTimeLabel(p)}</span>
-                        <span className="text-[11px] font-medium text-[var(--color-primary)]">{formatMinutes(p.minutes)}</span>
+                        <label className="flex min-h-10 items-center gap-2 rounded-lg border border-[var(--color-border)] px-2 text-[11px] text-[var(--color-text-secondary)]">
+                          记录日期
+                          <input type="date" value={p.date} aria-label={`第 ${i + 1} 笔记录日期`}
+                            onChange={event => updatePending(i, { date: event.target.value as ISODate, ...(event.target.value !== p.date ? { taskId: undefined, taskLinkMode: "none" } : {}) })}
+                            className="min-w-0 bg-transparent text-[12px] text-[var(--color-text-primary)] outline-none" />
+                        </label>
+                        <div className="flex w-full min-w-0 items-center gap-2">
+                          <TimePicker value={p.startTime ?? ""} onChange={value => setPendingTime(i, "startTime", value)} placeholder="开始时间" label={`第 ${i + 1} 笔记录开始时间`} />
+                          <span className="text-[var(--color-text-tertiary)]">—</span>
+                          <TimePicker value={p.endTime ?? ""} onChange={value => setPendingTime(i, "endTime", value)} placeholder="结束时间" label={`第 ${i + 1} 笔记录结束时间`} />
+                        </div>
+                        <label className="flex min-h-10 items-center gap-2 text-[12px] text-[var(--color-text-secondary)]">
+                          时长
+                          <input type="number" inputMode="numeric" min={1} value={p.minutes || ""}
+                            aria-label={`第 ${i + 1} 笔记录分钟数`} onChange={event => setPendingMinutes(i, event.target.value)}
+                            className="h-10 w-20 rounded-lg border border-[var(--color-border)] bg-white px-2 text-[13px] tabular-nums text-[var(--color-text-primary)] outline-none focus:border-[var(--color-primary)]" />
+                          分钟
+                        </label>
+                        {p.startTime && p.endTime && timeToMinutes(p.startTime) > timeToMinutes(p.endTime) && <span className="text-[11px] text-[var(--color-text-tertiary)]">跨午夜：开始于记录日期的前一天</span>}
+                        {!p.startTime && !p.endTime && <span className="text-[11px] text-[var(--color-text-tertiary)]">只记时长，不指定时段</span>}
                         <div className="w-full min-w-0">
                           <EntryTaskPicker
                             value={p.taskId ?? ""}
@@ -750,6 +802,7 @@ export default function TimeLogView({
                             label={`选择“${p.title}”计入的任务`}
                           />
                           {matched && <span className="text-[10px] text-[var(--color-success)]">已关联</span>}
+                          <p className="mt-1 text-[10px] text-[var(--color-text-tertiary)]">修改记录日期后，需要重新选择计入的任务。</p>
                         </div>
                       </div>
                     </div>
@@ -763,6 +816,7 @@ export default function TimeLogView({
                   </div>
                 );
               })}
+              {!canConfirmPending && <p role="alert" className="text-[11px] text-[var(--color-danger)]">请填写有效日期和大于 0 的时长；起止时间与时长需一致。</p>}
               <div className="flex justify-end gap-2 mt-1">
                 <button
                   type="button"
@@ -774,7 +828,8 @@ export default function TimeLogView({
                 <button
                   type="button"
                   onClick={handleConfirm}
-                  className="flex items-center gap-1 px-4 py-1.5 text-[12px] bg-[var(--color-primary)] text-white rounded hover:bg-[#1d4ed8] transition-colors font-medium"
+                  disabled={!canConfirmPending}
+                  className="flex items-center gap-1 px-4 py-1.5 text-[12px] bg-[var(--color-primary)] text-white rounded hover:bg-[#1d4ed8] transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Check className="w-3.5 h-3.5" />
                   确认记录

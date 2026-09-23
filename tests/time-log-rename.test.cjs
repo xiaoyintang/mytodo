@@ -9,8 +9,8 @@ function flatten(node) {
   return node && typeof node === 'object' ? [node, ...flatten(node.props?.children)] : [];
 }
 
-function harness(date, edit = true) {
-  const slots = []; let cursor = 0, tree; const updates = [];
+function harness(date, edit = true, parsedEntries = []) {
+  const slots = []; let cursor = 0, tree; const updates = [], additions = [];
   const react = { ...require('react'), useEffect() {}, useMemo: fn => fn(), useRef: value => ({ current: value }),
     useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = typeof initial === 'function' ? initial() : initial;
       return [slots[i], value => { slots[i] = typeof value === 'function' ? value(slots[i]) : value; }]; },
@@ -22,14 +22,14 @@ function harness(date, edit = true) {
     const code = ts.transpileModule(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), {
       compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2020 },
     }).outputText;
-    new Function('require', 'module', 'exports', code)(name => {
+    new Function('require', 'module', 'exports', 'fetch', code)(name => {
       if (name === 'react') return react;
       if (name === '@/components/ViewChrome') return Object.fromEntries(['AppHeader', 'AppShell', 'MonthDatePicker', 'ViewTabs', 'WeekDateStrip'].map(n => [n, n]));
       if (name.startsWith('@/components/todo/')) return load(name.slice(2) + '.ts');
       if (name.startsWith('@/components/')) return { default: name.split('/').pop() };
       if (name.startsWith('.')) return load(path.join(path.dirname(file), name + '.ts'));
       return require(name);
-    }, module, module.exports);
+    }, module, module.exports, async () => ({ ok: true, json: async () => ({ entries: parsedEntries }) }));
     cache.set(file, module.exports); return module.exports;
   }
   const Component = load('components/TimeLogView.tsx').default;
@@ -42,16 +42,59 @@ function harness(date, edit = true) {
     entries: [{ id: 'entry', title: '原记录', date, minutes: 15, startTime: '10:00', endTime: '10:15', category: '正事', taskId: 'old', taskLinkMode: 'manual' }],
     timer: { running: null, elapsedMs: 0 }, running: null, elapsedMs: 0,
     onUpdateEntry: (...args) => updates.push(args),
+    onAddEntries: entries => additions.push(entries),
   };
   function render() { cursor = 0; tree = Component(props); }
   const input = () => flatten(tree).find(n => n.type === 'EntryNameInput');
   render();
   if (edit) { flatten(tree).find(n => n.props['aria-label'] === '编辑记录：原记录').props.onClick(); render(); }
-  return { input, updates, render, nodes: () => flatten(tree),
+  return { input, updates, additions, render, nodes: () => flatten(tree),
+    async parse(text, ai = true) {
+      flatten(tree).find(n => n.type === 'textarea').props.onChange({ target: { value: text } }); render();
+      await flatten(tree).find(n => n.type === 'button' && n.props.children?.includes?.(ai ? 'AI 解析' : '快速解析')).props.onClick(); render();
+    },
     select(choice) { input().props.onSelect(choice); render(); },
     save() { flatten(tree).find(n => n.type === 'button' && n.props.children === '保存').props.onClick(); render(); },
   };
 }
+
+test('AI record preview edits clock times, recalculates minutes and retains task link before save', async () => {
+  const h = harness('2026-09-16', false, [{ title: '还没记过的任务', startTime: '11:35', endTime: '12:10', minutes: 35 }]);
+  await h.parse('做了事情');
+  const time = which => h.nodes().find(n => n.type === 'TimePicker' && n.props.label === `第 1 笔记录${which}时间`);
+  const minutes = () => h.nodes().find(n => n.props['aria-label'] === '第 1 笔记录分钟数');
+  time('开始').props.onChange('23:35'); h.render();
+  time('结束').props.onChange('00:10'); h.render();
+  assert.equal(minutes().props.value, 35);
+  minutes().props.onChange({ target: { value: '45' } }); h.render();
+  assert.equal(time('结束').props.value, '00:20');
+  assert.equal(h.additions.length, 0);
+  h.nodes().find(n => n.type === 'button' && n.props.children?.includes?.('确认记录')).props.onClick();
+  assert.deepEqual(h.additions[0], [{ title: '还没记过的任务', date: '2026-09-16', startTime: '23:35', endTime: '00:20', minutes: 45, taskId: 'planned', taskLinkMode: 'auto' }]);
+});
+
+test('invalid dates and equal times block confirmation; changing date clears old task attribution', async () => {
+  const h = harness('2026-09-16', false, [{ title: '还没记过的任务', startTime: '10:00', endTime: '10:15', minutes: 15 }]);
+  await h.parse('做了事情');
+  const confirm = () => h.nodes().find(n => n.type === 'button' && n.props.children?.includes?.('确认记录'));
+  const date = () => h.nodes().find(n => n.props['aria-label'] === '第 1 笔记录日期');
+  date().props.onChange({ target: { value: '2026-02-30' } }); h.render();
+  assert.equal(confirm().props.disabled, true); confirm().props.onClick(); assert.equal(h.additions.length, 0);
+  date().props.onChange({ target: { value: '2099-01-01' } }); h.render();
+  const picker = h.nodes().find(n => n.type === 'EntryTaskPicker');
+  assert.equal(picker.props.value, ''); assert.deepEqual(picker.props.tasks.map(t => t.id), ['other']);
+  h.nodes().find(n => n.type === 'TimePicker' && n.props.label === '第 1 笔记录结束时间').props.onChange('10:00'); h.render();
+  assert.equal(confirm().props.disabled, true);
+});
+
+test('duration-only rule preview stays unanchored; modifying one row never modifies the other', async () => {
+  const h = harness('2026-09-16', false);
+  await h.parse('阅读15分钟；拉伸20分钟', false);
+  h.nodes().find(n => n.props['aria-label'] === '第 1 笔记录分钟数').props.onChange({ target: { value: '30' } }); h.render();
+  assert.ok(h.nodes().filter(n => n.type === 'TimePicker').every(n => n.props.value === ''));
+  h.nodes().find(n => n.type === 'button' && n.props.children?.includes?.('确认记录')).props.onClick();
+  assert.deepEqual(h.additions[0].map(e => e.minutes), [30, 20]);
+});
 
 test('record header opens calendar on selected historical date and can return to live today', () => {
   const h = harness('2025-12-31', false);
