@@ -18,6 +18,16 @@ function loadTs(relative) {
 }
 const { parseTimeEntries, resolveRecentTimeEntries } = loadTs('components/todo/nlparse.ts');
 
+test('overnight labels distinguish start-day ranges from end-day recent/timer records', () => {
+  const { entryTimeLabel } = loadTs('components/todo/time.ts');
+  const range = { startTime: '22:30', endTime: '00:30' };
+  assert.equal(entryTimeLabel(range), '22:30 - 次日 00:30');
+  assert.equal(entryTimeLabel({ ...range, dateAnchor: 'start' }), '22:30 - 次日 00:30');
+  assert.equal(entryTimeLabel({ ...range, dateAnchor: 'end' }), '前一天 22:30 - 00:30');
+  assert.equal(entryTimeLabel({ startTime: '10:00', endTime: '11:00', dateAnchor: 'end' }), '10:00 - 11:00');
+  assert.equal(entryTimeLabel({}), '补记');
+});
+
 test('recent activity plus duration stays one named entry, including comma and Chinese numbers', () => {
   for (const input of ['刚做了拉伸花了15分钟', '刚做了拉伸，花了15分钟', '我刚刚做了拉伸，用了十五分钟', '刚才做了拉伸，１５分钟']) {
     assert.deepEqual(parseTimeEntries(input, '18:30'), [
@@ -35,6 +45,17 @@ test('cross-midnight ends-now retains full duration and both clock times', () =>
   const [long] = parseTimeEntries('刚刚阅读了一个半小时', '00:15');
   assert.equal(long.startTime, '22:45');
   assert.equal(long.minutes, 90);
+});
+
+test('explicit overnight ranges and start-plus-duration are not guessed into the afternoon', () => {
+  for (const text of ['22:30到00:30陪伴侣看电视', '22点30到0点30陪伴侣看电视', '晚上10点半到次日凌晨0点半陪伴侣看电视', '22:30陪伴侣看电视2小时']) {
+    const [entry] = parseTimeEntries(text, '19:57');
+    assert.equal(entry.startTime, '22:30', text);
+    assert.equal(entry.endTime, '00:30', text);
+    assert.equal(entry.minutes, 120, text);
+    assert.equal(entry.endsNow, undefined, text);
+  }
+  assert.equal(parseTimeEntries('9点到2点读书', '19:57')[0].endTime, '14:00');
 });
 
 test('duration-only stays unanchored, explicit clock wins, and 刚好 does not mean just ended', () => {

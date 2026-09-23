@@ -28,6 +28,17 @@ export function durationBetweenTimes(start: string, end: string): number {
     : endMinutes + 24 * 60 - startMinutes;
 }
 
+/** 钟点跨午夜不能单独决定日期方向，须结合记录的日期锚点。 */
+export function entryTimeLabel(e: Pick<TimeEntry, "startTime" | "endTime" | "dateAnchor">): string {
+  if (e.startTime && e.endTime) {
+    const crossesMidnight = timeToMinutes(e.startTime) > timeToMinutes(e.endTime);
+    const previous = crossesMidnight && e.dateAnchor === "end" ? "前一天 " : "";
+    const next = crossesMidnight && e.dateAnchor !== "end" ? "次日 " : "";
+    return `${previous}${e.startTime} - ${next}${e.endTime}`;
+  }
+  return e.startTime || "补记";
+}
+
 /** 分钟数 → 人类可读时长，如 "3小时20分" / "45分钟" */
 export function formatMinutes(min: number): string {
   if (min < 60) return `${min}分钟`;

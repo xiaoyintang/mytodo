@@ -274,6 +274,8 @@ export type EntryCategory = "正事" | "娱乐" | "休息";
 export interface TimeEntry {
   id: string;
   date: ISODate;
+  /** 跨午夜时 date 对应开始日还是结束日。缺省为开始日；倒推记录与计时结束明确标记 end。 */
+  dateAnchor?: "start" | "end";
   title: string;
   minutes: number;
   startTime?: string; // "HH:mm"，事后补记可以没有

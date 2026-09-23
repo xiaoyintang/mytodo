@@ -2,7 +2,7 @@
 // 支持："数学 9:00-10:30"、"上午9点到10点半做了数学"、"背单词40分钟"、"英语一个半小时"、
 //       "下午3点背单词40分钟"（时间点+时长）、"2点50开始看书"（只有开始→记到现在）
 
-import { timeToMinutes, minutesToTime } from "./time";
+import { durationBetweenTimes, timeToMinutes, minutesToTime } from "./time";
 
 export interface ParsedEntry {
   title: string;
@@ -162,7 +162,7 @@ export function parseTimeEntries(input: string, now?: string): ParsedEntry[] {
   const entries: ParsedEntry[] = [];
 
   for (const seg of segments) {
-    const rangeRe = new RegExp(`${TIME_POINT}\\s*(?:到|至|[-—~～])\\s*${TIME_POINT}`);
+    const rangeRe = new RegExp(`${TIME_POINT}\\s*(?:到|至|[-—~～])\\s*(?:(?:次日|明天|第二天)\\s*)?${TIME_POINT}`);
     const rangeMatch = seg.match(rangeRe);
 
     let startTime: string | undefined;
@@ -175,16 +175,16 @@ export function parseTimeEntries(input: string, now?: string): ParsedEntry[] {
       const end = parseTimePoint(rangeMatch[4], rangeMatch[5], rangeMatch[6]);
       if (start && end) {
         // 结束时间没写上午/下午且小于开始时间 → 视为跨到下午（如"9点到2点"）
-        if (!end.hasPeriod && (end.hour < start.hour || (end.hour === start.hour && end.minute <= start.minute))) {
+        if (!end.hasPeriod && start.hour < 12 && end.hour > 0 && !/[:：]|次日|明天|第二天/.test(rangeMatch[0]) && (end.hour < start.hour || (end.hour === start.hour && end.minute <= start.minute))) {
           if (end.hour + 12 < 24) end.hour += 12;
         }
         // 开始时间没写时段但结束写了下午且开始更大 → 开始也在下午（如"2点到下午4点"少见,忽略）
         const startMin = start.hour * 60 + start.minute;
         const endMin = end.hour * 60 + end.minute;
-        if (endMin > startMin) {
+        if (endMin !== startMin && start.hour < 24 && end.hour < 24) {
           startTime = `${pad2(start.hour)}:${pad2(start.minute)}`;
           endTime = `${pad2(end.hour)}:${pad2(end.minute)}`;
-          minutes = endMin - startMin;
+          minutes = durationBetweenTimes(startTime, endTime);
           rest = seg.replace(rangeMatch[0], " ");
         }
       }
@@ -219,7 +219,7 @@ export function parseTimeEntries(input: string, now?: string): ParsedEntry[] {
 
     // 时间点 + 时长 → 推出结束时间
     if (startTime && !endTime && minutes > 0) {
-      endTime = minutesToTime(timeToMinutes(startTime) + minutes) ?? undefined;
+      endTime = minutesToTime((timeToMinutes(startTime) + minutes) % 1440) ?? undefined;
     }
 
     // 只有开始时间（"2点50开始看书"）→ 默认记到当前时间

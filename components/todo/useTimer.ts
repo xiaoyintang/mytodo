@@ -126,6 +126,7 @@ export function useTimer(onRecord: (entry: Omit<TimeEntry, "id">) => void) {
     commitRef.current({ running: null, updatedAt: endD.getTime() });
     onRecordRef.current({
       date: toISODate(endD) as ISODate,
+      dateAnchor: "end",
       title: cur.running.title,
       minutes,
       startTime: hhmm(startD),

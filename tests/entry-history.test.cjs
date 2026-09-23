@@ -125,6 +125,7 @@ test('timer persists goal AND linked task without restarting; association surviv
   assert.equal(records[0].aspirationId, 'new-goal');
   assert.equal(records[0].taskId, 'task-b');
   assert.equal(records[0].taskLinkMode, 'manual');
+  assert.equal(records[0].dateAnchor, 'end');
   const { taskLoggedMinutes } = loadTs('components/todo/time.ts');
   assert.equal(taskLoggedMinutes({ id: 'task-b', title: '名称不同的任务' }, records), records[0].minutes);
   timer.start('阅读');

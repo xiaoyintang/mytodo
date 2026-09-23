@@ -5,6 +5,7 @@ import type { Aspiration, DayPlan, EntryCategory, ISODate, Task, TimeEntry, View
 import { CN_WEEKDAY, addDays, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
 import {
   durationBetweenTimes,
+  entryTimeLabel,
   formatMinutes,
   matchTaskByTitle,
   timeToMinutes,
@@ -82,6 +83,7 @@ type SummaryRow = {
  */
 type PendingEntry = ParsedEntry & {
   date: ISODate;
+  dateAnchor?: TimeEntry["dateAnchor"];
   taskId?: string;
   taskLinkMode?: TimeEntry["taskLinkMode"];
 };
@@ -172,6 +174,7 @@ export default function TimeLogView({
   const [editHistoryChoice, setEditHistoryChoice] = useState<EntryHistoryChoice | null>(null);
   const [editMinutes, setEditMinutes] = useState("");
   const [editStart, setEditStart] = useState("");
+  const [editDateAnchor, setEditDateAnchor] = useState<"start" | "end">("start");
   const [editEnd, setEditEnd] = useState("");
   const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null);
   const [copySourceId, setCopySourceId] = useState<string | null>(null); // 复制表单挂在哪条下面
@@ -356,6 +359,7 @@ export default function TimeLogView({
       parsed.map((entry) => ({
         ...entry,
         date: entry.endsNow ? parsedToday : selectedDate,
+        ...(entry.endsNow ? { dateAnchor: "end" as const } : {}),
         ...(() => {
           const matched = matchTaskByTitle(entry.title, entry.endsNow ? parsedToday : selectedDate, tasks);
           return matched
@@ -371,6 +375,7 @@ export default function TimeLogView({
     onAddEntries(
       pending.map((p) => ({
         date: p.date,
+        ...(p.dateAnchor ? { dateAnchor: p.dateAnchor } : {}),
         title: p.title,
         minutes: p.minutes,
         startTime: p.startTime,
@@ -449,6 +454,7 @@ export default function TimeLogView({
     setEditTitle(e.title);
     setEditMinutes(String(e.minutes));
     setEditStart(e.startTime ?? "");
+    setEditDateAnchor(e.dateAnchor ?? "start");
     setEditEnd(e.endTime ?? "");
   }
 
@@ -504,6 +510,7 @@ export default function TimeLogView({
       minutes,
       startTime: editStart || undefined,
       endTime: editEnd || undefined,
+      dateAnchor: editDateAnchor,
       taskId,
       taskLinkMode,
       ...(editHistoryChoice ? historyEntryFields(editHistoryChoice) : {}),
@@ -520,6 +527,7 @@ export default function TimeLogView({
     setEditTitle(e.title);
     setEditStart(`${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`);
     setEditEnd("");
+    setEditDateAnchor("start");
     setEditMinutes("");
   }
 
@@ -530,6 +538,7 @@ export default function TimeLogView({
     const matched = matchTaskByTitle(title, selectedDate, tasks);
     onAddEntries([{
       date: selectedDate,
+      dateAnchor: editDateAnchor,
       title,
       minutes,
       startTime: editStart || undefined,
@@ -539,6 +548,24 @@ export default function TimeLogView({
       ...(editHistoryChoice ? historyEntryFields(editHistoryChoice) : {}),
     }]);
     setEditingId(null);
+  }
+
+  // 日期是台账归属日，不移动旧记录；允许明确两种跨日方向。
+  function renderDateAnchor(value: TimeEntry["dateAnchor"], onChange: (value: "start" | "end") => void) {
+    return (
+      <div className="flex flex-wrap items-center gap-1.5 text-[11px]" role="group" aria-label="跨天时段">
+        <span className="text-[var(--color-text-tertiary)]">相对记录日期</span>
+        {(["start", "end"] as const).map(anchor => (
+          <button key={anchor} type="button" aria-pressed={(value ?? "start") === anchor}
+            onClick={() => onChange(anchor)}
+            className={`min-h-9 rounded-lg border px-2.5 transition-colors ${(value ?? "start") === anchor
+              ? "border-[var(--color-primary)] bg-[var(--color-primary-light)] text-[var(--color-primary)]"
+              : "border-[var(--color-border)] bg-white text-[var(--color-text-secondary)]"}`}>
+            {anchor === "start" ? "当天 → 次日" : "前一天 → 当天"}
+          </button>
+        ))}
+      </div>
+    );
   }
 
   // 台账条目编辑表单（新建/编辑共用），onSave 决定是新增还是更新
@@ -577,7 +604,7 @@ export default function TimeLogView({
           <span className="text-[13px] text-[var(--color-text-secondary)]">分钟</span>
           {crossesMidnight && (
             <span className="rounded bg-[#EEF2FF] px-1.5 py-0.5 text-[10px] font-medium text-[#4F46E5]">
-              跨到次日
+              {editDateAnchor === "end" ? "从前一天开始" : "跨到次日"}
             </span>
           )}
           <div className="flex-1" />
@@ -602,6 +629,7 @@ export default function TimeLogView({
             保存
           </button>
         </div>
+        {crossesMidnight && renderDateAnchor(editDateAnchor, setEditDateAnchor)}
       </div>
     );
   }
@@ -672,12 +700,6 @@ export default function TimeLogView({
         )}
       </div>
     );
-  }
-
-  function entryTimeLabel(e: { startTime?: string; endTime?: string }): string {
-    if (e.startTime && e.endTime) return `${timeToMinutes(e.startTime) > timeToMinutes(e.endTime) ? "前一天 " : ""}${e.startTime} - ${e.endTime}`;
-    if (e.startTime) return e.startTime;
-    return "补记";
   }
 
   return (
@@ -792,7 +814,7 @@ export default function TimeLogView({
                             className="h-10 w-20 rounded-lg border border-[var(--color-border)] bg-white px-2 text-[13px] tabular-nums text-[var(--color-text-primary)] outline-none focus:border-[var(--color-primary)]" />
                           分钟
                         </label>
-                        {p.startTime && p.endTime && timeToMinutes(p.startTime) > timeToMinutes(p.endTime) && <span className="text-[11px] text-[var(--color-text-tertiary)]">跨午夜：开始于记录日期的前一天</span>}
+                        {p.startTime && p.endTime && timeToMinutes(p.startTime) > timeToMinutes(p.endTime) && renderDateAnchor(p.dateAnchor, value => updatePending(i, { dateAnchor: value }))}
                         {!p.startTime && !p.endTime && <span className="text-[11px] text-[var(--color-text-tertiary)]">只记时长，不指定时段</span>}
                         <div className="w-full min-w-0">
                           <EntryTaskPicker
