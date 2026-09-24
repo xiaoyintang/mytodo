@@ -20,7 +20,7 @@ import {
   categoryStyle,
   ruleClassify,
 } from "@/components/todo/category";
-import { ChevronDown, ChevronUp, Mic, Sparkles, Trash2, X, Check, Link2, Zap, Pencil, Copy, Undo2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Mic, Sparkles, Trash2, X, Check, Link2, Zap, Pencil, Copy, Undo2, Redo2 } from "lucide-react";
 import TimePicker from "@/components/TimePicker";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import TimerPanel from "@/components/TimerPanel";
@@ -48,6 +48,8 @@ type Props = {
   onApplyCategories: (byTitle: Record<string, EntryCategory>) => void;
   onUndoEntries: () => void;
   canUndoEntries: boolean;
+  onRedoEntries: () => void;
+  canRedoEntries: boolean;
   /** 计时器提到 TodoApp 那层了（要进云同步），这里只用不建 */
   timer: {
     running: RunningTimer | null;
@@ -149,6 +151,8 @@ export default function TimeLogView({
   onApplyCategories,
   onUndoEntries,
   canUndoEntries,
+  onRedoEntries,
+  canRedoEntries,
   timer,
   today,
   aspirations,
@@ -894,20 +898,34 @@ export default function TimeLogView({
 
         {/* 今日台账 */}
         <div className="w-full flex flex-col gap-3">
-          <div className="w-full flex items-center justify-between">
+          <div className="w-full flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
             <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">{dayLabel}台账</span>
             <div className="flex items-center gap-2">
-              {canUndoEntries && (
+              {(canUndoEntries || canRedoEntries) && (
+                <div className="flex items-center gap-1">
                 <button
                   type="button"
                   onClick={onUndoEntries}
-                  className="flex items-center gap-1 px-2 py-1 rounded-md text-[12px] font-semibold text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] transition-colors"
-                  aria-label="撤回上一步改动"
-                  title="撤回上一步（编辑 / 删除 / 新增都能退回）"
+                  disabled={!canUndoEntries}
+                  className="flex min-h-11 items-center gap-1 px-2 rounded-md text-[12px] font-semibold text-[var(--color-primary)] enabled:hover:bg-[var(--color-primary-light)] disabled:text-[var(--color-text-tertiary)] disabled:opacity-40 transition-colors"
+                  aria-label="撤回最近一次记录改动"
+                  title="撤回记录模块最近一次改动（含其他日期）；误撤回可点重做"
                 >
                   <Undo2 className="w-3.5 h-3.5" />
                   撤回
                 </button>
+                <button
+                  type="button"
+                  onClick={onRedoEntries}
+                  disabled={!canRedoEntries}
+                  className="flex min-h-11 items-center gap-1 px-2 rounded-md text-[12px] font-semibold text-[var(--color-primary)] enabled:hover:bg-[var(--color-primary-light)] disabled:text-[var(--color-text-tertiary)] disabled:opacity-40 transition-colors"
+                  aria-label="重做，恢复刚撤回的记录改动"
+                  title="恢复刚撤回的记录改动"
+                >
+                  <Redo2 className="w-3.5 h-3.5" />
+                  重做
+                </button>
+                </div>
               )}
               <span className="text-[var(--color-text-tertiary)] text-[13px] font-medium">
                 {dayEntries.length > 0 ? `${dayEntries.length} 笔 · 共 ${formatMinutes(dayTotal)}` : "暂无记录"}

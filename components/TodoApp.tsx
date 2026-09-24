@@ -448,6 +448,7 @@ export default function TodoApp() {
   const [isSyncOpen, setIsSyncOpen] = useState(false);
   // 时间记录撤回栈：每次用户改动记录前先存一份快照，最多留 30 步
   const [entriesHistory, setEntriesHistory] = useState<TimeEntry[][]>([]);
+  const [entriesFuture, setEntriesFuture] = useState<TimeEntry[][]>([]);
   // 习惯实验室的撤回栈（愿望 + 行为一起快照）
   const [labHistory, setLabHistory] = useState<
     Array<{
@@ -788,6 +789,7 @@ export default function TodoApp() {
       setEntries(prev => reassignTaskEntries(prev, updatedTask));
       // 撤回某笔记录的编辑，也不应把已经调整的任务归属变回旧目标。
       setEntriesHistory(history => history.map(snapshot => reassignTaskEntries(snapshot, updatedTask)));
+      setEntriesFuture(future => future.map(snapshot => reassignTaskEntries(snapshot, updatedTask)));
       if (timer.running?.attribution?.taskId === taskId) {
         timer.rename(timer.running.title, timer.running.startedAt, { taskId, aspirationId: updatedTask.aspirationId });
       }
@@ -808,6 +810,8 @@ export default function TodoApp() {
   // 改动记录前先存快照，供撤回（本地云同步的替换不走这里，不会污染撤回栈）
   function snapshotEntries() {
     setEntriesHistory((h) => [...h.slice(-29), entries]);
+    // 撤回后又做新修改，进入新分支，不能再用旧的重做覆盖新内容。
+    setEntriesFuture([]);
   }
 
   // 新增时间记录（批量，用于自然语言解析出多笔的场景）
@@ -901,8 +905,18 @@ export default function TodoApp() {
   function undoEntries() {
     if (entriesHistory.length === 0) return;
     const prev = entriesHistory[entriesHistory.length - 1];
+    setEntriesFuture((future) => [...future.slice(-29), entries]);
     setEntries(prev);
     setEntriesHistory((h) => h.slice(0, -1));
+  }
+
+  // 误撤回可以按相反顺序完整恢复，包括时段、任务关联和归属。
+  function redoEntries() {
+    if (entriesFuture.length === 0) return;
+    const next = entriesFuture[entriesFuture.length - 1];
+    setEntriesHistory((history) => [...history.slice(-29), entries]);
+    setEntries(next);
+    setEntriesFuture((future) => future.slice(0, -1));
   }
 
   // ===== 习惯实验室 =====
@@ -2208,6 +2222,8 @@ export default function TodoApp() {
           onApplyCategories={applyEntryCategories}
           onUndoEntries={undoEntries}
           canUndoEntries={entriesHistory.length > 0}
+          onRedoEntries={redoEntries}
+          canRedoEntries={entriesFuture.length > 0}
           timer={timer}
           today={todayIso}
           aspirations={safeAspirations}

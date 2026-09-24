@@ -9,7 +9,7 @@ function flatten(node) {
   return node && typeof node === 'object' ? [node, ...flatten(node.props?.children)] : [];
 }
 
-function harness(date, edit = true, parsedEntries = []) {
+function harness(date, edit = true, parsedEntries = [], overrides = {}) {
   const slots = []; let cursor = 0, tree; const updates = [], additions = [];
   const react = { ...require('react'), useEffect() {}, useMemo: fn => fn(), useRef: value => ({ current: value }),
     useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = typeof initial === 'function' ? initial() : initial;
@@ -43,6 +43,7 @@ function harness(date, edit = true, parsedEntries = []) {
     timer: { running: null, elapsedMs: 0 }, running: null, elapsedMs: 0,
     onUpdateEntry: (...args) => updates.push(args),
     onAddEntries: entries => additions.push(entries),
+    ...overrides,
   };
   function render() { cursor = 0; tree = Component(props); }
   const input = () => flatten(tree).find(n => n.type === 'EntryNameInput');
@@ -57,6 +58,18 @@ function harness(date, edit = true, parsedEntries = []) {
     save() { flatten(tree).find(n => n.type === 'button' && n.props.children === '保存').props.onClick(); render(); },
   };
 }
+
+test('record toolbar exposes redo after undo, even when there is no older undo step', () => {
+  let redos = 0;
+  const h = harness('2026-09-24', false, [], { canUndoEntries: false, canRedoEntries: true, onRedoEntries: () => redos++ });
+  const undo = h.nodes().find(n => n.props['aria-label'] === '撤回最近一次记录改动');
+  const redo = h.nodes().find(n => n.props['aria-label'] === '重做，恢复刚撤回的记录改动');
+  assert.equal(undo.props.disabled, true);
+  assert.equal(redo.props.disabled, false);
+  assert.ok(redo.props.className.includes('min-h-11'));
+  redo.props.onClick();
+  assert.equal(redos, 1);
+});
 
 test('AI record preview edits clock times, recalculates minutes and retains task link before save', async () => {
   const h = harness('2026-09-16', false, [{ title: '还没记过的任务', startTime: '11:35', endTime: '12:10', minutes: 35 }]);
