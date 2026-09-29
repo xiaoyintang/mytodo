@@ -28,7 +28,7 @@ import TimerPanel from "@/components/TimerPanel";
 import EntryNameInput from "@/components/EntryNameInput";
 import EntryTaskPicker from "@/components/EntryTaskPicker";
 import { buildTimerChoices, historyEntryFields, type EntryHistoryChoice } from "@/components/todo/entryHistory";
-import type { RunningTimer, TimerAttribution } from "@/components/todo/useTimer";
+import type { RunningTimer, TimerAttribution, TimerRewardControls } from "@/components/todo/useTimer";
 import MainlineBar from "@/components/MainlineBar";
 import CategoryDonut, { type DonutSlice } from "@/components/CategoryDonut";
 import GoalInvestChart from "@/components/GoalInvestChart";
@@ -52,7 +52,7 @@ type Props = {
   onRedoEntries: () => void;
   canRedoEntries: boolean;
   /** 计时器提到 TodoApp 那层了（要进云同步），这里只用不建 */
-  timer: {
+  timer: TimerRewardControls & {
     running: RunningTimer | null;
     elapsedMs: number;
     start: (title: string) => void;
@@ -746,6 +746,7 @@ export default function TimeLogView({
             onStart={timer.start}
             onStop={timer.stop}
             onRename={timer.rename}
+            rewardControls={timer}
             history={timerChoices}
             aspirations={aspirations}
             tasks={tasks}

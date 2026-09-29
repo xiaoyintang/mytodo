@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ISODate, TimeEntry } from "./types";
-import { toISODate } from "./date";
-import { historyEntryFields } from "./entryHistory";
+import type { TimeEntry } from "./types";
+import { beginReward, configureReward, readRewardCycle, resumeFocus, rewardProgress, stopTimer, type RewardConfig, type RewardCycle, type TimerTransition } from "./timerReward";
+import { playRewardSound, unlockRewardSound } from "./rewardSound";
 
 // 正在进行的计时（跨刷新/重开持久化，并跟着云同步跨设备）。
 // 历史上字段名是 category，这里兼容读取。
@@ -17,16 +17,9 @@ export type RunningTimer = { title: string; startedAt: number; attribution?: Tim
  * "我刚停了还没传上去" 和 "别的设备刚开始还没拉下来"——
  * 光看 running 是不是 null 分不出来，谁的时间戳新听谁的。
  */
-export type TimerState = { running: RunningTimer | null; updatedAt: number };
+export type TimerState = { running: RunningTimer | null; updatedAt: number; reward?: RewardCycle };
 
 const EMPTY: TimerState = { running: null, updatedAt: 0 };
-
-function pad2(n: number): string {
-  return String(n).padStart(2, "0");
-}
-function hhmm(d: Date): string {
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-}
 
 function read(): TimerState {
   try {
@@ -46,7 +39,7 @@ function read(): TimerState {
             },
           } : {}),
         } : null;
-      return { running, updatedAt: Number(p.updatedAt) || 0 };
+      return { running, updatedAt: Number(p.updatedAt) || 0, reward: readRewardCycle(p.reward) };
     }
     // 旧格式：直接存的 RunningTimer（还可能是更早的 category 字段）
     const title = (p.title ?? p.category) as string | undefined;
@@ -75,6 +68,7 @@ function write(state: TimerState) {
 export function useTimer(onRecord: (entry: Omit<TimeEntry, "id">) => void) {
   const [state, setState] = useState<TimerState>(EMPTY);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const notifiedRef = useRef(new Set<string>());
   // 用 ref 存回调，让 start/stop 保持稳定，不随父组件每次渲染重建
   const onRecordRef = useRef(onRecord);
   onRecordRef.current = onRecord;
@@ -91,6 +85,15 @@ export function useTimer(onRecord: (entry: Omit<TimeEntry, "id">) => void) {
   const commitRef = useRef(commit);
   commitRef.current = commit;
 
+  function applyTransition(transition: TimerTransition) {
+    if (transition.state === stateRef.current) return;
+    commitRef.current(transition.state);
+    setNowMs(Date.now());
+    if (transition.entry) onRecordRef.current(transition.entry);
+  }
+  const transitionRef = useRef(applyTransition);
+  transitionRef.current = applyTransition;
+
   // 恢复正在进行的计时
   useEffect(() => {
     const saved = read();
@@ -106,33 +109,63 @@ export function useTimer(onRecord: (entry: Omit<TimeEntry, "id">) => void) {
     return () => clearInterval(id);
   }, [state.running]);
 
+  // 提示只响一次；切换应用内 tab 不会停止检测。恢复页面时不补响过期提示。
+  useEffect(() => {
+    const cycle = state.reward;
+    if (!cycle) return;
+    const progress = rewardProgress(state, nowMs);
+    const phase = progress.ready ? "focus" : progress.rewardOver ? "reward" : undefined;
+    if (!phase) return;
+    const key = `${cycle.id}:${phase}`;
+    if (notifiedRef.current.has(key)) return;
+    notifiedRef.current.add(key);
+    try {
+      const storageKey = `mytodo.reward.notified.${phase}`;
+      if (window.sessionStorage.getItem(storageKey) === cycle.id) return;
+      window.sessionStorage.setItem(storageKey, cycle.id);
+    } catch { /* 内存去重仍有效 */ }
+    const enabled = phase === "focus" ? cycle.config.focusSound : cycle.config.rewardSound;
+    if (enabled) playRewardSound();
+  }, [state, nowMs]);
+
   const start = useCallback((title: string) => {
     const t = title.trim();
     if (!t) return;
     if (stateRef.current.running) return; // 已在计时，不覆盖
     const now = Date.now();
-    commitRef.current({ running: { title: t, startedAt: now }, updatedAt: now });
+    commitRef.current({ ...stateRef.current, running: { title: t, startedAt: now }, updatedAt: Math.max(now, stateRef.current.updatedAt + 1) });
     setNowMs(now);
   }, []);
 
   const stop = useCallback(() => {
+    transitionRef.current(stopTimer(stateRef.current, Date.now()));
+  }, []);
+
+  const enableReward = useCallback((config: RewardConfig, startedAt?: number) => {
+    if (stateRef.current.running?.startedAt !== startedAt) return;
+    if (config.focusSound || config.rewardSound) unlockRewardSound();
+    transitionRef.current({ state: configureReward(stateRef.current, config, Date.now()) });
+  }, []);
+
+  const startReward = useCallback((id: string) => {
+    if (stateRef.current.reward?.id !== id) return;
+    if (stateRef.current.reward.config.rewardSound) unlockRewardSound();
+    transitionRef.current(beginReward(stateRef.current, Date.now()));
+  }, []);
+
+  const continueFocus = useCallback((id: string) => {
+    if (stateRef.current.reward?.id !== id) return;
+    if (stateRef.current.reward.config.focusSound || stateRef.current.reward.config.rewardSound) unlockRewardSound();
+    transitionRef.current(resumeFocus(stateRef.current, Date.now()));
+  }, []);
+
+  const dismissReward = useCallback((id: string) => {
     const cur = stateRef.current;
-    if (!cur.running) return;
-    const startD = new Date(cur.running.startedAt);
-    const endD = new Date();
-    let minutes = Math.round((endD.getTime() - startD.getTime()) / 60000);
-    if (minutes < 1) minutes = 1; // 不足 1 分钟按 1 分钟
-    // 先落状态再记一笔：记录本身在更新函数外面，严格模式双跑也只会记一次
-    commitRef.current({ running: null, updatedAt: endD.getTime() });
-    onRecordRef.current({
-      date: toISODate(endD) as ISODate,
-      dateAnchor: "end",
-      title: cur.running.title,
-      minutes,
-      startTime: hhmm(startD),
-      endTime: hhmm(endD),
-      ...(cur.running.attribution ? historyEntryFields(cur.running.attribution) : {}),
-    });
+    if (cur.reward?.id !== id) return;
+    // 奖励正在进行时，先按实际用时记完它；不会留下失去分类的奖励计时。
+    const stopped = cur.reward.phase === "reward" && cur.running?.startedAt === cur.reward.activeStartedAt
+      ? stopTimer(cur, Date.now()) : { state: cur };
+    transitionRef.current({ ...stopped, state: { ...stopped.state, reward: undefined, updatedAt: Math.max(Date.now(), stopped.state.updatedAt + 1) } });
   }, []);
 
   // 只修改本次计时的名称；保留 startedAt，不停止、不产生额外记录。
@@ -143,7 +176,10 @@ export function useTimer(onRecord: (entry: Omit<TimeEntry, "id">) => void) {
     if (!cur.running || cur.running.startedAt !== startedAt || !nextTitle) return;
     if (cur.running.title === nextTitle && !attribution) return;
     commitRef.current({
+      ...cur,
       running: { ...cur.running, title: nextTitle, attribution },
+      reward: cur.reward?.phase === "focus" && cur.reward.activeStartedAt === startedAt
+        ? { ...cur.reward, focus: { title: nextTitle, attribution } } : cur.reward,
       updatedAt: Math.max(Date.now(), cur.updatedAt + 1),
     });
   }, []);
@@ -160,5 +196,8 @@ export function useTimer(onRecord: (entry: Omit<TimeEntry, "id">) => void) {
   }, []);
 
   const elapsedMs = state.running ? nowMs - state.running.startedAt : 0;
-  return { running: state.running, elapsedMs, start, stop, rename, state, adopt };
+  return { running: state.running, elapsedMs, start, stop, rename, state, adopt,
+    reward: state.reward, enableReward, startReward, continueFocus, dismissReward };
 }
+
+export type TimerRewardControls = Pick<ReturnType<typeof useTimer>, "reward" | "enableReward" | "startReward" | "continueFocus" | "dismissReward">;

@@ -2,7 +2,8 @@
 
 import { useRef, useState } from "react";
 import { Pencil, Square, Timer as TimerIcon } from "lucide-react";
-import type { RunningTimer, TimerAttribution } from "@/components/todo/useTimer";
+import type { RunningTimer, TimerAttribution, TimerRewardControls } from "@/components/todo/useTimer";
+import TimerRewardPanel from "@/components/TimerRewardPanel";
 import type { EntryHistoryChoice } from "@/components/todo/entryHistory";
 import type { Aspiration, Task } from "@/components/todo/types";
 import EntryNameInput from "@/components/EntryNameInput";
@@ -39,9 +40,10 @@ type Props = {
   history: EntryHistoryChoice[];
   aspirations: Aspiration[];
   tasks: Task[];
+  rewardControls?: TimerRewardControls;
 };
 
-export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRename, history, aspirations, tasks }: Props) {
+export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRename, history, aspirations, tasks, rewardControls }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const editingRef = useRef(false);
@@ -56,6 +58,7 @@ export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRena
     : undefined;
   const linkedTask = tasks.find(task => task.id === running?.attribution?.taskId);
   const runningGoalId = linkedTask ? linkedTask.aspirationId : running?.attribution?.aspirationId;
+  const isReward = rewardControls?.reward?.phase === "reward" && rewardControls.reward.activeStartedAt === running?.startedAt;
 
   return (
     <div className="w-full flex flex-col gap-2">
@@ -71,7 +74,7 @@ export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRena
           style={{ backgroundColor: style.bg, borderColor: style.solid }}
         >
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            {editing ? <EntryNameInput
+            {isReward ? <span className="truncate text-[13px] font-semibold" style={{ color: style.text }}>{running.title}</span> : editing ? <EntryNameInput
               autoFocus
               label="正在计时的事件名称"
               value={draft}
@@ -97,7 +100,7 @@ export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRena
             <span className="text-[11px] text-[var(--color-text-tertiary)]">
               {editing ? "回车或点空白保存 · Esc 取消" : `从 ${hhmm(new Date(running.startedAt))} 开始`}
             </span>
-            {!editing && running.attribution && <span className="truncate text-[11px] text-[var(--color-text-secondary)]">
+            {!editing && !isReward && running.attribution && <span className="truncate text-[11px] text-[var(--color-text-secondary)]">
               {aspirations.find((goal) => goal.id === runningGoalId)?.title
                 ?? (runningGoalId ? "原目标已删除" : "未归属目标")}
             </span>}
@@ -138,6 +141,7 @@ export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRena
           ))}
         </div>
       )}
+      {rewardControls && <TimerRewardPanel running={running} elapsedMs={elapsedMs} controls={rewardControls} />}
     </div>
   );
 }
