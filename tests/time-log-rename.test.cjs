@@ -71,6 +71,27 @@ test('record toolbar exposes redo after undo, even when there is no older undo s
   assert.equal(redos, 1);
 });
 
+test('ledger renders previous-day starts before morning without changing date, minutes or saved order', () => {
+  const date = '2026-10-01';
+  const entries = [
+    { id: '1', title: '凌晨学习', date, startTime: '00:51', endTime: '01:46', minutes: 55 },
+    { id: '2', title: '上午家务', date, startTime: '10:10', endTime: '10:55', minutes: 45 },
+    { id: '3', title: '昨天开始', date, startTime: '23:10', endTime: '00:21', minutes: 71, dateAnchor: 'end' },
+    { id: '4', title: '今晚开始', date, startTime: '23:10', endTime: '00:21', minutes: 71, dateAnchor: 'start' },
+    { id: '5', title: '纯时长', date, minutes: 20 },
+    { id: '6', title: '其他日期', date: '2026-09-30', startTime: '10:00', minutes: 10 },
+  ];
+  const before = structuredClone(entries);
+  const h = harness(date, false, [], { entries });
+  const titles = h.nodes().map(n => n.props['aria-label']).filter(label => label?.startsWith('编辑记录：'));
+  assert.deepEqual(titles, ['昨天开始', '凌晨学习', '上午家务', '今晚开始', '纯时长'].map(t => `编辑记录：${t}`));
+  assert.ok(h.nodes().some(n => n.props.children === '前一天 23:10 - 00:21'));
+  assert.ok(h.nodes().some(n => n.props.children === '23:10 - 次日 00:21'));
+  assert.deepEqual(entries, before);
+  assert.equal(h.updates.length, 0);
+  assert.equal(h.additions.length, 0);
+});
+
 test('AI record preview edits clock times, recalculates minutes and retains task link before save', async () => {
   const h = harness('2026-09-16', false, [{ title: '还没记过的任务', startTime: '11:35', endTime: '12:10', minutes: 35 }]);
   await h.parse('做了事情');

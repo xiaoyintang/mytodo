@@ -28,6 +28,26 @@ test('overnight labels distinguish start-day ranges from end-day recent/timer re
   assert.equal(entryTimeLabel({}), '补记');
 });
 
+test('ledger sorting respects overnight direction, stable ties and untimed records', () => {
+  const { compareEntriesByStartTime } = loadTs('components/todo/time.ts');
+  const entries = [
+    { id: 'untimed' },
+    { id: 'late', startTime: '23:30', endTime: '00:30', dateAnchor: 'start' },
+    { id: 'morning', startTime: '10:10', endTime: '10:55', dateAnchor: 'end' },
+    { id: 'overnight', startTime: '23:10', endTime: '00:21', dateAnchor: 'end' },
+    { id: 'early', startTime: '00:51', endTime: '01:46' },
+    { id: 'legacy', startTime: '22:30', endTime: '00:30' },
+    { id: 'earlier-overnight', startTime: '22:00', endTime: '00:10', dateAnchor: 'end' },
+    { id: 'same-start', startTime: '00:51' },
+    { id: 'untimed2', endTime: '13:00' },
+  ];
+  const before = structuredClone(entries);
+  assert.deepEqual([...entries].sort(compareEntriesByStartTime).map(e => e.id), [
+    'earlier-overnight', 'overnight', 'early', 'same-start', 'morning', 'legacy', 'late', 'untimed', 'untimed2',
+  ]);
+  assert.deepEqual(entries, before);
+});
+
 test('recent activity plus duration stays one named entry, including comma and Chinese numbers', () => {
   for (const input of ['刚做了拉伸花了15分钟', '刚做了拉伸，花了15分钟', '我刚刚做了拉伸，用了十五分钟', '刚才做了拉伸，１５分钟']) {
     assert.deepEqual(parseTimeEntries(input, '18:30'), [

@@ -5,6 +5,7 @@ import type { Aspiration, DayPlan, EntryCategory, ISODate, Task, TimeEntry, View
 import { CN_WEEKDAY, addDays, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
 import {
   durationBetweenTimes,
+  compareEntriesByStartTime,
   entryTimeLabel,
   formatMinutes,
   matchTaskByTitle,
@@ -201,7 +202,7 @@ export default function TimeLogView({
   const dayEntries = entries
     .filter((e) => e.date === selectedDate)
     .slice()
-    .sort((a, b) => (a.startTime ?? "99:99").localeCompare(b.startTime ?? "99:99"));
+    .sort(compareEntriesByStartTime);
   const dayTotal = dayEntries.reduce((s, e) => s + e.minutes, 0);
 
   // 标题 → 大类 查表（手动改过的 > 已分类的同名记录 > 关键词规则）

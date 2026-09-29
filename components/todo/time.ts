@@ -39,6 +39,20 @@ export function entryTimeLabel(e: Pick<TimeEntry, "startTime" | "endTime" | "dat
   return e.startTime || "补记";
 }
 
+/** 同一台账日期内按实际开始先后排序；前一天开始为负数，无钟点的补记放最后。 */
+export function compareEntriesByStartTime(
+  a: Pick<TimeEntry, "startTime" | "endTime" | "dateAnchor">,
+  b: Pick<TimeEntry, "startTime" | "endTime" | "dateAnchor">,
+): number {
+  function offset(e: typeof a): number {
+    if (!e.startTime) return 1440;
+    const start = timeToMinutes(e.startTime);
+    const startsPreviousDay = e.dateAnchor === "end" && e.endTime && start > timeToMinutes(e.endTime);
+    return start - (startsPreviousDay ? 1440 : 0);
+  }
+  return offset(a) - offset(b);
+}
+
 /** 分钟数 → 人类可读时长，如 "3小时20分" / "45分钟" */
 export function formatMinutes(min: number): string {
   if (min < 60) return `${min}分钟`;
