@@ -13,7 +13,7 @@ import {
   minutesToTime,
 } from "@/components/todo/time";
 import { goalColor } from "@/components/todo/goal";
-import { parseTimeEntries, type ParsedEntry } from "@/components/todo/nlparse";
+import { parseTimeEntries, resolveRelativeEntryDays, type ParsedEntry } from "@/components/todo/nlparse";
 import {
   CATEGORY_LIST,
   buildTitleCategoryMap,
@@ -352,6 +352,7 @@ export default function TimeLogView({
     if (!parsed) {
       parsed = parseTimeEntries(text, now);
     }
+    parsed = resolveRelativeEntryDays(text, parsed);
 
     setParsing(false);
     setParseSource(source);
@@ -361,17 +362,20 @@ export default function TimeLogView({
     }
     // 自动匹配只是建议：确认预览里仍然可以换成当天任意任务，或明确设为不计入。
     setPending(
-      parsed.map((entry) => ({
-        ...entry,
-        date: entry.endsNow ? parsedToday : selectedDate,
-        ...(entry.endsNow ? { dateAnchor: "end" as const } : {}),
-        ...(() => {
-          const matched = matchTaskByTitle(entry.title, entry.endsNow ? parsedToday : selectedDate, tasks);
-          return matched
+      parsed.map((entry) => {
+        const date = entry.dayOffset !== undefined
+          ? toISODate(addDays(parseISODate(parsedToday), entry.dayOffset))
+          : entry.endsNow ? parsedToday : selectedDate;
+        const matched = matchTaskByTitle(entry.title, date, tasks);
+        return {
+          ...entry,
+          date,
+          ...(entry.endsNow ? { dateAnchor: "end" as const } : {}),
+          ...(matched
             ? { taskId: matched.id, taskLinkMode: "auto" as const }
-            : { taskLinkMode: "none" as const };
-        })(),
-      })),
+            : { taskLinkMode: "none" as const }),
+        };
+      }),
     );
   }
 

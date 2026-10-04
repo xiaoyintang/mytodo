@@ -59,6 +59,39 @@ function harness(date, edit = true, parsedEntries = [], overrides = {}) {
   };
 }
 
+test('yesterday uses real today, not viewed date; preview matches yesterday tasks and stays editable', async () => {
+  const RealDate = Date;
+  let now = new RealDate(2026, 0, 1, 23, 59);
+  global.Date = class extends RealDate {
+    constructor(...args) { super(...(args.length ? args : [now.getTime()])); }
+    static now() { return now.getTime(); }
+  };
+  try {
+    for (const ai of [false, true]) {
+      const h = harness('2025-12-20', false, [{ title: '阅读', minutes: 120 }], {
+        tasks: [{id: 'yesterday', title: '阅读', date: '2025-12-31', status: 'todo'},
+          {id: 'today', title: '阅读', date: '2026-01-01', status: 'todo'}],
+      });
+      await h.parse('昨日做了阅读两小时', ai);
+      const date = () => h.nodes().find(n => n.props['aria-label'] === '第 1 笔记录日期');
+      assert.equal(date().props.value, '2025-12-31');
+      assert.equal(h.nodes().find(n => n.type === 'EntryTaskPicker').props.value, 'yesterday');
+      assert.ok(h.nodes().filter(n => n.type === 'TimePicker').every(n => n.props.value === ''));
+      now = new RealDate(2026, 0, 2, 0, 1);
+      h.nodes().find(n => n.type === 'button' && n.props.children?.includes?.('确认记录')).props.onClick();
+      assert.equal(h.additions[0][0].date, '2025-12-31');
+      assert.equal(h.additions[0][0].taskId, 'yesterday');
+      assert.equal(h.additions[0][0].minutes, 120);
+      now = new RealDate(2026, 0, 1, 23, 59);
+      await h.parse('昨天阅读两小时', ai);
+      date().props.onChange({ target: { value: '2025-12-30' } }); h.render();
+      h.nodes().find(n => n.type === 'button' && n.props.children?.includes?.('确认记录')).props.onClick();
+      assert.equal(h.additions[1][0].date, '2025-12-30');
+      assert.equal(h.additions[1][0].taskId, undefined);
+    }
+  } finally { global.Date = RealDate; }
+});
+
 test('record toolbar exposes redo after undo, even when there is no older undo step', () => {
   let redos = 0;
   const h = harness('2026-09-24', false, [], { canUndoEntries: false, canRedoEntries: true, onRedoEntries: () => redos++ });

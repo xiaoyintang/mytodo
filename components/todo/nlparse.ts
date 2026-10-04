@@ -11,6 +11,8 @@ export interface ParsedEntry {
   minutes: number;
   /** 明确说刚结束：归到解析时的今天（与计时器按结束日期记账一致）。不持久化此字段。 */
   endsNow?: boolean;
+  /** 相对解析时的真实今天；省略时使用用户正在查看的日期。 */
+  dayOffset?: number;
 }
 
 const CN_DIGITS: Record<string, number> = {
@@ -124,10 +126,38 @@ function entrySegments(input: string): string[] {
   return segments;
 }
 
+/** 日期是记录的属性，不是事项标题；同段连续活动沿用已明确的日期。 */
+function datedSegments(input: string) {
+  let dayOffset: number | undefined;
+  return entrySegments(input).map(text => {
+    const day = text.match(/昨天|昨日|昨晚|前天|前日|今天|今日|今晚/);
+    if (day) dayOffset = /昨/.test(day[0]) ? -1 : /前/.test(day[0]) ? -2 : 0;
+    else if (dayOffset !== undefined && recentWindow(text, "12:00")) dayOffset = 0;
+    return { text, dayOffset };
+  });
+}
+
+/** AI 可能漏掉日期：用原文校正；多笔必须能按顺序对应，避免把昨天扩散到今天。 */
+export function resolveRelativeEntryDays(input: string, entries: ParsedEntry[]): ParsedEntry[] {
+  const segments = datedSegments(input).filter(s => parseDuration(s.text) || new RegExp(TIME_POINT).test(s.text));
+  if (segments.length !== entries.length) return entries;
+  return entries.map((entry, i) => {
+    const { text, dayOffset } = segments[i];
+    if (dayOffset === undefined) return entry;
+    const duration = parseDuration(text);
+    const hasClock = new RegExp(TIME_POINT).test(text);
+    return { ...entry, dayOffset,
+      ...(dayOffset < 0 ? { endsNow: undefined } : {}),
+      // 历史日期 + 纯时长不能被模型误解成“刚结束”。
+      ...(dayOffset < 0 && duration && !hasClock ? { startTime: undefined, endTime: undefined, minutes: duration[0] } : {}),
+    };
+  });
+}
+
 function recentWindow(segment: string, now: string): Partial<ParsedEntry> | null {
   // 只认“刚做完”的时间语义，不把“刚好”或明确的历史/未来日期改到现在。
   if (!/^(?:我|今天|\s)*(?:刚才|刚刚|方才|刚(?!好|性|强|毅|铁))/.test(segment) ||
-      /昨天|前天|昨晚|上周|上个月|明天|后天|下周|\d{4}-\d{1,2}-\d{1,2}|\d+月\d+|\d+[日号]/.test(segment) ||
+      /昨天|昨日|前天|前日|昨晚|上周|上个月|明天|后天|下周|\d{4}-\d{1,2}-\d{1,2}|\d+月\d+|\d+[日号]/.test(segment) ||
       new RegExp(TIME_POINT).test(segment)) return null;
   const duration = parseDuration(segment);
   if (!duration || duration[0] <= 0 || duration[0] >= 1440) return null;
@@ -157,11 +187,12 @@ export function resolveRecentTimeEntries(input: string, entries: ParsedEntry[], 
 export function parseTimeEntries(input: string, now?: string): ParsedEntry[] {
   const d = new Date();
   const nowTime = now ?? `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-  const segments = entrySegments(input);
+  const segments = datedSegments(input);
 
   const entries: ParsedEntry[] = [];
 
-  for (const seg of segments) {
+  for (const { text, dayOffset } of segments) {
+    const seg = text.replace(/昨晚|今晚/g, "晚上").replace(/昨天|昨日|前天|前日|今天|今日/g, "").trim();
     const rangeRe = new RegExp(`${TIME_POINT}\\s*(?:到|至|[-—~～])\\s*(?:(?:次日|明天|第二天)\\s*)?${TIME_POINT}`);
     const rangeMatch = seg.match(rangeRe);
 
@@ -211,7 +242,7 @@ export function parseTimeEntries(input: string, now?: string): ParsedEntry[] {
     // "刚才做了30分钟X"：说了"刚才/刚刚"但没写时刻 → 把这段时长贴到"现在"结束
     // （现在-时长 → 现在），而不是记成一段没有时刻的纯时长
     // "刚"默认按"刚才"处理；只排除真不表"刚才"的词（刚好=正好、刚性/刚强/刚毅）
-    const recent = recentWindow(seg, nowTime);
+    const recent = dayOffset !== undefined && dayOffset < 0 ? null : recentWindow(seg, nowTime);
     if (recent && !startTime && !endTime) {
       startTime = recent.startTime;
       endTime = recent.endTime;
@@ -223,7 +254,7 @@ export function parseTimeEntries(input: string, now?: string): ParsedEntry[] {
     }
 
     // 只有开始时间（"2点50开始看书"）→ 默认记到当前时间
-    if (startTime && minutes <= 0) {
+    if (startTime && minutes <= 0 && !(dayOffset !== undefined && dayOffset < 0)) {
       const diff = timeToMinutes(nowTime) - timeToMinutes(startTime);
       if (diff > 0) {
         minutes = diff;
@@ -234,7 +265,7 @@ export function parseTimeEntries(input: string, now?: string): ParsedEntry[] {
     if (minutes <= 0) continue; // 没有任何时间信息的片段跳过
 
     const title = cleanTitle(rest) || "未命名事项";
-    entries.push({ title, startTime, endTime, minutes, ...(recent ? { endsNow: true } : {}) });
+    entries.push({ title, startTime, endTime, minutes, ...(recent ? { endsNow: true } : {}), ...(dayOffset !== undefined ? { dayOffset } : {}) });
   }
 
   return entries;

@@ -16,7 +16,41 @@ function loadTs(relative) {
   new Function('require', 'module', 'exports', code)(localRequire, module, module.exports);
   return module.exports;
 }
-const { parseTimeEntries, resolveRecentTimeEntries } = loadTs('components/todo/nlparse.ts');
+const { parseTimeEntries, resolveRecentTimeEntries, resolveRelativeEntryDays } = loadTs('components/todo/nlparse.ts');
+
+test('historical duration gets explicit relative date without invented clock times', () => {
+  for (const input of ['昨日做了阅读两小时', '昨天做了阅读，花了2小时', '我昨日刚做了阅读两小时']) {
+    const [entry] = parseTimeEntries(input, '18:30');
+    assert.equal(entry.title, '阅读', input);
+    assert.equal(entry.dayOffset, -1);
+    assert.equal(entry.minutes, 120);
+    assert.equal(entry.startTime, undefined);
+    assert.equal(entry.endTime, undefined);
+    assert.equal(entry.endsNow, undefined);
+  }
+  assert.equal(parseTimeEntries('前天阅读三小时', '18:30')[0].dayOffset, -2);
+  assert.equal(parseTimeEntries('今日阅读一小时', '18:30')[0].dayOffset, 0);
+  assert.equal(parseTimeEntries('阅读一小时', '18:30')[0].dayOffset, undefined);
+  assert.equal(parseTimeEntries('昨天9点开始阅读', '18:30').length, 0);
+});
+
+test('relative days follow each activity and preserve explicit overnight ranges', () => {
+  const entries = parseTimeEntries('昨天阅读2小时，运动30分钟；今天写作1小时；刚做了拉伸15分钟', '18:30');
+  assert.deepEqual(entries.map(e => e.dayOffset), [-1, -1, 0, 0]);
+  assert.equal(entries[3].endsNow, true);
+  const [night] = parseTimeEntries('昨晚22:30到00:30看电视', '18:30');
+  assert.equal(night.dayOffset, -1);
+  assert.equal(night.startTime, '22:30');
+  assert.equal(night.endTime, '00:30');
+  assert.equal(night.minutes, 120);
+});
+
+test('AI date repair handles omitted dates and clears hallucinated recent clock times', () => {
+  const repaired = resolveRelativeEntryDays('昨日做了阅读2小时', [{title: '阅读', minutes: 120, startTime: '16:30', endTime: '18:30', endsNow: true}]);
+  assert.equal(repaired[0].dayOffset, -1);
+  assert.equal(repaired[0].startTime, undefined);
+  assert.equal(repaired[0].endsNow, undefined);
+});
 
 test('overnight labels distinguish start-day ranges from end-day recent/timer records', () => {
   const { entryTimeLabel } = loadTs('components/todo/time.ts');
