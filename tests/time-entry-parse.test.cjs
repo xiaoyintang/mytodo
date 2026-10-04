@@ -16,7 +16,49 @@ function loadTs(relative) {
   new Function('require', 'module', 'exports', code)(localRequire, module, module.exports);
   return module.exports;
 }
-const { parseTimeEntries, resolveRecentTimeEntries, resolveRelativeEntryDays } = loadTs('components/todo/nlparse.ts');
+const { parseTimeEntries, resolveRecentTimeEntries, resolveRelativeEntryDays, resolveEndingTimeEntries } = loadTs('components/todo/nlparse.ts');
+
+test('duration plus explicit ending back-calculates, keeping comma-separated supplements together', () => {
+  for (const text of [
+    '今天买菜+爸妈烧饭+打扫卫生，约2小时，到18点37',
+    '今天买菜+爸妈烧饭+打扫卫生，大约两小时，18:37结束',
+    '今天买菜+爸妈烧饭+打扫卫生2小时，到18点37结束',
+  ]) {
+    const entries = parseTimeEntries(text, '19:59');
+    assert.equal(entries.length, 1, text);
+    assert.deepEqual(entries[0], {title: '买菜+爸妈烧饭+打扫卫生', startTime: '16:37', endTime: '18:37', minutes: 120, dateAnchor: 'end', dayOffset: 0});
+  }
+  const [entry] = parseTimeEntries('阅读一个半小时，截止到下午6点半', '19:59');
+  assert.equal(entry.startTime, '17:00');
+  assert.equal(entry.endTime, '18:30');
+  assert.equal(entry.minutes, 90);
+});
+
+test('explicit end handles midnight and yesterday, without changing start-based ranges', () => {
+  const [entry] = parseTimeEntries('昨天阅读两小时，到凌晨0点30', '19:59');
+  assert.equal(entry.dayOffset, -1);
+  assert.equal(entry.dateAnchor, 'end');
+  assert.equal(entry.startTime, '22:30');
+  assert.equal(entry.endTime, '00:30');
+  assert.equal(entry.minutes, 120);
+  assert.equal(parseTimeEntries('18点开始阅读2小时', '19:59')[0].endTime, '20:00');
+  const [range] = parseTimeEntries('16:00到18:37阅读约2小时', '19:59');
+  assert.equal(range.minutes, 157);
+});
+
+test('AI ending repair fixes wrong current-time start and duration, without leaking between entries', () => {
+  const [entry] = resolveEndingTimeEntries('今天买菜+爸妈烧饭+打扫卫生，约2小时，到18点37', [{title:'买菜、爸妈烧饭、打扫卫生', startTime:'19:59', endTime:'18:37', minutes:1358, endsNow:true}]);
+  assert.equal(entry.startTime, '16:37');
+  assert.equal(entry.endTime, '18:37');
+  assert.equal(entry.minutes, 120);
+  assert.equal(entry.dateAnchor, 'end');
+  assert.equal(entry.endsNow, undefined);
+  const multiple = resolveEndingTimeEntries('阅读2小时，到18:37；运动30分钟', [{title:'阅读',minutes:1358}, {title:'运动',minutes:30}]);
+  assert.equal(multiple[0].startTime, '16:37');
+  assert.equal(multiple[1].startTime, undefined);
+  const reversed = [{title:'运动',minutes:30}, {title:'阅读',minutes:1358}];
+  assert.deepEqual(resolveEndingTimeEntries('阅读2小时，到18:37；运动30分钟', reversed), reversed);
+});
 
 test('historical duration gets explicit relative date without invented clock times', () => {
   for (const input of ['昨日做了阅读两小时', '昨天做了阅读，花了2小时', '我昨日刚做了阅读两小时']) {

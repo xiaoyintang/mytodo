@@ -13,6 +13,8 @@ export interface ParsedEntry {
   endsNow?: boolean;
   /** 相对解析时的真实今天；省略时使用用户正在查看的日期。 */
   dayOffset?: number;
+  /** 用结束时刻倒推时，记录日期对应结束日（跨午夜时尤其重要）。 */
+  dateAnchor?: "start" | "end";
 }
 
 const CN_DIGITS: Record<string, number> = {
@@ -106,7 +108,7 @@ function cleanTitle(raw: string): string {
   t = t.replace(/^(我|今天|上午|下午|中午|晚上|晚间|早上|凌晨|然后|接着|之后|还|又|再|先|开始|刚才|刚刚|方才|刚)+/, "");
   // 只剥"动词+了"形式，不剥单字动词——"刷题""背单词"本身就是事项名
   t = t.replace(/^(做了|做完|学了|写了|看了|背了|复习了|练了|刷了|干了|搞了|进行了|花了|用了)/, "");
-  t = t.replace(/(?:总共|一共|总计)?\s*(?:花了|用了|耗时|用时)?\s*(?:大概|左右|差不多|吧|了)?\s*$/, "");
+  t = t.replace(/(?:总共|一共|总计)?\s*(?:花了|用了|耗时|用时)?\s*(?:大概|大约|约|左右|差不多|吧|了)?\s*$/, "");
   return t.trim();
 }
 
@@ -118,12 +120,52 @@ function entrySegments(input: string): string[] {
     const part = raw.trim();
     if (!part) continue;
     const duration = parseDuration(part);
-    const remainder = duration ? part.replace(duration[1], "").replace(/(?:总共|一共|总计|花了|用了|耗时|用时|大概|左右|差不多|了|吧|\s)/g, "") : part;
-    if (duration && !remainder && segments.length && !parseDuration(segments[segments.length - 1])) {
+    const remainder = duration ? part.replace(duration[1], "").replace(/(?:总共|一共|总计|花了|用了|耗时|用时|大概|大约|约|左右|差不多|了|吧|\s)/g, "") : part;
+    const endClause = new RegExp(`^(?:(?:到|截至|截止到?|结束于|直到)\\s*${TIME_POINT}\\s*(?:结束|截止|为止|收工|做完)?|${TIME_POINT}\\s*(?:结束|截止|为止|收工|做完))$`).test(part);
+    if (segments.length && ((duration && !remainder && !parseDuration(segments[segments.length - 1])) || endClause)) {
       segments[segments.length - 1] += ` ${part}`;
     } else segments.push(part);
   }
   return segments;
+}
+
+/** 一个明确结束时刻 + 时长：只做减法，绝不拿“现在”填开始时刻。 */
+function endingWindow(text: string) {
+  const duration = parseDuration(text);
+  if (!duration || duration[0] <= 0 || duration[0] >= 1440) return null;
+  const clocks = [...text.matchAll(new RegExp(TIME_POINT, "g"))];
+  if (clocks.length !== 1) return null; // 两个时刻的显式区间优先
+  const match = clocks[0];
+  const before = text.slice(0, match.index);
+  const after = text.slice(match.index! + match[0].length);
+  const prefix = before.match(/(?:到|截至|截止到?|结束于|直到)\s*$/);
+  const suffix = after.match(/^\s*(?:结束|截止|为止|收工|做完)/);
+  if ((!prefix && !suffix) || /^\s*(?:开始|起)/.test(after)) return null;
+  const point = parseTimePoint(match[1], match[2], match[3]);
+  if (!point || point.hour >= 24) return null;
+  const end = point.hour * 60 + point.minute;
+  const rest = before.slice(0, before.length - (prefix?.[0].length ?? 0)) + " " + after.slice(suffix?.[0].length ?? 0);
+  return {
+    startTime: minutesToTime((end - duration[0] + 1440) % 1440)!,
+    endTime: minutesToTime(end)!, minutes: duration[0], dateAnchor: "end" as const,
+    rest: rest.replace(duration[1], " "),
+  };
+}
+
+export function resolveEndingTimeEntries(input: string, entries: ParsedEntry[]): ParsedEntry[] {
+  const segments = entrySegments(input).filter(s => parseDuration(s) || new RegExp(TIME_POINT).test(s));
+  if (segments.length !== entries.length) return entries;
+  return entries.map((entry, i) => {
+    const window = endingWindow(segments[i]);
+    if (!window) return entry;
+    const { rest, ...times } = window;
+    // 模型可能重排多条；无法按标题对齐时不把另一件事的时间套过来。
+    if (entries.length > 1) {
+      const title = cleanTitle(rest);
+      if (!title.includes(entry.title) && !entry.title.includes(title)) return entry;
+    }
+    return { ...entry, ...times, endsNow: undefined };
+  });
 }
 
 /** 日期是记录的属性，不是事项标题；同段连续活动沿用已明确的日期。 */
@@ -193,6 +235,12 @@ export function parseTimeEntries(input: string, now?: string): ParsedEntry[] {
 
   for (const { text, dayOffset } of segments) {
     const seg = text.replace(/昨晚|今晚/g, "晚上").replace(/昨天|昨日|前天|前日|今天|今日/g, "").trim();
+    const ending = endingWindow(seg);
+    if (ending) {
+      const { rest, ...times } = ending;
+      entries.push({ title: cleanTitle(rest) || "未命名事项", ...times, ...(dayOffset !== undefined ? { dayOffset } : {}) });
+      continue;
+    }
     const rangeRe = new RegExp(`${TIME_POINT}\\s*(?:到|至|[-—~～])\\s*(?:(?:次日|明天|第二天)\\s*)?${TIME_POINT}`);
     const rangeMatch = seg.match(rangeRe);
 

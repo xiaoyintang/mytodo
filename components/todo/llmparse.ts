@@ -1,4 +1,4 @@
-import { resolveRecentTimeEntries, resolveRelativeEntryDays, type ParsedEntry } from "./nlparse";
+import { resolveRecentTimeEntries, resolveRelativeEntryDays, resolveEndingTimeEntries, type ParsedEntry } from "./nlparse";
 import type { BehaviorType, EntryCategory } from "./types";
 
 // 服务端 LLM 调用（OpenAI 兼容接口：DeepSeek / 硅基流动）。
@@ -19,7 +19,8 @@ const SYSTEM_PROMPT = `你是一个时间记录解析器（柳比歇夫时间记
 7. 如果只说了开始时间、没说结束时间或时长（如"2点50开始看书"），用「当前时间」作为结束时间计算 minutes；若当前时间早于开始时间，则该条只填 startTime 且 minutes 给 0
 8. 如果说了"刚/刚才/刚刚/方才"+时长（如"刚做了拉伸，花了15分钟"），说明这段时间刚结束：endTime 用「当前时间」，startTime＝当前时间减去时长，minutes 为该时长。逗号后的“花了15分钟”与前面的活动是同一笔。跨零点也填写时间，例如现在00:10、刚做了15分钟，应为23:55到00:10。明确给出起止时刻则优先使用用户的时刻；“刚好”不是刚结束。多笔记录按原文顺序输出，不合并不同活动。
 9. 明确说“昨天/昨日/昨晚”时 dayOffset=-1，“前天/前日”为-2，“今天/今日”为0；未说日期则省略。连续活动可沿用前文日期，遇到新日期或“刚才”则更新。日期词从 title 去掉。历史日期只说时长时不要编造起止时刻；历史日期只说开始时刻时，不要用现在当结束时间。
-10. 没有任何时间信息的内容忽略；解析不出任何记录时返回 {"entries":[]}`;
+10. “时长 + 结束时刻”必须倒推开始时刻。例如“买菜+烧饭+打扫卫生，约2小时，到18点37”是一笔记录，16:37—18:37，120分钟；“阅读两小时，到凌晨0点30”是22:30—00:30，120分钟。不能用当前时间当开始时刻，不能把逗号后的“约2小时”“到18点37”拆成其他活动。“18点开始，做两小时”则正推至20点；明确给出两个起止时刻时，以显式区间为准。
+11. 没有任何时间信息的内容忽略；解析不出任何记录时返回 {"entries":[]}`;
 
 const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
 
@@ -916,5 +917,5 @@ export async function parseWithLLM(text: string, now?: string): Promise<ParsedEn
       return { title, minutes, startTime, endTime, ...(dayOffset !== undefined ? { dayOffset } : {}) };
     })
     .filter((x): x is ParsedEntry => x !== null);
-  return resolveRelativeEntryDays(text, now ? resolveRecentTimeEntries(text, entries, now) : entries);
+  return resolveRelativeEntryDays(text, resolveEndingTimeEntries(text, now ? resolveRecentTimeEntries(text, entries, now) : entries));
 }

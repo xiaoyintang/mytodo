@@ -13,7 +13,7 @@ import {
   minutesToTime,
 } from "@/components/todo/time";
 import { goalColor } from "@/components/todo/goal";
-import { parseTimeEntries, resolveRelativeEntryDays, type ParsedEntry } from "@/components/todo/nlparse";
+import { parseTimeEntries, resolveRelativeEntryDays, resolveEndingTimeEntries, type ParsedEntry } from "@/components/todo/nlparse";
 import {
   CATEGORY_LIST,
   buildTitleCategoryMap,
@@ -352,7 +352,7 @@ export default function TimeLogView({
     if (!parsed) {
       parsed = parseTimeEntries(text, now);
     }
-    parsed = resolveRelativeEntryDays(text, parsed);
+    parsed = resolveRelativeEntryDays(text, resolveEndingTimeEntries(text, parsed));
 
     setParsing(false);
     setParseSource(source);

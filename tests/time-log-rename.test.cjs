@@ -92,6 +92,24 @@ test('yesterday uses real today, not viewed date; preview matches yesterday task
   } finally { global.Date = RealDate; }
 });
 
+test('ending-time preview repairs AI output before rendering and preserves back-calculated window on save', async () => {
+  for (const ai of [false, true]) {
+    const h = harness('2026-10-04', false, [{title:'买菜、爸妈烧饭、打扫卫生', startTime:'19:59', endTime:'18:37', minutes:1358}]);
+    await h.parse('买菜+爸妈烧饭+打扫卫生，约2小时，到18点37', ai);
+    const time = which => h.nodes().find(n => n.type === 'TimePicker' && n.props.label === `第 1 笔记录${which}时间`);
+    assert.equal(time('开始').props.value, '16:37');
+    assert.equal(time('结束').props.value, '18:37');
+    assert.equal(h.nodes().find(n => n.props['aria-label'] === '第 1 笔记录分钟数').props.value, 120);
+    h.nodes().find(n => n.type === 'button' && n.props.children?.includes?.('确认记录')).props.onClick();
+    assert.equal(h.additions[0][0].date, '2026-10-04');
+    assert.equal(h.additions[0][0].minutes, 120);
+    assert.equal(h.additions[0][0].startTime, '16:37');
+  }
+  const h = harness('2026-10-04', false, [{title:'阅读', startTime:'19:59', endTime:'00:30', minutes:271}]);
+  await h.parse('阅读两小时，到凌晨0点30');
+  assert.equal(h.nodes().find(n => n.type === 'button' && n.props.children === '前一天 → 当天').props['aria-pressed'], true);
+});
+
 test('record toolbar exposes redo after undo, even when there is no older undo step', () => {
   let redos = 0;
   const h = harness('2026-09-24', false, [], { canUndoEntries: false, canRedoEntries: true, onRedoEntries: () => redos++ });
