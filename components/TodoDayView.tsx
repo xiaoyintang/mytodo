@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type {
   Aspiration,
@@ -45,6 +45,7 @@ type Props = {
   onReorderSubtask: (taskId: string, subId: string, targetId: string, edge: "before" | "after") => void;
   onToggleMainline: (date: ISODate, aspirationId: string) => void;
   onOpenTemplates: () => void;
+  templateNotice?: ReactNode;
   onCreateTask: (task: Omit<Task, "id">) => void;
   onCopyTask: (taskId: string, dates: ISODate[]) => void;
   onDeleteTask: (taskId: string) => void;
@@ -119,6 +120,7 @@ export default function TodoDayView({
   onReorderSubtask,
   onToggleMainline,
   onOpenTemplates,
+  templateNotice,
   onCreateTask,
   onCopyTask,
   onDeleteTask,
@@ -609,6 +611,7 @@ export default function TodoDayView({
         onPrevWeek={onPrevWeek} onNextWeek={onNextWeek} />
 
       <div className="flex w-full flex-col gap-5 px-[18px] pb-6 pt-1">
+        {templateNotice}
         <DailyFocusSection key={selectedDate} task={keyTask} tasks={dayTasks} aspirations={aspirations}
           isToday={selectedDate === today} onSelect={(id) => onSetDailyFocus(selectedDate, id)}>
           {keyTask && <button type="button" onClick={() => openTaskDetails(keyTask)}

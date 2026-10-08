@@ -9,6 +9,8 @@ import HabitLabView from "@/components/HabitLabView";
 import GoalsView from "@/components/GoalsView";
 import SyncModal from "@/components/SyncModal";
 import DayTemplateModal from "@/components/DayTemplateModal";
+import TemplateBatchNotice from "@/components/TemplateBatchNotice";
+import { undoTemplateBatch, restoreTemplateBatch, type TemplateBatch } from "@/components/todo/templateHistory";
 import FastTooltip from "@/components/FastTooltip";
 import type {
   Aspiration,
@@ -68,6 +70,7 @@ const EMPTY_HABITS: Habit[] = [];
 const EMPTY_HABIT_LOGS: HabitLog[] = [];
 const EMPTY_DAY_PLANS: Record<string, DayPlan> = {};
 const EMPTY_TASK_TEMPLATES: TaskTemplate[] = [];
+const EMPTY_TEMPLATE_BATCHES: TemplateBatch[] = [];
 const APP_HISTORY_KEY = "mytodo.route.v1";
 const WORKSPACE_TABS: ViewMode[] = ["day", "week", "log", "habit"];
 
@@ -333,6 +336,8 @@ export default function TodoApp() {
     useLocalStorageState<Record<string, DayPlan>>(DAY_PLANS_KEY, EMPTY_DAY_PLANS);
   const { value: taskTemplates, setValue: setTaskTemplates, hydrated: templatesHydrated } =
     useLocalStorageState<TaskTemplate[]>(TASK_TEMPLATES_KEY, EMPTY_TASK_TEMPLATES);
+  const { value: templateBatches, setValue: setTemplateBatches, hydrated: batchesHydrated } =
+    useLocalStorageState<TemplateBatch[]>("mytodo.template-batches.v1", EMPTY_TEMPLATE_BATCHES);
 
   const startActionMigrationDone = useRef(false);
   useEffect(() => {
@@ -658,12 +663,38 @@ export default function TodoApp() {
     itemIds: string[],
     date: ISODate,
   ): { created: number; skipped: number } {
+    if (!hydrated || !templatesHydrated || !batchesHydrated) return { created: 0, skipped: 0 };
     const template = taskTemplates.find((candidate) => candidate.id === templateId);
     if (!template) return { created: 0, skipped: 0 };
     const result = instantiateTemplateTasks(template, itemIds, date, tasks);
-    if (result.tasks.length > 0) setTasks((prev) => [...prev, ...result.tasks]);
+    if (result.tasks.length > 0) {
+      setTasks((prev) => [...prev, ...result.tasks]);
+      setTemplateBatches(prev => [{
+        id: `batch-${result.tasks[0].id}`, name: template.name, date,
+        tasks: result.tasks,
+      }, ...prev].slice(0, 20));
+    }
     return { created: result.tasks.length, skipped: result.skipped };
   }
+
+  function toggleTemplateBatch(batchId: string) {
+    if (!hydrated || !entriesHydrated || !logsHydrated || !plansHydrated || !batchesHydrated) return;
+    const batch = templateBatches.find(candidate => candidate.id === batchId);
+    if (!batch) return;
+    const protectedIds = new Set([
+      ...entries.map(entry => entry.taskId ?? (entry.taskLinkMode !== "none" ? matchTaskByTitle(entry.title, entry.date, tasks)?.id : undefined)),
+      ...habitLogs.map(log => log.taskId),
+      ...Object.values(dayPlans).map(plan => plan.mustDoTaskId),
+      timer.running?.attribution?.taskId ?? (timer.running ? matchTaskByTitle(timer.running.title, todayIso, tasks)?.id : undefined),
+    ].filter((id): id is string => Boolean(id)));
+    const result = batch.removed
+      ? restoreTemplateBatch(batch, tasks)
+      : undoTemplateBatch(batch, tasks, protectedIds);
+    setTasks(result.tasks);
+    setTemplateBatches(prev => prev.map(current => current.id === batchId ? result.batch : current));
+  }
+
+  const dayTemplateBatches = batchesHydrated ? templateBatches.filter(batch => batch.date === selectedDate) : [];
 
   // ===== 子任务 =====
   //
@@ -2124,6 +2155,7 @@ export default function TodoApp() {
           onReorderSubtask={reorderSubtask}
           onToggleMainline={toggleMainline}
           onOpenTemplates={() => setIsTemplateOpen(true)}
+          templateNotice={<TemplateBatchNotice batches={dayTemplateBatches.slice(0, 1)} onToggle={toggleTemplateBatch} />}
           onCopyTask={copyTask}
           onCreateTask={createTask}
           onDeleteTask={deleteTask}
@@ -2250,6 +2282,7 @@ export default function TodoApp() {
         onUpdate={updateTaskTemplate}
         onDelete={deleteTaskTemplate}
         onApply={applyTaskTemplate}
+        batchHistory={<TemplateBatchNotice batches={dayTemplateBatches} onToggle={toggleTemplateBatch} />}
       />
 
       {/*

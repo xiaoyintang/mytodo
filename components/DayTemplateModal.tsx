@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -39,6 +39,7 @@ type Props = {
   aspirations: Aspiration[];
   goalResults: GoalResult[];
   onClose: () => void;
+  batchHistory?: ReactNode;
   onCreate: (name: string, taskIds: string[]) => string | null;
   onUpdate: (templateId: string, name: string, items: TaskTemplateItem[]) => void;
   onDelete: (templateId: string) => void;
@@ -99,6 +100,7 @@ export default function DayTemplateModal({
   onUpdate,
   onDelete,
   onApply,
+  batchHistory,
 }: Props) {
   const dayTasks = useMemo(
     () =>
@@ -355,6 +357,8 @@ export default function DayTemplateModal({
               <X className="h-[18px] w-[18px]" />
             </button>
           </header>
+
+          {mode === "library" && <div className="max-h-48 shrink-0 overflow-y-auto px-5 pt-3 sm:px-6">{batchHistory}</div>}
 
           {mode === "create" ? (
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4 sm:px-6">
