@@ -34,37 +34,73 @@ function harness(file, initialProps, fetchImpl = () => { throw new Error('Manual
   render();
   return { nodes, render, input,
     type(value) { input().props.onChange({ target: { value } }); render(); },
-    enter(overrides = {}) { input().props.onKeyDown({ key: 'Enter', keyCode: 13, nativeEvent: {}, preventDefault() {}, ...overrides }); render(); },
+    enter(overrides = {}) { const result = input().props.onKeyDown({ key: 'Enter', keyCode: 13, nativeEvent: {}, preventDefault() {}, ...overrides }); render(); return Promise.resolve(result).then(() => render()); },
     click(label) { const button = nodes().find(n => n.type === 'button' && (n.props['aria-label'] === label || n.props.children === label)); assert.ok(button, label); button.props.onClick(); render(); },
   };
 }
 
-test('Enter creates title-only on viewed date, trims, keeps capture ready, never calls AI', () => {
+test('plus creates title-only on viewed date, trims, keeps capture ready, never calls AI', () => {
   const calls = [];
   const h = harness('components/QuickAddTask.tsx', { date: '2026-10-05', onCreate: task => calls.push(task) });
-  h.type('  写项目提纲  '); h.enter();
+  h.type('  写项目提纲  '); h.click('直接添加任务');
   assert.deepEqual(calls, [{ title: '写项目提纲', date: '2026-10-05', status: 'todo' }]);
   assert.equal(h.input().props.value, '');
-  h.enter(); assert.equal(calls.length, 1);
+  h.click('直接添加任务'); assert.equal(calls.length, 1);
   h.render({ date: '2026-10-06' }); h.type('下一条'); h.click('直接添加任务');
   assert.equal(calls[1].date, '2026-10-06');
 });
 
-test('Chinese composition confirmation and blank title never create tasks', () => {
-  const calls = []; const h = harness('components/QuickAddTask.tsx', { date: '2026-09-21', onCreate: t => calls.push(t) });
-  h.type('写提纲'); h.enter({ nativeEvent: { isComposing: true } }); h.enter({ keyCode: 229 });
-  h.type('   '); h.enter(); assert.equal(calls.length, 0);
+test('Chinese composition confirmation and blank title never parse or create tasks', async () => {
+  let requests = 0;
+  const calls = []; const h = harness('components/QuickAddTask.tsx', { date: '2026-09-21', onCreate: t => calls.push(t) }, async () => { requests++; return { status: 501 }; });
+  h.type('写提纲'); await h.enter({ nativeEvent: { isComposing: true } }); await h.enter({ keyCode: 229 });
+  h.type('   '); await h.enter(); assert.equal(calls.length, 0); assert.equal(requests, 0);
+});
+
+test('Enter uses AI in daily and weekly capture; preview is editable and needs confirmation', async () => {
+  for (const compact of [false, true]) {
+    const calls = []; let requests = 0;
+    const h = harness('components/QuickAddTask.tsx', { compact, date: '2026-10-08', onCreate: t => calls.push(t) }, async () => {
+      requests++;
+      return { ok: true, json: async () => ({ tasks: [{ title: '开会', date: '2026-10-09', startTime: '09:00' }] }) };
+    });
+    if (compact) h.click('在 2026-10-08 添加任务');
+    h.type('明早九点开会');
+    const pending = h.enter();
+    assert.equal(h.input().props.disabled, true);
+    await h.enter(); // repeated key while parsing must not start another request
+    await pending;
+    assert.equal(requests, 1); assert.equal(calls.length, 0);
+    const title = h.nodes().find(n => n.props['aria-label'] === '第 1 个任务标题');
+    assert.equal(title.props.value, '开会');
+    title.props.onChange({ target: { value: '项目会议' } }); h.render();
+    h.nodes().find(n => n.type === 'button' && n.props.children?.includes?.('创建')).props.onClick();
+    assert.equal(calls[0].title, '项目会议');
+    assert.equal(calls[0].date, '2026-10-09');
+    assert.equal(calls[0].startTime, '09:00');
+  }
+});
+
+test('AI failure preserves draft and directs users to plus for manual capture', async () => {
+  const calls = [];
+  const h = harness('components/QuickAddTask.tsx', { date: '2026-10-08', onCreate: t => calls.push(t) }, async () => ({ status: 501 }));
+  h.type('明早九点开会'); await h.enter();
+  assert.equal(calls.length, 0);
+  assert.equal(h.input().props.value, '明早九点开会');
+  assert.ok(h.nodes().some(n => n.props.children === 'AI 暂时不可用，可点击加号直接添加原文'));
+  h.click('直接添加任务');
+  assert.deepEqual(calls, [{ title: '明早九点开会', date: '2026-10-08', status: 'todo' }]);
 });
 
 test('weekly inline capture opens in place, supports repeated entry and Escape', () => {
   const calls = []; const h = harness('components/QuickAddTask.tsx', { compact: true, date: '2026-09-24', onCreate: t => calls.push(t) });
   assert.equal(h.input(), undefined); h.click('在 2026-09-24 添加任务');
-  h.type('准备面试'); h.enter(); h.type('复盘面试'); h.enter();
+  h.type('准备面试'); h.click('直接添加任务'); h.type('复盘面试'); h.click('直接添加任务');
   assert.equal(calls.length, 2); assert.ok(calls.every(t => t.date === '2026-09-24'));
   assert.ok(h.input()); h.enter({ key: 'Escape' }); assert.equal(h.input(), undefined);
 });
 
-test('AI remains explicit, previews before creating, and preserves parsed schedule', async () => {
+test('AI button previews before creating and preserves parsed schedule', async () => {
   const calls = []; let requests = 0;
   const h = harness('components/QuickAddTask.tsx', { date: '2026-09-21', onCreate: t => calls.push(t) }, async () => {
     requests++; return { ok: true, json: async () => ({ tasks: [{ title: '开会', date: '2026-09-22', startTime: '09:00' }] }) };

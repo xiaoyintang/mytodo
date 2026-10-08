@@ -78,7 +78,7 @@ export default function QuickAddTask({ onCreate, date, inputRef, compact = false
     const tasks = await fetchAITasks(text);
     setParsing(false);
     if (!tasks) {
-      setError("AI 暂时不可用，可直接按回车添加原文");
+      setError("AI 暂时不可用，可点击加号直接添加原文");
       return;
     }
     if (tasks.length === 0) {
@@ -145,10 +145,11 @@ export default function QuickAddTask({ onCreate, date, inputRef, compact = false
           }}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-            if (e.key === "Enter") { e.preventDefault(); createManual(); }
+            if (e.key === "Enter") { e.preventDefault(); return handleParse(); }
             if (e.key === "Escape" && compact) { setInput(""); setEditing(false); }
           }}
-          placeholder="写下任务，回车添加"
+          placeholder="写下任务，回车 AI 识别；加号直接添加"
+          aria-busy={parsing}
           className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-white px-3 text-[13px] placeholder:text-[var(--color-text-tertiary)] focus:border-[var(--color-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
         />
         <button type="button" onClick={createManual} disabled={!input.trim() || parsing}
@@ -173,7 +174,8 @@ export default function QuickAddTask({ onCreate, date, inputRef, compact = false
           {parsing ? "解析中" : "AI"}
         </button>}
       </div>}
-      {showDate && <span className="text-[10px] text-[var(--color-text-tertiary)]">直接添加到 {date.slice(5).replace("-", "/")} · 也可在下方每天的卡片里添加</span>}
+      {compact && parsing && <span role="status" className="text-[12px] text-[var(--color-text-tertiary)]">AI 解析中…</span>}
+      {showDate && <span className="text-[10px] text-[var(--color-text-tertiary)]">加号直接添加到 {date.slice(5).replace("-", "/")} · 也可在下方每天的卡片里添加</span>}
 
       {error && <p className="text-[12px] text-[var(--color-danger)]">{error}</p>}
 
