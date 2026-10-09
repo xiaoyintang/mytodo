@@ -68,46 +68,46 @@ function harness(value) {
   };
 }
 
-test('minute wheel carries and borrows hours without committing until Save', () => {
+test('minutes and hours adjust independently without committing until Save', () => {
   const h = harness('03:55');
   h.wheel('小时滚轮');
-  h.roll('分钟滚轮', 10);
-  assert.equal(h.input().props.value, '04:05');
-  assert.equal(h.wheel('小时滚轮').props.ref.current.scrollTop, 4 * 36);
+  h.roll('分钟滚轮', -50);
+  assert.equal(h.input().props.value, '03:05');
+  assert.equal(h.wheel('小时滚轮').props.ref.current.scrollTop, 3 * 36);
   assert.deepEqual(h.saved, []);
-  h.roll('分钟滚轮', -10);
-  assert.equal(h.input().props.value, '03:55');
-  h.save(); assert.deepEqual(h.saved, ['03:55']);
+  h.roll('小时滚轮', 1);
+  assert.equal(h.input().props.value, '04:05');
+  h.save(); assert.deepEqual(h.saved, ['04:05']);
 });
 
-test('midnight wraps clock only, and idle recentering never adds another hour', () => {
+test('minute boundaries stop at 00 and 59 without changing the hour or wrapping midnight', () => {
   const h = harness('23:55');
   h.roll('分钟滚轮', 10);
-  assert.equal(h.input().props.value, '00:05');
+  assert.equal(h.input().props.value, '23:59');
   h.settle();
   const n = h.wheel('分钟滚轮');
-  assert.equal(n.props.ref.current.scrollTop, 125 * 36);
   n.props.onScroll(); h.redraw();
-  assert.equal(h.input().props.value, '00:05');
+  assert.equal(h.input().props.value, '23:59');
+  h.type('00:05');
   h.roll('分钟滚轮', -10);
-  assert.equal(h.input().props.value, '23:55');
+  assert.equal(h.input().props.value, '00:00');
 });
 
 test('direct input synchronizes both wheels without false carry; hour edits preserve minutes', () => {
   const h = harness('03:55');
   h.wheel('分钟滚轮'); h.wheel('小时滚轮');
   h.type('12:07');
-  assert.equal(h.wheel('分钟滚轮').props.ref.current.scrollTop, 127 * 36);
+  assert.equal(h.wheel('分钟滚轮').props.ref.current.scrollTop, 7 * 36);
   assert.equal(h.wheel('小时滚轮').props.ref.current.scrollTop, 12 * 36);
   h.wheel('分钟滚轮').props.onScroll(); h.redraw();
   assert.equal(h.input().props.value, '12:07');
   h.roll('小时滚轮', 1);
   assert.equal(h.input().props.value, '13:07');
   h.roll('分钟滚轮', -8);
-  assert.equal(h.input().props.value, '12:59');
+  assert.equal(h.input().props.value, '13:00');
 });
 
-test('repeated fast scroll events use latest time before React rerenders', () => {
+test('repeated fast boundary scroll events never carry hours', () => {
   const h = harness('03:59');
   const wheel = h.wheel('分钟滚轮');
   for (let i = 0; i < 6; i++) {
@@ -115,5 +115,5 @@ test('repeated fast scroll events use latest time before React rerenders', () =>
     wheel.props.onScroll();
   }
   h.redraw();
-  assert.equal(h.input().props.value, '04:05');
+  assert.equal(h.input().props.value, '03:59');
 });

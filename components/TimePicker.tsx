@@ -79,56 +79,34 @@ function WheelColumn({
   values,
   selected,
   onSelect,
-  loop = false,
   label,
 }: {
   values: string[];
   selected: number;
-  onSelect: (index: number, delta: number) => void;
-  loop?: boolean;
+  onSelect: (index: number) => void;
   label: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const base = loop ? values.length * 2 : 0;
-  const lastIdx = useRef(base + selected);
-  const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const rows = loop ? Array.from({ length: values.length * 5 }, (_, i) => values[i % values.length]) : values;
+  const lastIdx = useRef(selected);
 
-  // 同步手输/另一列联动造成的变更。自己滚动的回传不重新定位，以免打断惯性。
+  // 同步手输的变更。自己滚动的回传不重新定位，以免打断惯性。
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (lastIdx.current % values.length !== selected || el.scrollTop === 0) {
-      const index = base + selected;
-      lastIdx.current = index; // 先更新，程序滚动不能再触发一次进位
-      el.scrollTop = index * ITEM_H;
+    if (lastIdx.current !== selected || el.scrollTop === 0) {
+      lastIdx.current = selected;
+      el.scrollTop = selected * ITEM_H;
     }
-  }, [selected, base, values.length]);
-
-  useEffect(() => () => {
-    if (settleTimer.current) clearTimeout(settleTimer.current);
-  }, []);
+  }, [selected]);
 
   function handleScroll() {
     const el = ref.current;
     if (!el) return;
-    const idx = Math.max(0, Math.min(rows.length - 1, Math.round(el.scrollTop / ITEM_H)));
+    const idx = Math.max(0, Math.min(values.length - 1, Math.round(el.scrollTop / ITEM_H)));
     if (idx !== lastIdx.current) {
-      const delta = idx - lastIdx.current;
       lastIdx.current = idx;
       playTick();
-      onSelect(idx % values.length, delta);
-    }
-    if (loop) {
-      if (settleTimer.current) clearTimeout(settleTimer.current);
-      // 手势结束后搬回重复列表中段；画面数值不变，下一次可继续双向滚动。
-      settleTimer.current = setTimeout(() => {
-        const center = base + lastIdx.current % values.length;
-        if (ref.current && center !== lastIdx.current) {
-          lastIdx.current = center;
-          ref.current.scrollTop = center * ITEM_H;
-        }
-      }, 180);
+      onSelect(idx);
     }
   }
 
@@ -147,20 +125,21 @@ function WheelColumn({
           if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
           event.preventDefault();
           const step = event.key === "ArrowDown" ? 1 : -1;
-          ref.current?.scrollTo({ top: (lastIdx.current + step) * ITEM_H, behavior: "smooth" });
+          const index = Math.max(0, Math.min(values.length - 1, lastIdx.current + step));
+          ref.current?.scrollTo({ top: index * ITEM_H, behavior: "smooth" });
         }}
         className="overflow-y-auto scrollbar-none"
         style={{ height: WHEEL_H, scrollSnapType: "y mandatory", overscrollBehaviorY: "contain" }}
       >
         <div style={{ height: PAD }} />
-        {rows.map((v, i) => (
+        {values.map((v, i) => (
           <button
             key={i}
             type="button"
             onClick={() => ref.current?.scrollTo({ top: i * ITEM_H, behavior: "smooth" })}
             className={[
               "w-full flex items-center justify-center text-[16px] tabular-nums transition-colors",
-              i % values.length === selected
+              i === selected
                 ? "text-[var(--color-primary)] font-semibold"
                 : "text-[var(--color-text-tertiary)]",
             ].join(" ")}
@@ -306,13 +285,9 @@ export default function TimePicker({ value, onChange, placeholder = "选择时�
     setInvalid(false);
   }
 
-  function selectMinute(_index: number, delta: number) {
-    const { hour, minute } = timeRef.current;
-    const total = ((hour * 60 + minute + delta) % 1440 + 1440) % 1440;
-    const nextHour = Math.floor(total / 60);
-    const nextMinute = total % 60;
-    setTime(nextHour, nextMinute);
-    setDraftValue(`${HOURS[nextHour]}:${MINUTES[nextMinute]}`);
+  function selectMinute(index: number) {
+    setTime(timeRef.current.hour, index);
+    setDraftValue(`${HOURS[timeRef.current.hour]}:${MINUTES[index]}`);
     setInvalid(false);
   }
 
@@ -386,7 +361,7 @@ export default function TimePicker({ value, onChange, placeholder = "选择时�
             >
               :
             </span>
-            <WheelColumn values={MINUTES} selected={minuteIdx} onSelect={selectMinute} loop label="分钟滚轮" />
+            <WheelColumn values={MINUTES} selected={minuteIdx} onSelect={selectMinute} label="分钟滚轮" />
           </div>
 
           {/* Footer */}
