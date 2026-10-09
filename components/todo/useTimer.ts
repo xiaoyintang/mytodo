@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { TimeEntry } from "./types";
 import { beginReward, configureReward, readRewardCycle, resumeFocus, rewardProgress, stopTimer, type RewardConfig, type RewardCycle, type TimerTransition } from "./timerReward";
 import { playRewardSound, unlockRewardSound } from "./rewardSound";
+import { changeTimerStart } from "./timerStart";
 
 // 正在进行的计时（跨刷新/重开持久化，并跟着云同步跨设备）。
 // 历史上字段名是 category，这里兼容读取。
@@ -184,6 +185,17 @@ export function useTimer(onRecord: (entry: Omit<TimeEntry, "id">) => void) {
     });
   }, []);
 
+  const adjustStart = useCallback((startedAt: number, expectedStart: number): boolean => {
+    const cur = stateRef.current;
+    const now = Date.now();
+    if (!cur.running || cur.running.startedAt !== expectedStart || !Number.isFinite(startedAt) || startedAt > now) return false;
+    const next = changeTimerStart(cur, expectedStart, startedAt, now);
+    if (next === cur) return startedAt === expectedStart;
+    commitRef.current(next);
+    setNowMs(now);
+    return true;
+  }, []);
+
   /**
    * 云同步用：直接采纳别的设备的计时状态。
    * **不会记一笔**——那笔记录是在按下停止的那台设备上产生的，会自己同步过来，
@@ -196,7 +208,7 @@ export function useTimer(onRecord: (entry: Omit<TimeEntry, "id">) => void) {
   }, []);
 
   const elapsedMs = state.running ? nowMs - state.running.startedAt : 0;
-  return { running: state.running, elapsedMs, start, stop, rename, state, adopt,
+  return { running: state.running, elapsedMs, start, stop, rename, adjustStart, state, adopt,
     reward: state.reward, enableReward, startReward, continueFocus, dismissReward };
 }
 

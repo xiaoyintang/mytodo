@@ -58,6 +58,7 @@ type Props = {
     start: (title: string) => void;
     stop: () => void;
     rename: (title: string, startedAt: number, attribution?: TimerAttribution) => void;
+    adjustStart: (startedAt: number, expectedStart: number) => boolean;
   };
   today: ISODate;
   aspirations: Aspiration[];
@@ -750,6 +751,7 @@ export default function TimeLogView({
             onStart={timer.start}
             onStop={timer.stop}
             onRename={timer.rename}
+            onAdjustStart={timer.adjustStart}
             rewardControls={timer}
             history={timerChoices}
             aspirations={aspirations}

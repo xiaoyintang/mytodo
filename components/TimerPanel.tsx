@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Pencil, Square, Timer as TimerIcon } from "lucide-react";
 import type { RunningTimer, TimerAttribution, TimerRewardControls } from "@/components/todo/useTimer";
 import TimerRewardPanel from "@/components/TimerRewardPanel";
+import TimerStartEditor from "@/components/TimerStartEditor";
 import type { EntryHistoryChoice } from "@/components/todo/entryHistory";
 import type { Aspiration, Task } from "@/components/todo/types";
 import EntryNameInput from "@/components/EntryNameInput";
@@ -17,10 +18,6 @@ const CUSTOM_STYLE = { bg: "#EEF2FF", border: "#C7D2FE", text: "#4F46E5", solid:
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
-}
-
-function hhmm(d: Date): string {
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
 function fmtElapsed(ms: number): string {
@@ -37,13 +34,14 @@ type Props = {
   onStart: (title: string) => void;
   onStop: () => void;
   onRename: (title: string, startedAt: number, attribution?: TimerAttribution) => void;
+  onAdjustStart: (startedAt: number, expectedStart: number) => boolean;
   history: EntryHistoryChoice[];
   aspirations: Aspiration[];
   tasks: Task[];
   rewardControls?: TimerRewardControls;
 };
 
-export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRename, history, aspirations, tasks, rewardControls }: Props) {
+export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRename, onAdjustStart, history, aspirations, tasks, rewardControls }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const editingRef = useRef(false);
@@ -97,9 +95,7 @@ export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRena
               <span className="truncate">{running.title}</span>
               <Pencil className="h-3 w-3 shrink-0 opacity-50 group-hover:opacity-100" />
             </button>}
-            <span className="text-[11px] text-[var(--color-text-tertiary)]">
-              {editing ? "回车或点空白保存 · Esc 取消" : `从 ${hhmm(new Date(running.startedAt))} 开始`}
-            </span>
+            {editing && <span className="text-[11px] text-[var(--color-text-tertiary)]">回车或点空白保存 · Esc 取消</span>}
             {!editing && !isReward && running.attribution && <span className="truncate text-[11px] text-[var(--color-text-secondary)]">
               {aspirations.find((goal) => goal.id === runningGoalId)?.title
                 ?? (runningGoalId ? "原目标已删除" : "未归属目标")}
@@ -141,6 +137,7 @@ export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRena
           ))}
         </div>
       )}
+      {running && <TimerStartEditor key={running.startedAt} startedAt={running.startedAt} onAdjust={onAdjustStart} />}
       {rewardControls && <TimerRewardPanel running={running} elapsedMs={elapsedMs} controls={rewardControls} />}
     </div>
   );
