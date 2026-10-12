@@ -10,6 +10,7 @@ import GoalsView from "@/components/GoalsView";
 import SyncModal from "@/components/SyncModal";
 import DayTemplateModal from "@/components/DayTemplateModal";
 import TemplateBatchNotice from "@/components/TemplateBatchNotice";
+import TransientNotice from "@/components/TransientNotice";
 import { undoTemplateBatch, restoreTemplateBatch, type TemplateBatch } from "@/components/todo/templateHistory";
 import FastTooltip from "@/components/FastTooltip";
 import type {
@@ -450,6 +451,8 @@ export default function TodoApp() {
     prevTodayRef.current = todayIso;
   }, [todayIso]);
   const [isTemplateOpen, setIsTemplateOpen] = useState(false);
+  // Immediate feedback is session-only, separate from the persisted undo receipts.
+  const [templateFeedback, setTemplateFeedback] = useState<{ batchId: string; expiresAt: number } | null>(null);
   const [isSyncOpen, setIsSyncOpen] = useState(false);
   // 时间记录撤回栈：每次用户改动记录前先存一份快照，最多留 30 步
   const [entriesHistory, setEntriesHistory] = useState<TimeEntry[][]>([]);
@@ -673,6 +676,7 @@ export default function TodoApp() {
         id: `batch-${result.tasks[0].id}`, name: template.name, date,
         tasks: result.tasks,
       }, ...prev].slice(0, 20));
+      setTemplateFeedback({ batchId: `batch-${result.tasks[0].id}`, expiresAt: Date.now() + 8000 });
     }
     return { created: result.tasks.length, skipped: result.skipped };
   }
@@ -692,9 +696,11 @@ export default function TodoApp() {
       : undoTemplateBatch(batch, tasks, protectedIds);
     setTasks(result.tasks);
     setTemplateBatches(prev => prev.map(current => current.id === batchId ? result.batch : current));
+    setTemplateFeedback({ batchId, expiresAt: Date.now() + 8000 });
   }
 
   const dayTemplateBatches = batchesHydrated ? templateBatches.filter(batch => batch.date === selectedDate) : [];
+  const feedbackBatch = templateFeedback ? templateBatches.find(batch => batch.id === templateFeedback.batchId) : undefined;
 
   // ===== 子任务 =====
   //
@@ -2155,7 +2161,6 @@ export default function TodoApp() {
           onReorderSubtask={reorderSubtask}
           onToggleMainline={toggleMainline}
           onOpenTemplates={() => setIsTemplateOpen(true)}
-          templateNotice={<TemplateBatchNotice batches={dayTemplateBatches.slice(0, 1)} onToggle={toggleTemplateBatch} />}
           onCopyTask={copyTask}
           onCreateTask={createTask}
           onDeleteTask={deleteTask}
@@ -2282,8 +2287,15 @@ export default function TodoApp() {
         onUpdate={updateTaskTemplate}
         onDelete={deleteTaskTemplate}
         onApply={applyTaskTemplate}
-        batchHistory={<TemplateBatchNotice batches={dayTemplateBatches} onToggle={toggleTemplateBatch} />}
+        batchHistory={dayTemplateBatches.length ? <TemplateBatchNotice batches={dayTemplateBatches} onToggle={toggleTemplateBatch} /> : undefined}
       />
+
+      {templateFeedback && feedbackBatch && <TransientNotice key={templateFeedback.expiresAt}
+        expiresAt={templateFeedback.expiresAt} onDismiss={() => setTemplateFeedback(null)}
+        contextKey={`${viewMode}:${selectedDate}:${goalsOpen}`}
+        className="fixed bottom-16 left-1/2 z-[140] w-[min(440px,calc(100vw-24px))] -translate-x-1/2 rounded-xl border border-[var(--color-border)] bg-white p-1 shadow-lg">
+        <TemplateBatchNotice batches={[feedbackBatch]} onToggle={toggleTemplateBatch} />
+      </TransientNotice>}
 
       {/*
        * 非首页始终给一个确定出口。它不等同于“返回”：无论当前从哪里进来，

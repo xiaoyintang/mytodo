@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import TransientNotice from "@/components/TransientNotice";
 import type {
   Aspiration,
   GoalResult,
@@ -119,6 +120,7 @@ export default function DayTemplateModal({
   const [editItems, setEditItems] = useState<TaskTemplateItem[]>([]);
   const [expandedEditItemId, setExpandedEditItemId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const [noticeExpiresAt, setNoticeExpiresAt] = useState(0);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const selectedTemplate =
@@ -157,6 +159,11 @@ export default function DayTemplateModal({
   }, [date, selectedTemplate?.id, selectedTemplate?.updatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isOpen) return null;
+
+  function showNotice(message: string) {
+    setNotice(message);
+    setNoticeExpiresAt(Date.now() + 8000);
+  }
 
   function goalPath(item: Pick<TaskTemplateItem, "aspirationId" | "resultId">) {
     const goal = aspirations.find((aspiration) => aspiration.id === item.aspirationId);
@@ -273,18 +280,16 @@ export default function DayTemplateModal({
     if (!name || items.length === 0 || items.length !== editItems.length) return;
     onUpdate(selectedTemplate.id, name, items);
     setMode("library");
-    setNotice(`“${name}”已更新；已经排进日程的任务不会被改动`);
+    showNotice(`“${name}”已更新；已经排进日程的任务不会被改动`);
   }
 
   function handleApply() {
     if (!selectedTemplate || selectedApplyIds.size === 0) return;
     const result = onApply(selectedTemplate.id, Array.from(selectedApplyIds), date);
     setSelectedApplyIds(new Set());
-    setNotice(
-      result.created > 0
-        ? `已加入 ${result.created} 项${result.skipped ? `，跳过 ${result.skipped} 项重复任务` : ""}`
-        : "这些项目已经在当天了",
-    );
+    // Successful applications use the shared short-lived undo toast, not a second permanent banner.
+    if (result.created > 0) setNotice("");
+    else showNotice("这些项目已经在当天了");
   }
 
   function handleCreate() {
@@ -294,7 +299,7 @@ export default function DayTemplateModal({
     if (!id) return;
     setSelectedTemplateId(id);
     setMode("library");
-    setNotice(`“${name}”已保存，以后可以直接套用`);
+    showNotice(`“${name}”已保存，以后可以直接套用`);
   }
 
   const deleteTemplate = templates.find((template) => template.id === deleteId);
@@ -358,7 +363,11 @@ export default function DayTemplateModal({
             </button>
           </header>
 
-          {mode === "library" && <div className="max-h-48 shrink-0 overflow-y-auto px-5 pt-3 sm:px-6">{batchHistory}</div>}
+          {mode === "library" && batchHistory && <details className="max-h-48 shrink-0 overflow-y-auto px-5 pt-2 sm:px-6">
+            <summary className="cursor-pointer py-2 text-[12px] text-[var(--color-text-secondary)]">套用历史 · 撤回 / 恢复</summary>
+            <p className="mb-2 text-[11px] text-[var(--color-text-tertiary)]">本机最近 20 次中，加入这一天的批次</p>
+            {batchHistory}
+          </details>}
 
           {mode === "create" ? (
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-4 sm:px-6">
@@ -832,9 +841,10 @@ export default function DayTemplateModal({
                     </div>
 
                     {notice && (
-                      <p className="mt-3 rounded-lg bg-[var(--color-success-light)] px-3 py-2 text-[11px] font-medium text-[var(--color-success)]">
+                      <TransientNotice key={noticeExpiresAt} expiresAt={noticeExpiresAt} onDismiss={() => setNotice("")}
+                        className="mt-3 rounded-lg bg-[var(--color-success-light)] px-3 py-1 text-[11px] font-medium text-[var(--color-success)]">
                         {notice}
-                      </p>
+                      </TransientNotice>
                     )}
 
                     <div className="mt-4 flex items-center justify-between gap-3">

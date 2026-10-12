@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
+import TransientNotice from "@/components/TransientNotice";
 import { createPortal } from "react-dom";
 import type {
   Aspiration,
@@ -45,7 +46,6 @@ type Props = {
   onReorderSubtask: (taskId: string, subId: string, targetId: string, edge: "before" | "after") => void;
   onToggleMainline: (date: ISODate, aspirationId: string) => void;
   onOpenTemplates: () => void;
-  templateNotice?: ReactNode;
   onCreateTask: (task: Omit<Task, "id">) => void;
   onCopyTask: (taskId: string, dates: ISODate[]) => void;
   onDeleteTask: (taskId: string) => void;
@@ -120,7 +120,6 @@ export default function TodoDayView({
   onReorderSubtask,
   onToggleMainline,
   onOpenTemplates,
-  templateNotice,
   onCreateTask,
   onCopyTask,
   onDeleteTask,
@@ -144,14 +143,14 @@ export default function TodoDayView({
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [renamingTaskId, setRenamingTaskId] = useState<string | null>(null);
   const [copyingTaskId, setCopyingTaskId] = useState<string | null>(null);
-  const [copyNotice, setCopyNotice] = useState<{ date: ISODate; count: number } | null>(null);
+  const [copyNotice, setCopyNotice] = useState<{ date: ISODate; count: number; expiresAt: number } | null>(null);
   const copyingTask = tasks.find(task => task.id === copyingTaskId);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
   const deletingTask = tasks.find((task) => task.id === deletingTaskId);
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [scheduleEditor, setScheduleEditor] = useState<{ taskId: string; focusTime: boolean } | null>(null);
-  const [scheduleUndo, setScheduleUndo] = useState<{ taskId: string; before: TaskSchedule; wasDailyFocus: boolean; message: string } | null>(null);
+  const [scheduleUndo, setScheduleUndo] = useState<{ taskId: string; before: TaskSchedule; wasDailyFocus: boolean; message: string; expiresAt: number } | null>(null);
   const schedulingTask = tasks.find((task) => task.id === scheduleEditor?.taskId);
 
   function applySchedule(schedule: TaskSchedule) {
@@ -162,7 +161,7 @@ export default function TodoDayView({
     if (Object.keys(before).every((key) => before[key as keyof TaskSchedule] === schedule[key as keyof TaskSchedule])) return;
     onUpdateTask(schedulingTask.id, schedule);
     setScheduleUndo({ taskId: schedulingTask.id, before, wasDailyFocus: dayPlans[schedulingTask.date]?.mustDoTaskId === schedulingTask.id,
-      message: `已安排到 ${schedule.date}${schedule.startTime ? ` ${schedule.startTime}` : " · 不限时段"}` });
+      message: `已安排到 ${schedule.date}${schedule.startTime ? ` ${schedule.startTime}` : " · 不限时段"}`, expiresAt: Date.now() + 8000 });
   }
   const [offOpen, setOffOpen] = useState(false);        // 非主线任务默认折起来
   // 展开的任务（看子任务）。默认全收起——卡片列表要保持一眼扫得完
@@ -611,7 +610,6 @@ export default function TodoDayView({
         onPrevWeek={onPrevWeek} onNextWeek={onNextWeek} />
 
       <div className="flex w-full flex-col gap-5 px-[18px] pb-6 pt-1">
-        {templateNotice}
         <DailyFocusSection key={selectedDate} task={keyTask} tasks={dayTasks} aspirations={aspirations}
           isToday={selectedDate === today} onSelect={(id) => onSetDailyFocus(selectedDate, id)}>
           {keyTask && <button type="button" onClick={() => openTaskDetails(keyTask)}
@@ -746,13 +744,16 @@ export default function TodoDayView({
       {copyingTask && <TaskCopyDialog key={copyingTask.id} task={copyingTask}
         onClose={() => setCopyingTaskId(null)} onApply={dates => {
           onCopyTask(copyingTask.id, dates); setCopyingTaskId(null);
-          setCopyNotice({ date: dates[0], count: dates.length });
+          setCopyNotice({ date: dates[0], count: dates.length, expiresAt: Date.now() + 8000 });
         }} />}
-      {copyNotice && createPortal(<div role="status" data-no-tab-swipe className="fixed bottom-4 left-1/2 z-[110] flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-white)] px-3 py-2 text-[12px] shadow-lg">
+      {copyNotice && createPortal(<TransientNotice key={copyNotice.expiresAt} expiresAt={copyNotice.expiresAt}
+        contextKey={selectedDate} onDismiss={() => setCopyNotice(null)}
+        className="fixed bottom-16 left-1/2 z-[110] max-w-[calc(100vw-24px)] -translate-x-1/2 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-white)] px-3 py-1 text-[12px] shadow-lg">
+        <div className="flex items-center gap-3">
         <span className="whitespace-nowrap">已复制到 {copyNotice.count} 天</span>
         <button type="button" className="min-h-9 whitespace-nowrap text-[var(--color-primary)]" onClick={() => { onSelectDate(copyNotice.date); setCopyNotice(null); }}>查看 {copyNotice.date.slice(5)}</button>
-        <button type="button" aria-label="关闭复制提示" className="flex h-9 w-9 items-center justify-center" onClick={() => setCopyNotice(null)}><X className="h-4 w-4" /></button>
-      </div>, document.body)}
+        </div>
+      </TransientNotice>, document.body)}
       {deletingTask && createPortal(<ConfirmDialog isOpen title="删除这个任务？"
         description={`「${deletingTask.title}」删除后无法恢复`}
         onConfirm={() => { onDeleteTask(deletingTask.id); setDeletingTaskId(null); }}
@@ -761,14 +762,17 @@ export default function TodoDayView({
         task={schedulingTask} today={today} focusTime={scheduleEditor.focusTime}
         onApply={applySchedule} onClose={() => setScheduleEditor(null)} />}
       {scheduleUndo && tasks.some((task) => task.id === scheduleUndo.taskId) && createPortal(
-        <div role="status" className="fixed bottom-16 left-1/2 z-[110] flex w-max max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-3 rounded-xl border border-[var(--color-border)] bg-white px-3 py-2 shadow-lg" data-no-tab-swipe>
+        <TransientNotice key={scheduleUndo.expiresAt} expiresAt={scheduleUndo.expiresAt}
+          contextKey={selectedDate} onDismiss={() => setScheduleUndo(null)}
+          className="fixed bottom-16 left-1/2 z-[110] w-max max-w-[calc(100vw-24px)] -translate-x-1/2 rounded-xl border border-[var(--color-border)] bg-white px-3 py-1 shadow-lg">
+          <div className="flex items-center gap-3">
           <span className="min-w-0 text-[12px] text-[var(--color-text-secondary)]">{scheduleUndo.message}</span>
           <button type="button" onClick={() => {
             onUpdateTask(scheduleUndo.taskId, scheduleUndo.before, { restoreDailyFocus: scheduleUndo.wasDailyFocus });
             setScheduleUndo(null);
           }} className="shrink-0 text-[12px] font-semibold text-[var(--color-primary)]">撤回改期</button>
-          <button type="button" onClick={() => setScheduleUndo(null)} aria-label="关闭改期提示"><X className="h-3.5 w-3.5" /></button>
-        </div>, document.body
+          </div>
+        </TransientNotice>, document.body
       )}
       <TaskBottomSheet
         onAddSubtasks={onAddSubtasks}

@@ -915,7 +915,7 @@ export default function TimeLogView({
                   type="button"
                   onClick={onUndoEntries}
                   disabled={!canUndoEntries}
-                  className="flex min-h-11 items-center gap-1 px-2 rounded-md text-[12px] font-semibold text-[var(--color-primary)] enabled:hover:bg-[var(--color-primary-light)] disabled:text-[var(--color-text-tertiary)] disabled:opacity-40 transition-colors"
+                  className="flex min-h-11 items-center gap-1 px-2 rounded-md text-[12px] text-[var(--color-text-secondary)] enabled:hover:text-[var(--color-primary)] enabled:hover:bg-[var(--color-bg-gray-light)] disabled:text-[var(--color-text-tertiary)] disabled:opacity-40 transition-colors"
                   aria-label="撤回最近一次记录改动"
                   title="撤回记录模块最近一次改动（含其他日期）；误撤回可点重做"
                 >
@@ -926,7 +926,7 @@ export default function TimeLogView({
                   type="button"
                   onClick={onRedoEntries}
                   disabled={!canRedoEntries}
-                  className="flex min-h-11 items-center gap-1 px-2 rounded-md text-[12px] font-semibold text-[var(--color-primary)] enabled:hover:bg-[var(--color-primary-light)] disabled:text-[var(--color-text-tertiary)] disabled:opacity-40 transition-colors"
+                  className="flex min-h-11 items-center gap-1 px-2 rounded-md text-[12px] text-[var(--color-text-secondary)] enabled:hover:text-[var(--color-primary)] enabled:hover:bg-[var(--color-bg-gray-light)] disabled:text-[var(--color-text-tertiary)] disabled:opacity-40 transition-colors"
                   aria-label="重做，恢复刚撤回的记录改动"
                   title="恢复刚撤回的记录改动"
                 >

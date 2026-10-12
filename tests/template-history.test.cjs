@@ -34,12 +34,13 @@ assert.equal(declarations.length, names.length);
 const code = ts.transpileModule(declarations.join('\n'), { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText;
 const handlers = new Function('ctx', `with (ctx) { ${code}; return {${names.join(',')}}; }`);
 function harness(tasks = []) {
-  const state = { tasks, templateBatches: [], entries: [], habitLogs: [], dayPlans: {}, timer: { running: null } };
+  const state = { tasks, templateBatches: [], templateFeedback: null, entries: [], habitLogs: [], dayPlans: {}, timer: { running: null } };
   const ctx = { ...state, taskTemplates: [template], todayIso: date,
     hydrated: true, templatesHydrated: true, batchesHydrated: true, entriesHydrated: true, logsHydrated: true, plansHydrated: true,
     instantiateTemplateTasks, undoTemplateBatch, restoreTemplateBatch, matchTaskByTitle,
     setTasks: next => state.tasks = typeof next === 'function' ? next(state.tasks) : next,
     setTemplateBatches: next => state.templateBatches = typeof next === 'function' ? next(state.templateBatches) : next,
+    setTemplateFeedback: next => state.templateFeedback = next,
   };
   return { state, ctx, call(name, ...args) { return handlers({ ...ctx, ...state })[name](...args); } };
 }
@@ -50,6 +51,8 @@ test('apply receipt includes only newly created tasks; undo/restore leaves exist
   const beforeTemplate = structuredClone(template);
   assert.deepEqual(h.call('applyTaskTemplate', 'tpl', ['a', 'b'], date), { created: 1, skipped: 1 });
   const batch = h.state.templateBatches[0];
+  assert.equal(h.state.templateFeedback.batchId, batch.id);
+  assert.ok(h.state.templateFeedback.expiresAt > Date.now());
   assert.equal(batch.tasks.length, 1);
   const original = structuredClone(h.state.tasks);
   // Refresh serialization must preserve undo comparisons, including absent optional fields.

@@ -1276,7 +1276,7 @@ export default function FocusMapView({
           type="button"
           onClick={onUndo}
           disabled={!canUndo}
-          className="flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-semibold text-[var(--color-primary)] transition-colors hover:bg-[var(--color-primary-light)] disabled:cursor-default disabled:text-[var(--color-text-tertiary)] disabled:opacity-45 disabled:hover:bg-transparent"
+          className="flex h-7 items-center gap-1 rounded-md px-2 text-[11px] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-gray-light)] hover:text-[var(--color-primary)] disabled:cursor-default disabled:text-[var(--color-text-tertiary)] disabled:opacity-45 disabled:hover:bg-transparent"
           title={canUndo ? "撤回上一步改动" : "还没有可撤回的改动"}
         >
           <Undo2 className="h-3.5 w-3.5" />
