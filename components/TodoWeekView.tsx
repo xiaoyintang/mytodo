@@ -13,10 +13,11 @@ import type {
   ViewMode,
 } from "@/components/todo/types";
 import { CN_WEEKDAY, addDays, parseISODate, startOfWeek, toISODate } from "@/components/todo/date";
-import { CalendarDays, Check, ChevronDown, Flag, Timer } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, Flag, Star, Repeat2, Timer } from "lucide-react";
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
 import { mainlinesOf } from "@/components/todo/goal";
 import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
+import { buildWeekOverview } from "@/components/todo/weekOverview";
 import TaskBottomSheet from "@/components/TaskBottomSheet";
 import QuickAddTask from "@/components/QuickAddTask";
 import MainlineBar from "@/components/MainlineBar";
@@ -64,6 +65,8 @@ function WeekTaskRow({
   resultTitle,
   onClick,
   onCycleStatus,
+  isFocus = false,
+  overview = false,
 }: {
   task: Task;
   entries: TimeEntry[];
@@ -71,6 +74,8 @@ function WeekTaskRow({
   resultTitle?: string;
   onClick: () => void;
   onCycleStatus: () => void;
+  isFocus?: boolean;
+  overview?: boolean;
 }) {
   const isDone = task.status === "done";
   const isInProgress = task.status === "in_progress";
@@ -84,8 +89,10 @@ function WeekTaskRow({
     <div
       className={[
         "w-full flex items-center rounded-lg text-left transition-colors",
-        isDone
-          ? "bg-[#DCFCE7]"
+        isFocus
+          ? "bg-[var(--color-focus-light)] ring-1 ring-inset ring-[var(--color-focus-border)]"
+          : overview ? "bg-[var(--color-bg-white)] hover:bg-[var(--color-bg-gray-lighter)]" : isDone
+          ? "bg-[var(--color-success-light)]"
           : isInProgress
             ? "bg-[#EFF6FF]"
             : isHigh
@@ -102,13 +109,14 @@ function WeekTaskRow({
       </button>
       <button type="button" onClick={onClick} aria-label={`查看任务详情：${task.title}`}
         className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg py-2 pr-3 text-left hover:bg-[var(--color-bg-white)]/40 focus-visible:outline-[var(--color-primary)]">
-      {isHigh && !isDone && <Flag className="h-3 w-3 shrink-0 text-[var(--color-danger)]" />}
+      {isFocus ? <Star aria-label="当天关键任务" className="h-3.5 w-3.5 shrink-0 fill-current text-[var(--color-focus)]" />
+        : isHigh && <Flag aria-label="高优先级" className="h-3 w-3 shrink-0 text-[var(--color-danger)]" />}
 
       {/* 标题 + 所属关键结果。周视图也要能看出这件事在推进什么。 */}
       <span className="flex min-w-0 flex-1 flex-col">
         <span
           className={[
-            "truncate text-[13px] font-medium",
+            `${overview ? "line-clamp-2 leading-5" : "truncate"} text-[13px] ${isFocus ? "font-semibold" : "font-medium"}`,
             isDone
               ? "text-[#16A34A] line-through"
               : isInProgress
@@ -119,7 +127,7 @@ function WeekTaskRow({
         >
           {task.title}
         </span>
-        {resultTitle && (
+        {!overview && resultTitle && (
           <span
             className="truncate text-[9px] font-medium leading-3 text-[var(--color-text-tertiary)]"
             data-full-text={`关键结果：${resultTitle}`}
@@ -129,26 +137,26 @@ function WeekTaskRow({
         )}
       </span>
 
-      {task.sourceHabitId && !isDone && (
+      {!overview && task.sourceHabitId && !isDone && (
         <span className="flex-shrink-0 rounded bg-[#F5F3FF] px-1.5 py-0.5 text-[10px] font-medium text-[#7C3AED]">
           习惯
         </span>
       )}
 
-      {task.sourceBehaviorId && !task.sourceHabitId && !isDone && (
+      {!overview && task.sourceBehaviorId && !task.sourceHabitId && !isDone && (
         <span className="flex-shrink-0 rounded bg-[#EEF2FF] px-1.5 py-0.5 text-[10px] font-medium text-[#4F46E5]">
           重复
         </span>
       )}
 
-      {isMainline && !isDone && (
+      {!overview && isMainline && !isDone && (
         <span className="flex-shrink-0 rounded bg-[var(--color-primary-light)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-primary)]">
           主线
         </span>
       )}
 
       {/* 右侧：时长目标进度 / 手动完成进度 / 开始时间 */}
-      {target > 0 ? (
+      {!overview && (target > 0 ? (
         <span
           className={[
             "flex items-center gap-0.5 text-[11px] font-medium flex-shrink-0",
@@ -176,13 +184,13 @@ function WeekTaskRow({
             {task.startTime}
           </span>
         )
-      )}
+      ))}
       </button>
     </div>
   );
 }
 
-// 每天一行：左侧日期列 + 右侧完整任务列表（不再折叠）
+// 每天先看重点；需要时展开当天的完整清单，始终操作原任务。
 function DayRow({
   date,
   tasks,
@@ -194,6 +202,11 @@ function DayRow({
   onTaskClick,
   onCreateTask,
   onCycleTaskStatus,
+  importantTasks,
+  focusTaskId,
+  showAll,
+  today,
+  mainlineTitles,
 }: {
   date: Date;
   tasks: Task[];
@@ -205,32 +218,31 @@ function DayRow({
   onTaskClick: (task: Task) => void;
   onCreateTask: (task: Omit<Task, "id">) => void;
   onCycleTaskStatus: (taskId: string) => void;
+  importantTasks: Task[];
+  focusTaskId?: string;
+  showAll: boolean;
+  today: ISODate;
+  mainlineTitles: string[];
 }) {
+  const [expanded, setExpanded] = useState(false);
   const iso = toISODate(date);
-  const isToday = toISODate(new Date()) === iso;
+  const isToday = today === iso;
   const dayNum = date.getDate();
   const weekday = CN_WEEKDAY[date.getDay()];
 
   const isMainlineTask = (task: Task) =>
     !!task.aspirationId && mainlineIds.includes(task.aspirationId);
 
-  // 不限时段排在具体时间之前；其中属于当天主线的再优先。
-  const sortedTasks = [...tasks].sort((a, b) => {
-    if (!a.startTime && !b.startTime) {
-      return Number(isMainlineTask(b)) - Number(isMainlineTask(a));
-    }
-    if (!a.startTime) return -1;
-    if (!b.startTime) return 1;
-    return a.startTime.localeCompare(b.startTime);
-  });
-
-  const doneTasks = tasks.filter((t) => t.status === "done").length;
-  const totalTasks = tasks.length;
+  const full = showAll || expanded;
+  const sortedTasks = full ? tasks : importantTasks.slice(0, 3);
+  const doneTasks = (full ? tasks : importantTasks).filter((t) => t.status === "done").length;
+  const totalTasks = full ? tasks.length : importantTasks.length;
+  const hiddenCount = tasks.length - importantTasks.length;
 
   return (
-    <div className="flex gap-3 border-b border-[var(--color-border)] px-4 py-3 last:border-b-0 md:self-start md:rounded-xl md:border md:bg-white md:last:border-b">
+    <section aria-label={`${date.getMonth() + 1}月${dayNum}日的安排`} className="flex gap-2 border-b border-[var(--color-border)] px-3 py-3 last:border-b-0 md:self-start md:rounded-xl md:border md:bg-[var(--color-bg-white)] md:last:border-b">
       {/* Date column */}
-      <div className="w-[56px] flex-shrink-0 flex flex-col items-center gap-0.5 pt-0.5">
+      <div className="w-10 flex-shrink-0 flex flex-col items-center gap-1 pt-2">
         <span
           className={[
             "text-[20px] font-bold leading-none",
@@ -254,8 +266,8 @@ function DayRow({
         )}
       </div>
 
-      {/* Task list（始终展开） */}
       <div className="flex-1 flex flex-col gap-1.5 min-w-0">
+        {mainlineTitles.length > 0 && <p className="truncate px-1 text-[11px] text-[var(--color-text-secondary)]" data-full-text={mainlineTitles.join(" · ")}>{mainlineTitles.join(" · ")}</p>}
         {sortedTasks.length > 0 ? (
           sortedTasks.map((task) => (
             <WeekTaskRow
@@ -263,15 +275,25 @@ function DayRow({
               task={task}
               entries={entries}
               isMainline={isMainlineTask(task)}
+              isFocus={task.id === focusTaskId}
+              overview={!full}
               resultTitle={resolveTaskGoalResult(task, goalResults, behaviors, habits)?.title}
               onClick={() => onTaskClick(task)}
               onCycleStatus={() => onCycleTaskStatus(task.id)}
             />
           ))
-        ) : null}
-        <QuickAddTask compact date={iso} onCreate={onCreateTask} />
+        ) : <p className="px-1 py-2 text-[12px] text-[var(--color-text-tertiary)]">{tasks.length ? "还未选定重点" : "暂未安排"}</p>}
+        <div className="flex flex-wrap items-center gap-x-2">
+          {!showAll && (hiddenCount > 0 || importantTasks.length > 3 || expanded) && <button type="button" aria-expanded={expanded}
+            onClick={() => setExpanded(!expanded)} className="flex min-h-11 shrink-0 items-center gap-1 px-1 text-left text-[11px] text-[var(--color-text-secondary)]">
+            <ChevronDown className={`h-3 w-3 ${expanded ? "rotate-180" : ""}`} />{expanded ? "收起" : importantTasks.length > 3 ? `展开当天 · ${tasks.length} 项` : `其他 ${hiddenCount} 项`}
+          </button>}
+          <div className="min-w-0 flex-1 has-[input]:basis-full">
+            <QuickAddTask compact date={iso} onCreate={(task) => { onCreateTask(task); setExpanded(true); }} />
+          </div>
+        </div>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -310,6 +332,7 @@ export default function TodoWeekView({
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
+  const [showAll, setShowAll] = useState(false);
 
   // Get the latest task data from tasks array (real-time update)
   const selectedTask = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) ?? null : null;
@@ -320,13 +343,12 @@ export default function TodoWeekView({
 
   const rangeLabel = `${weekStart.getFullYear()}年${weekStart.getMonth() + 1}月${weekStart.getDate()}日 - ${addDays(weekStart, 6).getMonth() + 1}月${addDays(weekStart, 6).getDate()}日`;
 
-  // Stats for all tasks in the week
-  const weekTasks = tasks.filter((t) => {
-    const taskDate = parseISODate(t.date);
-    return taskDate >= weekStart && taskDate <= addDays(weekStart, 6);
-  });
-  const totalTasks = weekTasks.length;
-  const doneTasks = weekTasks.filter((t) => t.status === "done").length;
+  const dates = days.map(toISODate);
+  const mainlines = Object.fromEntries(dates.map(date => [date, mainlinesOf(date, dayPlans, aspirations)]));
+  const overview = buildWeekOverview(tasks, dates, dayPlans,
+    Object.fromEntries(dates.map(date => [date, mainlines[date].map(goal => goal.id)])), behaviors);
+  const displayedTasks = showAll ? overview.days.flatMap(day => day.all) : overview.important;
+  const doneTasks = displayedTasks.filter(task => task.status === "done").length;
 
   function handleTaskClick(task: Task) {
     setSelectedTaskId(task.id);
@@ -371,48 +393,51 @@ export default function TodoWeekView({
         />
         <ViewTabs value={viewMode} onChange={onChangeViewMode} />
 
-        {/* 本周完成/未完成（原来挤在 tab 右边，把 tab 挤窄了，切过来按钮就移位） */}
-        <div className="flex w-full items-center gap-3 px-[18px] pb-1 pt-1 text-[11px] font-medium">
-          <div className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-[#16A34A]" />
-            <span className="text-[var(--color-text-secondary)]">已完成 {doneTasks}</span>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-[18px] pt-4">
+          <div role="group" aria-label="周视图范围" className="flex rounded-lg bg-[var(--color-bg-gray-light)] p-1">
+            {[false, true].map(all => <button key={String(all)} type="button" aria-pressed={showAll === all} onClick={() => setShowAll(all)}
+              className={`min-h-10 rounded-md px-3 text-[13px] font-medium ${showAll === all ? "bg-[var(--color-bg-white)] text-[var(--color-primary)] shadow-sm" : "text-[var(--color-text-secondary)]"}`}>
+              {all ? "全部任务" : "本周重点"}
+            </button>)}
           </div>
-          <div className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-[#DC2626]" />
-            <span className="text-[var(--color-text-secondary)]">未完成 {totalTasks - doneTasks}</span>
-          </div>
+          <span className="text-[12px] text-[var(--color-text-secondary)]">{showAll ? "全部" : "重点"} {displayedTasks.length} 项 · 已完成 {doneTasks}</span>
         </div>
-
-        {/* AI 一句话建任务 */}
-        <div className="px-[18px] pb-3 pt-2">
-          <QuickAddTask onCreate={onCreateTask} date={selectedDate} showDate />
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-[18px] pb-3 pt-2 text-[11px] text-[var(--color-text-secondary)]">
+          <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 fill-current text-[var(--color-focus)]" />当天关键任务</span>
+          <span className="inline-flex items-center gap-1"><Flag className="h-3 w-3 text-[var(--color-danger)]" />高优先级</span>
+          {!showAll && <span>以及当天主线的非例行任务</span>}
         </div>
-
-        <MainlinePlanner
+        <details key={`planner-${dates[0]}`} className="mx-[18px] mb-3 rounded-lg border border-[var(--color-border)]">
+          <summary className="cursor-pointer px-3 py-3 text-[12px] text-[var(--color-text-secondary)]">调整本周主线</summary>
+          <MainlinePlanner
           days={days}
-          today={toISODate(new Date()) as ISODate}
+          today={today}
           aspirations={aspirations}
           dayPlans={dayPlans}
           onToggle={onToggleMainline}
-        />
+          />
+        </details>
 
         {/* Week Days List */}
-        <div className="flex flex-1 flex-col overflow-y-auto border-t border-[var(--color-border)] md:grid md:grid-cols-2 md:items-start md:gap-3 md:border-t-0 md:bg-[var(--color-bg-gray-lighter)] md:p-[18px]">
+        <div className={`flex flex-1 flex-col border-t border-[var(--color-border)] md:grid md:grid-cols-2 md:items-start md:gap-3 md:border-t-0 md:bg-[var(--color-bg-gray-lighter)] md:p-[18px] ${showAll ? "" : "lg:grid-cols-3"}`}>
           {days.map((d) => {
             const iso = toISODate(d);
-            const dayTasks = tasks.filter((t) => t.date === iso);
+            const day = overview.days.find(day => day.date === iso)!;
             return (
               <DayRow
-                key={iso}
+                key={`${iso}-${showAll}`}
                 date={d}
-                tasks={dayTasks}
+                tasks={day.all}
+                importantTasks={day.important}
+                focusTaskId={dayPlans[iso]?.mustDoTaskId}
+                showAll={showAll}
+                today={today}
+                mainlineTitles={mainlines[iso].map(goal => goal.title)}
                 entries={entries}
                 goalResults={goalResults}
                 behaviors={behaviors}
                 habits={habits}
-                mainlineIds={mainlinesOf(iso as ISODate, dayPlans, aspirations).map(
-                  (aspiration) => aspiration.id,
-                )}
+                mainlineIds={mainlines[iso].map(goal => goal.id)}
                 onTaskClick={handleTaskClick}
                 onCreateTask={onCreateTask}
                 onCycleTaskStatus={onCycleTaskStatus}
@@ -420,6 +445,30 @@ export default function TodoWeekView({
             );
           })}
         </div>
+
+        {!showAll && overview.routines.length > 0 && <details key={`routines-${dates[0]}`} className="mx-[18px] my-4 rounded-xl border border-[var(--color-border)]">
+          <summary className="cursor-pointer px-3 py-3 text-[13px] font-medium text-[var(--color-text-secondary)]">
+            例行与重复安排 · {overview.routines.length} 类 / {overview.routines.reduce((sum, group) => sum + group.tasks.length, 0)} 项
+          </summary>
+          <p className="px-3 pb-2 text-[11px] text-[var(--color-text-tertiary)]">同一来源汇总，点开查看每天的安排。关键任务和高优事项仍在上方展示。</p>
+          {overview.routines.map(group => <details key={group.key} className="mx-3 border-t border-[var(--color-border)]">
+            <summary className="cursor-pointer py-3 text-[12px]">
+              <span className="inline-flex max-w-full items-center gap-1.5 align-middle"><Repeat2 className="h-3.5 w-3.5 shrink-0 text-[var(--color-text-tertiary)]" /><span className="truncate" data-full-text={group.title}>{group.title}</span></span>
+              <span className="mt-1 block pl-5 text-[11px] text-[var(--color-text-secondary)]">
+                {[...new Set(group.tasks.map(task => CN_WEEKDAY[parseISODate(task.date).getDay()]))].join("、")} · 已完成 {group.tasks.filter(task => task.status === "done").length}/{group.tasks.length}
+              </span>
+            </summary>
+            <div className="flex flex-col gap-2 pb-3">{group.tasks.map(task => <div key={task.id}>
+              <p className="px-2 pb-1 text-[11px] text-[var(--color-text-tertiary)]">{task.date.slice(5).replace("-", "/")} · {CN_WEEKDAY[parseISODate(task.date).getDay()]}</p>
+              <WeekTaskRow task={task} entries={entries} isMainline={Boolean(task.aspirationId && mainlines[task.date].some(goal => goal.id === task.aspirationId))}
+                onClick={() => handleTaskClick(task)} onCycleStatus={() => onCycleTaskStatus(task.id)} />
+            </div>)}</div>
+          </details>)}
+        </details>}
+        <details className="mx-[18px] mb-4 rounded-lg border border-[var(--color-border)]">
+          <summary className="cursor-pointer px-3 py-3 text-[12px] text-[var(--color-text-secondary)]">批量添加任务</summary>
+          <div className="px-3 pb-3"><QuickAddTask date={selectedDate} showDate onCreate={(task) => { onCreateTask(task); setShowAll(true); }} /></div>
+        </details>
 
       </AppShell>
 

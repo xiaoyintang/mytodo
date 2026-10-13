@@ -168,7 +168,7 @@ test('week header hides daily mainlines, preserving goals and timer; week planne
 });
 
 test('week status control cycles the same task independently of details and updates completion count', () => {
-  const date = '2026-09-21'; let task = { id: 'task', title: '写提纲', date, status: 'todo' };
+  const date = '2026-09-21'; let task = { id: 'task', title: '写提纲', date, status: 'todo', priority: 'high' };
   const calls = [];
   const h = harness('components/TodoWeekView.tsx', { selectedDate: date, today: date, tasks: [task], entries: [],
     aspirations: [], goalResults: [], behaviors: [], habits: [], dayPlans: {}, running: null,
@@ -189,6 +189,25 @@ test('week status control cycles the same task independently of details and upda
   assert.deepEqual(calls, ['task', 'task', 'task']);
   h.nodes(row()).find(n => n.props['aria-label'] === '查看任务详情：写提纲').props.onClick(); h.render();
   assert.equal(sheet().props.isOpen, true); assert.equal(sheet().props.task.id, 'task'); assert.equal(calls.length, 3);
+});
+
+test('week defaults to focused tasks, emphasizes the existing daily focus and can show every task without mutations', () => {
+  const date = '2026-10-13';
+  const tasks = [{ id: 'focus', title: '陪家人吃饭', date, status: 'done', sourceHabitId: 'h' },
+    { id: 'normal', title: '杂事', date, status: 'todo' },
+    { id: 'high', title: '确认面试', date, status: 'todo', priority: 'high' }];
+  const before = structuredClone(tasks);
+  const h = harness('components/TodoWeekView.tsx', { selectedDate: date, today: date, tasks, entries: [],
+    aspirations: [], goalResults: [], behaviors: [], habits: [], dayPlans: { [date]: { date, primaryAspirationIds: [], mustDoTaskId: 'focus' } }, running: null });
+  const day = () => h.nodes().find(n => n.type?.name === 'DayRow' && n.props.focusTaskId === 'focus');
+  assert.deepEqual(day().props.importantTasks.map(t => t.id), ['focus', 'high']);
+  assert.equal(day().props.showAll, false);
+  const rows = h.nodes(day().type(day().props)).filter(n => n.type?.name === 'WeekTaskRow');
+  assert.equal(rows[0].props.task.id, 'focus'); assert.equal(rows[0].props.isFocus, true);
+  assert.equal(rows.length, 2);
+  h.click('全部任务'); assert.equal(day().props.showAll, true); assert.equal(day().props.tasks.length, 3);
+  h.click('本周重点'); assert.equal(day().props.showAll, false);
+  assert.deepEqual(tasks, before);
 });
 
 test('day navigation lives in date strip, redundant header add is absent', () => {
