@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { EntryHistoryChoice } from "@/components/todo/entryHistory";
 
 type Props = {
@@ -20,21 +20,38 @@ export default function EntryNameInput({ value, onChange, history, onSelect, onC
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(-1);
   const [group, setGroup] = useState<"task" | "history">("task");
+  const rootRef = useRef<HTMLDivElement>(null);
+  const editingRef = useRef(false);
+  const commit = useCallback(() => {
+    setOpen(false);
+    if (!editingRef.current) return;
+    editingRef.current = false;
+    onCommit?.();
+  }, [onCommit]);
+  useEffect(() => {
+    function outside(event: PointerEvent) {
+      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) commit();
+    }
+    document.addEventListener("pointerdown", outside, true);
+    return () => document.removeEventListener("pointerdown", outside, true);
+  }, [commit]);
   const listId = useId();
   const grouped = history.some(item => item.source);
   const selectedGroup = history.some(item => item.source === "task") ? group : "history";
   const matched = history.filter((item) => `${item.title} ${item.goalLabel} ${item.taskLabel ?? ""}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const options = matched.filter(item => !grouped || (item.source ?? "history") === selectedGroup);
   function choose(choice: EntryHistoryChoice) {
+    editingRef.current = false;
     setOpen(false);
     setQuery("");
     setActive(-1);
     onSelect(choice);
   }
-  return <div className="relative min-w-0 w-full" onBlur={(event) => {
-    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
-    setOpen(false);
-    onCommit?.();
+  return <div ref={rootRef} data-no-tab-swipe className="relative min-w-0 w-full" onBlur={(event) => {
+    // Mobile Safari may blur the input with no relatedTarget before an option's
+    // click. Only a known external focus target or outside pointer ends editing.
+    if (!event.relatedTarget || event.currentTarget.contains(event.relatedTarget as Node)) return;
+    commit();
   }}>
     <input
       autoFocus={autoFocus}
@@ -46,8 +63,8 @@ export default function EntryNameInput({ value, onChange, history, onSelect, onC
       aria-activedescendant={open && active >= 0 ? `${listId}-${active}` : undefined}
       value={value}
       placeholder="事项名称"
-      onFocus={(event) => { setOpen(true); setQuery(""); setActive(-1); event.currentTarget.select(); }}
-      onClick={() => setOpen(true)}
+      onFocus={(event) => { editingRef.current = true; setOpen(true); setQuery(""); setActive(-1); event.currentTarget.select(); }}
+      onClick={() => { editingRef.current = true; setOpen(true); }}
       onChange={(event) => { onChange(event.target.value); setQuery(event.target.value); setOpen(true); setActive(-1); }}
       onKeyDown={(event) => {
         if (event.nativeEvent.isComposing || event.keyCode === 229) return;
@@ -60,10 +77,11 @@ export default function EntryNameInput({ value, onChange, history, onSelect, onC
         } else if (event.key === "Enter") {
           event.preventDefault();
           if (open && active >= 0 && options[active]) choose(options[active]);
-          else { setOpen(false); onCommit?.(); }
+          else commit();
         } else if (event.key === "Escape") {
           event.preventDefault();
           event.stopPropagation();
+          editingRef.current = false;
           setOpen(false);
           onCancel?.();
         }
