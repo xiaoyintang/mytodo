@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { X, Cloud, RefreshCw, Check, TriangleAlert, Dices, Unlink } from "lucide-react";
 import type { SyncStatus } from "@/components/todo/sync";
+import type { SyncConflict } from "@/components/todo/syncMerge";
 
 type Props = {
   isOpen: boolean;
@@ -13,6 +14,9 @@ type Props = {
   onConnect: (code: string) => void;
   onDisconnect: () => void;
   onRefresh: () => void;
+  conflicts?: SyncConflict[];
+  taskTitles?: Record<string, string>;
+  onResolveConflict?: (signature: string, choice: "local" | "cloud") => void;
 };
 
 const CODE_RE = /^[A-Za-z0-9_-]{4,64}$/;
@@ -29,6 +33,8 @@ function statusText(status: SyncStatus, lastSyncedAt: number | null): string {
     }
     case "error":
       return "同步失败，检查网络后重试";
+    case "conflict":
+      return "版本有冲突，待你确认";
     case "not_configured":
       return "云同步未配置";
     default:
@@ -52,6 +58,9 @@ export default function SyncModal({
   onConnect,
   onDisconnect,
   onRefresh,
+  conflicts = [],
+  taskTitles = {},
+  onResolveConflict,
 }: Props) {
   const [input, setInput] = useState("");
   const [err, setErr] = useState("");
@@ -100,7 +109,7 @@ export default function SyncModal({
     <div className="fixed inset-0 z-[130] flex items-center justify-center px-6">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
-      <div className="relative w-full max-w-[360px] bg-white rounded-2xl shadow-[0_8px_32px_-4px_rgba(0,0,0,0.2)] p-5 flex flex-col gap-4">
+      <div className="relative w-full max-w-[480px] max-h-[85dvh] overflow-y-auto bg-white rounded-2xl shadow-[0_8px_32px_-4px_rgba(0,0,0,0.2)] p-5 flex flex-col gap-4">
         {/* Header */}
         <div className="flex items-center justify-between">
           <span className="flex items-center gap-2 text-[16px] font-semibold text-[var(--color-text-primary)]">
@@ -116,16 +125,40 @@ export default function SyncModal({
           </button>
         </div>
 
+        {status === "conflict" && conflicts[0] && (() => {
+          const conflict = conflicts[0];
+          const fields: Record<string, string> = { tasks: "任务", entries: "记录", subtasks: "工作步骤", steps: "固定流程", title: "标题", status: "完成状态", dayPlans: "主线安排", startAction: "最小启动" };
+          const label = conflict.path.map(part => taskTitles[part] ?? fields[part] ?? part).join(" · ");
+          const preview = (value: unknown): string => {
+            if (value === undefined) return "已删除 / 未设置";
+            if (Array.isArray(value)) return value.length ? value.map((item, i) => `${i + 1}. ${typeof item === "object" && item ? `${item.done ? "✓ " : ""}${item.title ?? JSON.stringify(item)}` : String(item)}`).join("\n") : "空列表";
+            if (typeof value === "object") return JSON.stringify(value, null, 2);
+            return String(value);
+          };
+          return <section className="flex flex-col gap-3 rounded-xl border border-[var(--color-danger)] bg-[var(--color-danger-light)] p-3">
+            <p className="text-sm font-medium">有 {conflicts.length} 处版本差异，需要你确认</p>
+            <p className="text-xs text-[var(--color-text-secondary)]">两边改了同一处，或旧版本没有修改历史。请对照选择，其他内容会自动合并。</p>
+            <p className="break-words text-sm font-medium">{label}</p>
+            {(["local", "cloud"] as const).map(side => <div key={side} className="rounded-lg bg-white p-3">
+              <div className="mb-2 text-xs text-[var(--color-text-secondary)]">{side === "local" ? "这台设备" : "云端（其他设备上传）"}</div>
+              <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-sans text-sm">{preview(side === "local" ? conflict.local : conflict.cloud)}</pre>
+              <button type="button" onClick={() => onResolveConflict?.(conflict.signature, side)} className="mt-3 min-h-11 rounded-lg border border-[var(--color-primary)] px-3 text-sm text-[var(--color-primary)] hover:bg-[var(--color-primary-light)]">
+                {side === "local" ? "保留本机这一处" : "使用云端这一处"}
+              </button>
+            </div>)}
+          </section>;
+        })()}
+
         {pendingCode ? (
           /* 覆盖确认 */
           <div className="flex flex-col gap-3">
             <div className="flex items-start gap-2 p-3 rounded-lg bg-[var(--color-danger-light)]">
               <TriangleAlert className="w-4 h-4 text-[var(--color-danger)] flex-shrink-0 mt-0.5" />
               <span className="text-[13px] text-[var(--color-text-primary)] leading-relaxed">
-                同步码 <span className="font-semibold">{pendingCode}</span> 云端已有数据。连接后
-                <span className="font-semibold">本机当前的任务和记录会被云端数据替换</span>。
+                同步码 <span className="font-semibold">{pendingCode}</span> 云端已有数据。连接后会读取云端内容，
+                <span className="font-semibold">本机尚未上传的修改会尝试合并；版本有冲突时由你确认</span>。
                 <br />
-                （如果这台设备的数据才是最全的，先取消，去那台"最全"的设备上用新码上传。）
+                请确认这是你另一台设备使用的同步码。
               </span>
             </div>
             <div className="flex gap-2">
@@ -145,7 +178,7 @@ export default function SyncModal({
                 }}
                 className="flex-1 py-2.5 rounded-xl bg-[var(--color-danger)] text-[14px] font-semibold text-white hover:bg-[#B91C1C] transition-colors"
               >
-                用云端覆盖
+                连接并同步
               </button>
             </div>
           </div>
@@ -162,7 +195,7 @@ export default function SyncModal({
                   "flex items-center gap-1 text-[12px] font-medium",
                   status === "synced"
                     ? "text-[var(--color-success)]"
-                    : status === "error" || status === "not_configured"
+                    : status === "error" || status === "not_configured" || status === "conflict"
                       ? "text-[var(--color-danger)]"
                       : "text-[var(--color-text-secondary)]",
                 ].join(" ")}

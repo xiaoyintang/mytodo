@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { kvConfig, kvGetSync, kvSetSync } from "@/components/todo/kv";
+import { kvConfig, kvGetSync, kvReadSync, kvCompareAndSetSync } from "@/components/todo/kv";
 import { parseWithLLM } from "@/components/todo/llmparse";
 import { parseTimeEntries } from "@/components/todo/nlparse";
 import { matchTaskByTitle, formatMinutes } from "@/components/todo/time";
@@ -61,7 +61,6 @@ export async function POST(req: Request) {
   }
   const cloud = (data ?? {}) as { tasks?: Task[]; entries?: TimeEntry[] };
   const tasks: Task[] = Array.isArray(cloud.tasks) ? cloud.tasks : [];
-  const entries: TimeEntry[] = Array.isArray(cloud.entries) ? cloud.entries : [];
 
   const added: TimeEntry[] = parsed.map((p, i) => {
     const matched = matchTaskByTitle(p.title, targetDate, tasks);
@@ -77,7 +76,18 @@ export async function POST(req: Request) {
   });
 
   try {
-    await kvSetSync(kv, code, { tasks, entries: [...entries, ...added], updatedAt: Date.now() });
+    let saved = false;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const latest = await kvReadSync(kv, code);
+      const snapshot = (latest.data ?? {}) as Record<string, unknown>;
+      const entries = Array.isArray(snapshot.entries) ? snapshot.entries as TimeEntry[] : [];
+      const ids = new Set(entries.map(e => e.id));
+      saved = await kvCompareAndSetSync(kv, code, {
+        ...snapshot, entries: [...entries, ...added.filter(e => !ids.has(e.id))], updatedAt: Date.now(),
+      }, latest.revision);
+      if (saved) break;
+    }
+    if (!saved) throw new Error("concurrent_changes");
   } catch {
     return NextResponse.json({ ok: false, message: "写入云端失败" }, { status: 502 });
   }

@@ -2321,7 +2321,7 @@ export default function TodoApp() {
         type="button"
         data-no-tab-swipe
         onClick={() => setIsSyncOpen(true)}
-        aria-label="多设备同步"
+        aria-label={sync.status === "conflict" ? "同步有冲突，点击选择保留的版本" : "多设备同步"}
         className="fixed bottom-4 right-4 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-[var(--color-border)] bg-white shadow-[0_2px_10px_rgba(0,0,0,0.12)] transition-colors hover:bg-[var(--color-bg-gray-light)] sm:bottom-auto sm:top-4"
       >
         {sync.status === "syncing" ? (
@@ -2330,7 +2330,7 @@ export default function TodoApp() {
           <Cloud
             className={[
               "w-5 h-5",
-              sync.status === "error" || sync.status === "not_configured"
+              sync.status === "error" || sync.status === "not_configured" || sync.status === "conflict"
                 ? "text-[var(--color-danger)]"
                 : "text-[var(--color-primary)]",
             ].join(" ")}
@@ -2341,6 +2341,7 @@ export default function TodoApp() {
         {sync.code && sync.status === "synced" && (
           <span className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-[var(--color-success)] border border-white" />
         )}
+        {sync.status === "conflict" && <span className="absolute -top-2 right-0 whitespace-nowrap rounded bg-[var(--color-danger-light)] px-1 text-[10px] text-[var(--color-danger)]">待确认</span>}
       </button>
 
       <SyncModal
@@ -2352,6 +2353,9 @@ export default function TodoApp() {
         onConnect={sync.setCode}
         onDisconnect={sync.disconnect}
         onRefresh={sync.refresh}
+        conflicts={sync.conflicts}
+        taskTitles={Object.fromEntries(tasks.map(task => [task.id, task.title]))}
+        onResolveConflict={sync.resolveConflict}
       />
     </main>
   );

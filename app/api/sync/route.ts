@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { kvConfig, kvGetSync, kvSetSync } from "@/components/todo/kv";
+import { kvConfig, kvReadSync, kvCompareAndSetSync } from "@/components/todo/kv";
 
 // 同步码云存储：把 { tasks, entries } 整体 JSON 存在键值库里，用同步码当 key。
 // 环境变量：KV_REST_API_URL / KV_REST_API_TOKEN（Vercel KV / Upstash，见 .env.local.example）
@@ -15,8 +15,7 @@ export async function GET(req: Request) {
   if (!CODE_RE.test(code)) return NextResponse.json({ error: "bad_code" }, { status: 400 });
 
   try {
-    const data = await kvGetSync(kv, code);
-    return NextResponse.json({ data });
+    return NextResponse.json(await kvReadSync(kv, code));
   } catch {
     return NextResponse.json({ error: "sync_read_failed" }, { status: 502 });
   }
@@ -28,17 +27,26 @@ export async function POST(req: Request) {
 
   let code: string;
   let payload: unknown;
+  let revision: string | null;
   try {
     const body = await req.json();
     code = String(body.code ?? "");
     payload = body.payload;
+    // Old open tabs must refresh: allowing blind snapshot writes would undo the fix.
+    if (!(body.expectedRevision === null || (typeof body.expectedRevision === "string" && /^[a-f0-9]{40}$/.test(body.expectedRevision)))) {
+      return NextResponse.json({ error: "refresh_required" }, { status: 428 });
+    }
+    revision = body.expectedRevision;
   } catch {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
   }
   if (!CODE_RE.test(code)) return NextResponse.json({ error: "bad_code" }, { status: 400 });
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return NextResponse.json({ error: "bad_payload" }, { status: 400 });
 
   try {
-    await kvSetSync(kv, code, payload);
+    if (!await kvCompareAndSetSync(kv, code, payload, revision)) {
+      return NextResponse.json({ error: "revision_changed" }, { status: 409 });
+    }
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: "sync_write_failed" }, { status: 502 });
