@@ -179,7 +179,6 @@ export default function AddTaskModal({ mode, isOpen, onClose, onSubmit, selected
 
   // Generate week days for the picker
   const pickerDays = Array.from({ length: 7 }).map((_, i) => addDays(pickerWeekStart, i));
-  const weekEndDate = addDays(pickerWeekStart, 6);
   const weekLabel = `${pickerWeekStart.getFullYear()}年 第${getWeekNumber(pickerWeekStart)}周`;
 
   return (

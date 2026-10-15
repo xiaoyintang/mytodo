@@ -956,10 +956,10 @@ export default function GoalsView({
                 <p className="text-[12px] leading-relaxed text-[var(--color-text-secondary)]">
                   <strong>1. 先写下一个目标</strong>
                   <br />
-                  就是那种你想要、但没法直接"去做"的事：<em>想早点睡</em>、<em>想瘦下来</em>、
+                  就是那种你想要、但没法直接“去做”的事：<em>想早点睡</em>、<em>想瘦下来</em>、
                   <em>想把自媒体做起来</em>、<em>想考上研</em>。
                   <br />
-                  这些都不是行为——你没法执行一句"想早点睡"，所以要先生成一些可能的行为方案。
+                  这些都不是行为——你没法执行一句“想早点睡”，所以要先生成一些可能的行为方案。
                   <br />
                   <br />
                   <strong>2. 目标复杂时，先分关键结果</strong>

@@ -16,7 +16,6 @@ export function useLocalStorageState<T>(key: string, initialValue: T) {
     } finally {
       setHydrated(true);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   useEffect(() => {

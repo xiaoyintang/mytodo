@@ -18,7 +18,7 @@ import { CN_WEEKDAY, addDays, parseISODate, startOfWeek } from "@/components/tod
 import { formatMinutes, taskLoggedMinutes } from "@/components/todo/time";
 import { goalColor, mainlinesOf } from "@/components/todo/goal";
 import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
-import { CalendarDays, Check, ChevronDown, ChevronRight, LayoutTemplate, ListChecks, Timer, X } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, ChevronRight, LayoutTemplate, ListChecks, Timer } from "lucide-react";
 import TaskQuickActions from "@/components/TaskQuickActions";
 import TaskCopyDialog from "@/components/TaskCopyDialog";
 import TaskTitleEditor from "@/components/TaskTitleEditor";
