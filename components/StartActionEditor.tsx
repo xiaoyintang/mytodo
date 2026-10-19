@@ -141,7 +141,7 @@ export default function StartActionEditor({
       </span>
       <div className="min-w-0 flex-1 basis-[55%]">
         <span className="text-[12px] font-semibold text-[var(--color-primary)]">
-          {started ? "已经启动" : "先只做"}
+          {started ? "启动成功 · 这就算赢" : "先只做"}
         </span>
         <p
           className={[

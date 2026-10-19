@@ -47,11 +47,12 @@ import { useTimer } from "@/components/todo/useTimer";
 import { matchTaskByTitle } from "@/components/todo/time";
 import { reassignTaskEntries } from "@/components/todo/entryHistory";
 import { copyTaskToDates } from "@/components/todo/taskCopy";
+import { newlyStartedAction, startWinsOn } from "@/components/todo/startWin";
 import {
   instantiateTemplateTasks,
   tasksToTemplateItems,
 } from "@/components/todo/taskTemplate";
-import { Cloud, CloudOff, House, RefreshCw } from "lucide-react";
+import { Check, Cloud, CloudOff, House, RefreshCw } from "lucide-react";
 
 const STORAGE_KEY = "mytodo.tasks.v1";
 const ENTRIES_KEY = "mytodo.entries.v1";
@@ -453,6 +454,8 @@ export default function TodoApp() {
   const [isTemplateOpen, setIsTemplateOpen] = useState(false);
   // Immediate feedback is session-only, separate from the persisted undo receipts.
   const [templateFeedback, setTemplateFeedback] = useState<{ batchId: string; expiresAt: number } | null>(null);
+  // 最小启动做完就当场庆祝：福格说习惯靠"做完那一下的情绪"养成，不靠勾选状态。
+  const [startWin, setStartWin] = useState<{ title: string; count: number; expiresAt: number } | null>(null);
   const [isSyncOpen, setIsSyncOpen] = useState(false);
   // 时间记录撤回栈：每次用户改动记录前先存一份快照，最多留 30 步
   const [entriesHistory, setEntriesHistory] = useState<TimeEntry[][]>([]);
@@ -834,6 +837,14 @@ export default function TodoApp() {
     if (updates.date && task) {
       const date = updates.date;
       setDayPlans((prev) => moveDailyFocus(prev, task, date, options?.restoreDailyFocus));
+    }
+    if (task) {
+      const updated = { ...task, ...updates };
+      const started = newlyStartedAction(task, updated);
+      if (started) {
+        const count = startWinsOn(updated.date, tasks.map((t) => (t.id === taskId ? updated : t)));
+        setStartWin({ title: started.title, count, expiresAt: Date.now() + 6000 });
+      }
     }
     setTasks((prev) =>
       prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t))
@@ -2289,6 +2300,25 @@ export default function TodoApp() {
         onApply={applyTaskTemplate}
         batchHistory={dayTemplateBatches.length ? <TemplateBatchNotice batches={dayTemplateBatches} onToggle={toggleTemplateBatch} /> : undefined}
       />
+
+      {startWin && <TransientNotice key={startWin.expiresAt}
+        expiresAt={startWin.expiresAt} onDismiss={() => setStartWin(null)}
+        contextKey={`${viewMode}:${selectedDate}:${goalsOpen}`}
+        className="fixed bottom-16 left-1/2 z-[140] w-[min(400px,calc(100vw-24px))] -translate-x-1/2 rounded-xl border border-[var(--color-success)] bg-[var(--color-success-light)] py-1 pl-3 pr-1 shadow-lg">
+        <div className="flex items-center gap-2.5">
+          <span className="daily-focus-sparkle flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-success)] text-white">
+            <Check className="h-4 w-4" strokeWidth={3} />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-[13px] font-semibold text-[var(--color-text-primary)]">
+              启动成功 · {startWin.title}
+            </p>
+            <p className="text-[11px] leading-4 text-[var(--color-text-secondary)]">
+              今天第 {startWin.count} 次启动 · 到这就算赢，多做是加分
+            </p>
+          </div>
+        </div>
+      </TransientNotice>}
 
       {templateFeedback && feedbackBatch && <TransientNotice key={templateFeedback.expiresAt}
         expiresAt={templateFeedback.expiresAt} onDismiss={() => setTemplateFeedback(null)}

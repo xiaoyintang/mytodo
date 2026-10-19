@@ -27,6 +27,7 @@ import TaskScheduleDialog, { type TaskSchedule } from "@/components/TaskSchedule
 import TaskBottomSheet from "@/components/TaskBottomSheet";
 import DailyFocusSection from "@/components/DailyFocusSection";
 import { dailyFocusTask } from "@/components/todo/dailyFocus";
+import { hasStartWin } from "@/components/todo/startWin";
 import QuickAddTask from "@/components/QuickAddTask";
 import MainlineBar from "@/components/MainlineBar";
 import { AppHeader, AppShell, MonthDatePicker, ViewTabs, WeekDateStrip } from "@/components/ViewChrome";
@@ -305,7 +306,8 @@ export default function TodoDayView({
       !!t.tag ||
       !!t.notes?.length ||
       isHigh ||
-      logged > 0;
+      logged > 0 ||
+      hasStartWin(t);
 
     return (
       <div key={t.id} className={t.id === keyTask?.id ? `rounded-lg ${isDone ? "bg-[var(--color-success-light)]" : "bg-[var(--color-focus-light)]"}` : isInProgress ? "bg-[#F8FBFF]" : "bg-white"}>
@@ -337,6 +339,7 @@ export default function TodoDayView({
             {hasMeta && (
               <div className="pointer-events-none relative z-10 mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] leading-4 [&_button]:pointer-events-auto">
                 {t.id === keyTask?.id && <span className={`font-semibold ${isDone ? "text-[var(--color-success)]" : "text-[var(--color-focus)]"}`}>关键任务</span>}
+                {hasStartWin(t) && <span className="inline-flex items-center gap-0.5 font-medium text-[var(--color-success)]"><Check className="h-2.5 w-2.5" strokeWidth={3} />已启动</span>}
                 {showTime && time && (
                   <button type="button" aria-label={`修改时间：${t.title}`} onClick={(event) => {
                     event.stopPropagation();
