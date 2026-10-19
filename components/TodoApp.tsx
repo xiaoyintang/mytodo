@@ -36,7 +36,7 @@ import type {
 import { toISODate, parseISODate, addDays, startOfWeek, useToday } from "@/components/todo/date";
 import { useLocalStorageState } from "@/components/todo/storage";
 import { useCloudSync } from "@/components/todo/sync";
-import { nextGoalColor } from "@/components/todo/goal";
+import { goalColor, nextGoalColor } from "@/components/todo/goal";
 import { clearDailyFocus, moveDailyFocus, setDailyFocus } from "@/components/todo/dailyFocus";
 import { isRepeatable } from "@/components/todo/behavior";
 import type {
@@ -48,11 +48,14 @@ import { matchTaskByTitle } from "@/components/todo/time";
 import { reassignTaskEntries } from "@/components/todo/entryHistory";
 import { copyTaskToDates } from "@/components/todo/taskCopy";
 import { newlyStartedAction, startWinsOn } from "@/components/todo/startWin";
+import { goalLevels, goalXp, levelOf, type XpData } from "@/components/todo/goalXp";
+import WinNotice, { type Win } from "@/components/WinNotice";
+import { GoalLevelContext } from "@/components/todo/goalLevelContext";
 import {
   instantiateTemplateTasks,
   tasksToTemplateItems,
 } from "@/components/todo/taskTemplate";
-import { Check, Cloud, CloudOff, House, RefreshCw } from "lucide-react";
+import { Cloud, CloudOff, House, RefreshCw } from "lucide-react";
 
 const STORAGE_KEY = "mytodo.tasks.v1";
 const ENTRIES_KEY = "mytodo.entries.v1";
@@ -308,6 +311,43 @@ const STATUS_CYCLE: Record<TaskStatus, TaskStatus> = {
   done: "todo",
 };
 
+function applySubtaskPatch(t: Task, fn: (list: SubTask[]) => SubTask[]): Task {
+  let subtasks = fn(t.subtasks ?? []);
+  // 打勾直接带动任务状态，不让你再手动同步一次：
+  // 全勾完 = done，勾了一部分 = 进行中，全清空 = 回待办。
+  // 反向也成立（取消勾选会退回进行中），所以点错了不会卡住
+  let status = t.status;
+  if (subtasks.length > 0) {
+    const n = subtasks.filter((x) => x.done).length;
+    status = n === subtasks.length ? "done" : n > 0 ? "in_progress" : "todo";
+  }
+  const progress = t.targetMinutes
+    ? t.progress
+    : subtasks.length > 0
+      ? Math.round((subtasks.filter((x) => x.done).length / subtasks.length) * 100)
+      : t.progress;
+  let startAction =
+    t.startAction?.targetStepId &&
+    !subtasks.some((subtask) => subtask.id === t.startAction?.targetStepId)
+      ? { ...t.startAction, targetStepId: undefined }
+      : t.startAction;
+  if (startAction?.kind === "minimum" && subtasks.length > 0) {
+    const targetId = subtasks.some((subtask) => subtask.id === startAction?.targetStepId)
+      ? startAction.targetStepId
+      : subtasks[0].id;
+    subtasks = subtasks.map((subtask) =>
+      subtask.id === targetId && !subtask.startAction
+        ? {
+            ...subtask,
+            startAction: { ...startAction!, targetStepId: subtask.id },
+          }
+        : subtask,
+    );
+    startAction = undefined;
+  }
+  return { ...t, subtasks, startAction, status, progress };
+}
+
 export default function TodoApp() {
   // 活的"今天"：跨零点会自己跳。写死成 useMemo(..., []) 踩过坑，见 useToday 注释
   const todayIso = useToday();
@@ -455,7 +495,7 @@ export default function TodoApp() {
   // Immediate feedback is session-only, separate from the persisted undo receipts.
   const [templateFeedback, setTemplateFeedback] = useState<{ batchId: string; expiresAt: number } | null>(null);
   // 最小启动做完就当场庆祝：福格说习惯靠"做完那一下的情绪"养成，不靠勾选状态。
-  const [startWin, setStartWin] = useState<{ title: string; count: number; expiresAt: number } | null>(null);
+  const [win, setWin] = useState<Win | null>(null);
   const [isSyncOpen, setIsSyncOpen] = useState(false);
   // 时间记录撤回栈：每次用户改动记录前先存一份快照，最多留 30 步
   const [entriesHistory, setEntriesHistory] = useState<TimeEntry[][]>([]);
@@ -587,17 +627,48 @@ export default function TodoApp() {
   // Toggle task status: todo → in_progress → done → todo
   // 非时长目标任务：状态与手动进度联动（完成=100% 待办=0% 进行中保持原值）
   function cycleTaskStatus(taskId: string) {
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id !== taskId) return t;
-        const next = STATUS_CYCLE[t.status];
-        if (t.targetMinutes) return { ...t, status: next };
-        let progress = t.progress;
-        if (next === "done") progress = 100;
-        else if (next === "todo") progress = 0;
-        return { ...t, status: next, progress };
-      }),
-    );
+    const cycle = (t: Task): Task => {
+      const next = STATUS_CYCLE[t.status];
+      if (t.targetMinutes) return { ...t, status: next };
+      let progress = t.progress;
+      if (next === "done") progress = 100;
+      else if (next === "todo") progress = 0;
+      return { ...t, status: next, progress };
+    };
+    const before = tasks.find((t) => t.id === taskId);
+    if (before) celebrateTask(before, cycle(before));
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? cycle(t) : t)));
+  }
+
+  /** 挂了目标就带上"这个目标涨到哪了"；没挂目标只有启动和打卡才庆祝，免得每勾一件杂事都弹。 */
+  function goalWin(goalId: string | undefined, next: Partial<XpData>): Win["goal"] {
+    const goalIndex = aspirations.findIndex((goal) => goal.id === goalId);
+    if (!goalId || goalIndex < 0) return undefined;
+    const current: XpData = { tasks, habits, habitLogs, entries };
+    return {
+      title: aspirations[goalIndex].title,
+      color: goalColor(aspirations[goalIndex], goalIndex),
+      before: levelOf(goalXp(goalId, current)),
+      after: levelOf(goalXp(goalId, { ...current, ...next })),
+    };
+  }
+
+  // 副作用在 setState 外面算（见 CLAUDE.md useTimer 硬规矩），这里只读当前快照。
+  function celebrateTask(before: Task, after: Task) {
+    const nextTasks = tasks.map((t) => (t.id === after.id ? after : t));
+    const started = newlyStartedAction(before, after);
+    const finished = before.status !== "done" && after.status === "done";
+    const doneSteps = new Set((before.subtasks ?? []).filter((step) => step.done).map((step) => step.id));
+    const step = (after.subtasks ?? []).find((candidate) => candidate.done && !doneSteps.has(candidate.id));
+    const goal = goalWin(after.aspirationId, { tasks: nextTasks });
+    const expiresAt = Date.now() + 6000;
+    if (finished && goal) setWin({ headline: `完成 · ${after.title}`, goal, expiresAt });
+    else if (started) setWin({
+      headline: `启动成功 · ${started.title}`,
+      detail: `今天第 ${startWinsOn(after.date, nextTasks)} 次启动 · 到这就算赢，多做是加分`,
+      goal, expiresAt,
+    });
+    else if (step && goal) setWin({ headline: `完成一步 · ${step.title}`, goal, expiresAt });
   }
 
   // Create new task
@@ -713,45 +784,9 @@ export default function TodoApp() {
   // **不要求一次拆完**：加一条做一条也行。完整拆解本身就是会把人劝退的负担。
 
   function patchSubtasks(taskId: string, fn: (list: SubTask[]) => SubTask[]) {
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id !== taskId) return t;
-        let subtasks = fn(t.subtasks ?? []);
-        // 打勾直接带动任务状态，不让你再手动同步一次：
-        // 全勾完 = done，勾了一部分 = 进行中，全清空 = 回待办。
-        // 反向也成立（取消勾选会退回进行中），所以点错了不会卡住
-        let status = t.status;
-        if (subtasks.length > 0) {
-          const n = subtasks.filter((x) => x.done).length;
-          status = n === subtasks.length ? "done" : n > 0 ? "in_progress" : "todo";
-        }
-        const progress = t.targetMinutes
-          ? t.progress
-          : subtasks.length > 0
-            ? Math.round((subtasks.filter((x) => x.done).length / subtasks.length) * 100)
-            : t.progress;
-        let startAction =
-          t.startAction?.targetStepId &&
-          !subtasks.some((subtask) => subtask.id === t.startAction?.targetStepId)
-            ? { ...t.startAction, targetStepId: undefined }
-            : t.startAction;
-        if (startAction?.kind === "minimum" && subtasks.length > 0) {
-          const targetId = subtasks.some((subtask) => subtask.id === startAction?.targetStepId)
-            ? startAction.targetStepId
-            : subtasks[0].id;
-          subtasks = subtasks.map((subtask) =>
-            subtask.id === targetId && !subtask.startAction
-              ? {
-                  ...subtask,
-                  startAction: { ...startAction!, targetStepId: subtask.id },
-                }
-              : subtask,
-          );
-          startAction = undefined;
-        }
-        return { ...t, subtasks, startAction, status, progress };
-      }),
-    );
+    const before = tasks.find((t) => t.id === taskId);
+    if (before) celebrateTask(before, applySubtaskPatch(before, fn));
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? applySubtaskPatch(t, fn) : t)));
   }
 
   function addSubtasks(taskId: string, titles: string[], beforeSubtaskId?: string) {
@@ -838,14 +873,7 @@ export default function TodoApp() {
       const date = updates.date;
       setDayPlans((prev) => moveDailyFocus(prev, task, date, options?.restoreDailyFocus));
     }
-    if (task) {
-      const updated = { ...task, ...updates };
-      const started = newlyStartedAction(task, updated);
-      if (started) {
-        const count = startWinsOn(updated.date, tasks.map((t) => (t.id === taskId ? updated : t)));
-        setStartWin({ title: started.title, count, expiresAt: Date.now() + 6000 });
-      }
-    }
+    if (task) celebrateTask(task, { ...task, ...updates });
     setTasks((prev) =>
       prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t))
     );
@@ -1694,6 +1722,7 @@ export default function TodoApp() {
       date: toISODate(d) as ISODate,
       at: `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`,
     };
+    // 打卡的庆祝由 HabitTracker 自己的卡片负责（带等级），这里不再叠一层提示。
     setHabitLogs((prev) => [...prev, log]);
     return log.id;
   }
@@ -2088,7 +2117,13 @@ export default function TodoApp() {
     changeViewMode(WORKSPACE_TABS[next]);
   }
 
+  const levels = useMemo(
+    () => goalLevels(safeAspirations.map((goal) => goal.id), { tasks: safeTasks, habits: safeHabits, habitLogs: safeHabitLogs, entries: safeEntries }),
+    [safeAspirations, safeTasks, safeHabits, safeHabitLogs, safeEntries],
+  );
+
   return (
+    <GoalLevelContext.Provider value={levels}>
     <main
       data-testid="workspace-swipe-surface"
       data-tab-direction={tabDirection}
@@ -2301,24 +2336,8 @@ export default function TodoApp() {
         batchHistory={dayTemplateBatches.length ? <TemplateBatchNotice batches={dayTemplateBatches} onToggle={toggleTemplateBatch} /> : undefined}
       />
 
-      {startWin && <TransientNotice key={startWin.expiresAt}
-        expiresAt={startWin.expiresAt} onDismiss={() => setStartWin(null)}
-        contextKey={`${viewMode}:${selectedDate}:${goalsOpen}`}
-        className="fixed bottom-16 left-1/2 z-[140] w-[min(400px,calc(100vw-24px))] -translate-x-1/2 rounded-xl border border-[var(--color-success)] bg-[var(--color-success-light)] py-1 pl-3 pr-1 shadow-lg">
-        <div className="flex items-center gap-2.5">
-          <span className="daily-focus-sparkle flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-success)] text-white">
-            <Check className="h-4 w-4" strokeWidth={3} />
-          </span>
-          <div className="min-w-0">
-            <p className="truncate text-[13px] font-semibold text-[var(--color-text-primary)]">
-              启动成功 · {startWin.title}
-            </p>
-            <p className="text-[11px] leading-4 text-[var(--color-text-secondary)]">
-              今天第 {startWin.count} 次启动 · 到这就算赢，多做是加分
-            </p>
-          </div>
-        </div>
-      </TransientNotice>}
+      {win && <WinNotice win={win} onDismiss={() => setWin(null)}
+        contextKey={`${viewMode}:${selectedDate}:${goalsOpen}`} />}
 
       {templateFeedback && feedbackBatch && <TransientNotice key={templateFeedback.expiresAt}
         expiresAt={templateFeedback.expiresAt} onDismiss={() => setTemplateFeedback(null)}
@@ -2388,5 +2407,6 @@ export default function TodoApp() {
         onResolveConflict={sync.resolveConflict}
       />
     </main>
+    </GoalLevelContext.Provider>
   );
 }

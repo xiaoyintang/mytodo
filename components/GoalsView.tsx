@@ -26,6 +26,8 @@ import FocusMapView from "@/components/FocusMapView";
 import GoalResultsPanel from "@/components/GoalResultsPanel";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import EdgeSwipeBack from "@/components/EdgeSwipeBack";
+import LevelBar from "@/components/LevelBar";
+import { useGoalLevels } from "@/components/todo/goalLevelContext";
 import {
   Archive,
   ArrowLeft,
@@ -187,6 +189,7 @@ export default function GoalsView({
   onUndo,
   canUndo,
 }: Props) {
+  const levels = useGoalLevels();
   const [openId, setOpenId] = useState<string | null>(initialOpenId);
   const [activeResultId, setActiveResultId] = useState<string | null>(initialOpenResultId);
   const [adding, setAdding] = useState(false);
@@ -472,6 +475,7 @@ export default function GoalsView({
   }
 
   function renderGoalCard(a: Aspiration) {
+    const level = levels[a.id];
     const archived = Boolean(a.archived);
     const originalIndex = aspirations.findIndex((item) => item.id === a.id);
     const activeIndex = activeAspirations.findIndex((item) => item.id === a.id);
@@ -552,6 +556,12 @@ export default function GoalsView({
                 >
                   {a.title}
                 </span>
+                {level && (
+                  <span className="ml-auto flex w-20 flex-shrink-0 items-center gap-1 text-[10px] font-semibold" style={{ color }}>
+                    Lv{level.level}
+                    <LevelBar level={level} color={color} className="flex-1" />
+                  </span>
+                )}
               </span>
               <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-[10px] leading-[14px]">
                 {resultCount > 0 && (

@@ -12,6 +12,8 @@ function harness(file, initialProps, fetchImpl = () => { throw new Error('Manual
     useRef(initial) { const i = cursor++; if (!(i in slots)) slots[i] = { current: initial }; return slots[i]; },
     useEffect() {},
     useMemo: fn => fn(),
+    createContext: value => ({ value }),
+    useContext: context => context.value,
   };
   function load(relative) {
     const mod = { exports: {} };

@@ -29,6 +29,9 @@ import {
   X,
 } from "lucide-react";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import LevelBar from "@/components/LevelBar";
+import { useGoalLevels } from "@/components/todo/goalLevelContext";
+import { XP } from "@/components/todo/goalXp";
 import { useLocalStorageState } from "@/components/todo/storage";
 
 type Props = {
@@ -199,6 +202,7 @@ export default function HabitTracker({
   onDeleteHabit,
   hasLogs,
 }: Props) {
+  const levels = useGoalLevels();
   const { value: collapsed, setValue: setCollapsed } = useLocalStorageState<string[]>(
     "mytodo.habitgroups.collapsed.v1",
     EMPTY_COLLAPSED,
@@ -1015,6 +1019,21 @@ export default function HabitTracker({
               <p className="mt-0.5 text-[11px] leading-relaxed text-[#3F6650]">
                 {celebration.detail}
               </p>
+              {(() => {
+                // 这一票投给了谁、它现在到哪一级：和任务完成的提示是同一套经验值。
+                const goalId = habits.find((h) => h.id === celebration.habitId)?.aspirationId;
+                const goalIndex = aspirations.findIndex((a) => a.id === goalId);
+                const level = goalId ? levels[goalId] : undefined;
+                if (!level || goalIndex < 0) return null;
+                const color = goalColor(aspirations[goalIndex], goalIndex);
+                return (
+                  <div className="mt-1 flex items-center gap-1.5 text-[11px] font-semibold">
+                    <span style={{ color }}>Lv{level.level}</span>
+                    <LevelBar level={level} color={color} className="flex-1" />
+                    <span className="text-[var(--color-success)]">+{XP.habit}</span>
+                  </div>
+                );
+              })()}
             </div>
           </div>
           <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-[#DCFCE7] pt-2.5">

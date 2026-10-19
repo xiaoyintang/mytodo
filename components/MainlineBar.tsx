@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import type { Aspiration, DayPlan, ISODate } from "@/components/todo/types";
 import { goalColor, mainlinesOf } from "@/components/todo/goal";
 import type { RunningTimer } from "@/components/todo/useTimer";
+import LevelBar from "@/components/LevelBar";
+import { useGoalLevels } from "@/components/todo/goalLevelContext";
 import { Check, ChevronRight, SlidersHorizontal, Square, Target } from "lucide-react";
 
 type Props = {
@@ -51,6 +53,7 @@ export default function MainlineBar({
   onStopTimer,
 }: Props) {
   const mains = mainlinesOf(date, dayPlans, aspirations);
+  const levels = useGoalLevels();
   const activeGoals = aspirations.filter((goal) => !goal.archived);
   const [editingDate, setEditingDate] = useState<ISODate | null>(null);
   const editing = showMainlines && editingDate === date;
@@ -115,7 +118,10 @@ export default function MainlineBar({
           <span className="flex-shrink-0 text-[9px] font-medium text-[var(--color-text-tertiary)]">主线</span>
           {mains.length > 0 ? (
             <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {mains.map((aspiration, index) => (
+              {mains.map((aspiration, index) => {
+                const color = goalColor(aspiration, aspirations.indexOf(aspiration));
+                const level = levels[aspiration.id];
+                return (
                 <button
                   key={aspiration.id}
                   type="button"
@@ -126,16 +132,23 @@ export default function MainlineBar({
                 >
                   <span
                     className="h-2 w-2 flex-shrink-0 rounded-full"
-                    style={{ backgroundColor: goalColor(aspiration, aspirations.indexOf(aspiration)) }}
+                    style={{ backgroundColor: color }}
                   />
-                  <span
-                    className="truncate text-[11px] font-semibold text-[var(--color-text-primary)]"
-                    data-full-text={aspiration.title}
-                  >
-                    {aspiration.title}
+                  <span className="flex min-w-0 flex-col">
+                    <span className="flex min-w-0 items-baseline gap-1">
+                      <span
+                        className="truncate text-[11px] font-semibold text-[var(--color-text-primary)]"
+                        data-full-text={aspiration.title}
+                      >
+                        {aspiration.title}
+                      </span>
+                      {level && <span className="flex-shrink-0 text-[9px] font-semibold" style={{ color }}>Lv{level.level}</span>}
+                    </span>
+                    {level && <LevelBar level={level} color={color} className="mt-0.5 h-[3px]" />}
                   </span>
                 </button>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <button
