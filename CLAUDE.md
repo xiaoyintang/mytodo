@@ -206,9 +206,12 @@ timing 改成看 `Habit.anchor` 字段；decision 去任务详情的「拆解」
 
 ## 关键类型（`components/todo/types.ts`）
 
-- `Task`：id, title, date, status, aspirationId?, resultId?, sourceHabitId?, sourceBehaviorId?, sourceTemplateId?, sourceTemplateItemId?,
+- `Task`：id, title, date, status, completedAt?, aspirationId?, resultId?, sourceHabitId?, sourceBehaviorId?, sourceTemplateId?, sourceTemplateItemId?,
   startTime?, endTime?, priority?, tag?, targetMinutes?, subtasks?, startAction?, progress?, notes?
-- `SubTask`：id, title, done, sourceBehaviorStepId?, startAction? —— **内嵌在 Task 里，不单开表**（跟着任务删，白捡同步）
+- `SubTask`：id, title, done, sourceBehaviorStepId?, startAction?, completedAt? —— **内嵌在 Task 里，不单开表**（跟着任务删，白捡同步）
+- `Task.completedAt` / `SubTask.completedAt`：变成完成的时刻。**只由 `stampCompletion`（`completion.ts`）统一打**——
+  TodoApp 里的 `setTasks` 是包了一层的，本机所有任务改动都经过它；云同步拉下来的数据走 `setTasksRaw`，
+  不能把别的设备的完成当成"此刻"。取消完成会清掉；2026-10-20 之前完成的老数据没有这个字段，不猜。
 - `StartAction`：kind ("minimum"；"next" 仅老数据), title, targetStepId?, done?
 - `TaskNote`：追加式随记，带现场快照 context；只属于本次任务，不进模板
 - `TaskTemplate` / `TaskTemplateItem`：模板结构，不含日期/状态

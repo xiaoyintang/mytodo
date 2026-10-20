@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import TodoDayView from "@/components/TodoDayView";
 import TodoWeekView from "@/components/TodoWeekView";
@@ -48,6 +48,7 @@ import { matchTaskByTitle } from "@/components/todo/time";
 import { reassignTaskEntries } from "@/components/todo/entryHistory";
 import { copyTaskToDates } from "@/components/todo/taskCopy";
 import { newlyStartedAction, startWinsOn } from "@/components/todo/startWin";
+import { stampCompletion } from "@/components/todo/completion";
 import { goalLevels, goalXp, levelOf, type XpData } from "@/components/todo/goalXp";
 import WinNotice, { type Win } from "@/components/WinNotice";
 import { GoalLevelContext } from "@/components/todo/goalLevelContext";
@@ -351,9 +352,16 @@ function applySubtaskPatch(t: Task, fn: (list: SubTask[]) => SubTask[]): Task {
 export default function TodoApp() {
   // 活的"今天"：跨零点会自己跳。写死成 useMemo(..., []) 踩过坑，见 useToday 注释
   const todayIso = useToday();
-  const { value: tasks, setValue: setTasks, hydrated } = useLocalStorageState<Task[]>(
+  const { value: tasks, setValue: setTasksRaw, hydrated } = useLocalStorageState<Task[]>(
     STORAGE_KEY,
     seedTasks(todayIso),
+  );
+  // 本机的每一次任务改动都经过这里，统一记下完成时刻（成长记录/项目复盘没法事后补）。
+  // 云同步拉下来的数据用 setTasksRaw，不能把别的设备的完成当成"此刻"。
+  const setTasks = useCallback(
+    (action: Task[] | ((prev: Task[]) => Task[])) =>
+      setTasksRaw((prev) => stampCompletion(prev, typeof action === "function" ? action(prev) : action)),
+    [setTasksRaw],
   );
 
   const { value: entries, setValue: setEntries, hydrated: entriesHydrated } = useLocalStorageState<TimeEntry[]>(
@@ -553,7 +561,7 @@ export default function TodoApp() {
     entries,
     lab,
     timer: timer.state,
-    setTasks: (incoming) => setTasks(incoming.map(migrateTaskStartAction)),
+    setTasks: (incoming) => setTasksRaw(incoming.map(migrateTaskStartAction)),
     setEntries,
     setLab: (patch) => {
       if (patch.aspirations) setAspirations(patch.aspirations);

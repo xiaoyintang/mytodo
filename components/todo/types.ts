@@ -24,6 +24,8 @@ export interface SubTask {
   sourceBehaviorStepId?: string;
   /** 这一步自己的最小启动；轮到该步骤时才出现，互不覆盖。 */
   startAction?: StartAction;
+  /** 勾上的时刻（ms）。取消勾选会清掉；老数据没有。成长记录与项目复盘用。 */
+  completedAt?: number;
 }
 
 /**
@@ -91,6 +93,8 @@ export interface Task {
   progress?: number;
   /** 可选的追加式随记。旧数据没有时视为空，沿用 tasks 的持久化与同步。 */
   notes?: TaskNote[];
+  /** 变成 done 的时刻（ms），由 stampCompletion 统一打；取消完成会清掉。老数据没有，不猜。 */
+  completedAt?: number;
 }
 
 /**
