@@ -7,7 +7,7 @@ import type { GoalLevel } from "./goalXp";
 export const GoalLevelContext = createContext<Record<string, GoalLevel>>({});
 export const useGoalLevels = () => useContext(GoalLevelContext);
 
-/** 每个身份下进行中的目标（有终点）的清单进度，主线条点开时显示。 */
-export type GoalSummary = { resultId: string; title: string; done: number; total: number };
+/** 每个身份下进行中的目标（有终点）的清单进度，首页「目标进度」读它。 */
+export type GoalSummary = { resultId: string; title: string; done: number; total: number; next?: string };
 export const GoalProgressContext = createContext<Record<string, GoalSummary[]>>({});
 export const useGoalProgress = () => useContext(GoalProgressContext);

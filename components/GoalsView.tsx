@@ -23,10 +23,10 @@ import type {
 import { goalColor, sortGoalResults, UNASSIGNED_RESULT_ID } from "@/components/todo/goal";
 import { formatMinutes } from "@/components/todo/time";
 import FocusMapView from "@/components/FocusMapView";
-import GoalResultsPanel from "@/components/GoalResultsPanel";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import EdgeSwipeBack from "@/components/EdgeSwipeBack";
 import GoalChecklist from "@/components/GoalChecklist";
+import type { TaskSchedule } from "@/components/TaskScheduleDialog";
 import IdentityOverview, { type Misplaced } from "@/components/IdentityOverview";
 import { goalItems, isGoalItemBehavior, resultKind, type GoalItem } from "@/components/todo/goalProgress";
 import { toISODate } from "@/components/todo/date";
@@ -104,10 +104,6 @@ type Props = {
   onRestoreGoalResult: (id: string) => void;
   onDeleteGoalResult: (id: string) => void;
   onAssignBehaviorResult: (behaviorId: string, resultId?: string) => void;
-  onApplyGoalResultStructure: (
-    aspirationId: string,
-    groups: Array<{ title: string; evidence?: string; behaviorIds: string[] }>,
-  ) => string[];
   onAddBehaviors: (
     aspirationId: string,
     items: Array<{ text: string; type?: BehaviorType; resultId?: string }>,
@@ -141,12 +137,13 @@ type Props = {
   canUndo: boolean;
   /** 有终点的目标（底层 GoalResult）= 有顺序的清单。 */
   onAddGoalItem: (resultId: string, title: string) => void;
-  onScheduleGoalItem: (behaviorId: string, date: ISODate) => void;
   onCompleteGoalItem: (item: GoalItem) => void;
   onReopenGoalItem: (item: GoalItem) => void;
   onPatchGoalResult: (id: string, patch: Partial<GoalResult>) => void;
   /** 待整理：把习惯放到某个状态 / 一次性的事放到某个目标。 */
   onPlaceInResult: (thing: Misplaced, resultId: string) => void;
+  onScheduleGoalItemWith: (item: GoalItem, schedule: TaskSchedule) => void;
+  onApplyGoalItemCheck: (results: Array<{ id: string; type: BehaviorType; reason?: string; blocker?: string }>) => void;
 };
 
 
@@ -175,7 +172,6 @@ export default function GoalsView({
   onRestoreGoalResult,
   onDeleteGoalResult,
   onAssignBehaviorResult,
-  onApplyGoalResultStructure,
   onAddBehaviors,
   onApplyAIImport,
   onApplyJudgements,
@@ -200,18 +196,18 @@ export default function GoalsView({
   onUndo,
   canUndo,
   onAddGoalItem,
-  onScheduleGoalItem,
   onCompleteGoalItem,
   onReopenGoalItem,
   onPatchGoalResult,
   onPlaceInResult,
+  onScheduleGoalItemWith,
+  onApplyGoalItemCheck,
 }: Props) {
   const levels = useGoalLevels();
   const [openId, setOpenId] = useState<string | null>(initialOpenId);
   const [activeResultId, setActiveResultId] = useState<string | null>(initialOpenResultId);
   // 焦点地图不常驻：只在给某个状态「挑新习惯」或整理没判定的想法时打开。
   const [mapFor, setMapFor] = useState<string | null>(null);
-  const [manageOpen, setManageOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newKind, setNewKind] = useState<AspirationKind>("aspiration");
@@ -519,6 +515,31 @@ export default function GoalsView({
     setGoalDropPlacement(null);
   }
 
+  /**
+   * 「检查是不是行为」：只看清单里自己写的事，是不是一个能直接做的动作，还是仍然是结果/愿望、或没有边界。
+   * 三条一批并发（同 handleRejudge 的经验：一批太大思考时间爆炸）。结果只当提示，不改类型。
+   */
+  async function checkGoalItems(goal: GoalResult): Promise<boolean> {
+    if (!open) return false;
+    const cardsToCheck = behaviors.filter((card) => card.resultId === goal.id && !card.archived && isGoalItemBehavior(card));
+    if (cardsToCheck.length === 0) return true;
+    const batches: BehaviorCard[][] = [];
+    for (let i = 0; i < cardsToCheck.length; i += 3) batches.push(cardsToCheck.slice(i, i + 3));
+    let ok = true;
+    await Promise.all(batches.map(async (batch) => {
+      const res = await callBehaviorAPI({
+        mode: "sort",
+        think: true,
+        goal: `${open.title} › ${goal.title}`,
+        items: batch.map((card) => ({ id: card.id, text: card.text })),
+      });
+      if (!res.ok) { ok = false; return; }
+      const results = Array.isArray(res.data.results) ? (res.data.results as Judgement[]) : [];
+      if (results.length) onApplyGoalItemCheck(results);
+    }));
+    return ok;
+  }
+
   function handleSelectResult(resultId: string | null) {
     if (!open) return;
     const scrollContainer = goalsScrollContainer();
@@ -741,34 +762,6 @@ export default function GoalsView({
               </span>
             </div>
 
-            {manageOpen && (
-              <div className="flex flex-col gap-1.5">
-                <button type="button" onClick={() => setManageOpen(false)}
-                  className="self-end text-[11px] text-[var(--color-primary)]">收起整理</button>
-                <GoalResultsPanel
-                  key={open.id}
-                  aspiration={open}
-                  results={openResults}
-                  archivedResults={archivedResults}
-                  cards={openCards}
-                  allCards={allOpenCards}
-                  activeResultId={resolvedResultId}
-                  onSelect={handleSelectResult}
-                  onCreate={(title, evidence, kind) => onCreateGoalResult(open.id, title, evidence, kind)}
-                  kindOf={(result) => resultKind(result, behaviors)}
-                  onUpdate={onUpdateGoalResult}
-                  onReorder={(orderedIds) => onReorderGoalResults(open.id, orderedIds)}
-                  onArchive={(id) => {
-                    if (resolvedResultId === id) handleSelectResult(null);
-                    onArchiveGoalResult(id);
-                  }}
-                  onRestore={onRestoreGoalResult}
-                  onDelete={onDeleteGoalResult}
-                  onApplyStructure={(groups) => onApplyGoalResultStructure(open.id, groups)}
-                />
-              </div>
-            )}
-
             <IdentityOverview
               key={`overview-${open.id}`}
               goals={goalList}
@@ -791,7 +784,9 @@ export default function GoalsView({
                   entries={entries}
                   today={toISODate(new Date()) as ISODate}
                   onAdd={(title) => onAddGoalItem(goal.id, title)}
-                  onSchedule={onScheduleGoalItem}
+                  onSchedule={onScheduleGoalItemWith}
+                  onRename={onEditBehaviorText}
+                  onCheck={() => checkGoalItems(goal)}
                   onComplete={onCompleteGoalItem}
                   onReopen={onReopenGoalItem}
                   onReorder={(keys) => onPatchGoalResult(goal.id, { itemOrder: keys })}
@@ -815,7 +810,10 @@ export default function GoalsView({
                 onArchiveGoalResult(id);
               }}
               onPlace={(thing, resultId) => onPlaceInResult(thing, resultId)}
-              onOpenManage={() => setManageOpen((value) => !value)}
+              archivedGoals={archivedResults.filter((result) => resultKind(result, behaviors) === "goal")}
+              archivedStates={archivedResults.filter((result) => resultKind(result, behaviors) === "state")}
+              onRestore={onRestoreGoalResult}
+              onDelete={onDeleteGoalResult}
             />
 
             {mapFor && (

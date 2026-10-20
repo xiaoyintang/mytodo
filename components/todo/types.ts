@@ -247,6 +247,11 @@ export interface BehaviorCard {
   steps?: BehaviorStep[];
   /** 完整行为/任务包的最小启动；不作为独立候选进入焦点地图评分。 */
   startAction?: StartAction;
+  /**
+   * 目标清单里「检查是不是行为」时 AI 给出的看法（只是提示，**不改 type**——清单里的事是用户自己定的）。
+   * aspiration/outcome = 还不是动作；配合 blocker="endpoint" = 没边界。改了文字就清掉。
+   */
+  checkedAs?: BehaviorType;
   /** 一次性任务排进日视图之后，关联的那个 Task 的 id */
   taskId?: string;
   /** 暂时退出焦点地图的推进项；已排任务、习惯和历史记录不受影响。 */

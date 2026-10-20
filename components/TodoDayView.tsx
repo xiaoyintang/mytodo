@@ -20,6 +20,7 @@ import { goalColor, mainlinesOf } from "@/components/todo/goal";
 import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
 import { CalendarDays, Check, ChevronDown, ChevronRight, LayoutTemplate, ListChecks, Timer } from "lucide-react";
 import TaskQuickActions from "@/components/TaskQuickActions";
+import GoalProgressStrip from "@/components/GoalProgressStrip";
 import TaskCopyDialog from "@/components/TaskCopyDialog";
 import TaskTitleEditor from "@/components/TaskTitleEditor";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -632,6 +633,7 @@ export default function TodoDayView({
             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--color-text-secondary)]" />
           </button>}
         </DailyFocusSection>
+        <GoalProgressStrip date={selectedDate} aspirations={aspirations} dayPlans={dayPlans} onOpenGoal={onOpenGoal} />
         <div className="flex items-start gap-2">
           <QuickAddTask onCreate={onCreateTask} date={selectedDate} />
           <button

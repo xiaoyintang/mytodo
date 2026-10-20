@@ -54,6 +54,7 @@ import { goalItems, goalProgress, resultKind, type GoalItem } from "@/components
 import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
 import WinNotice, { type Win } from "@/components/WinNotice";
 import type { Misplaced } from "@/components/IdentityOverview";
+import type { TaskSchedule } from "@/components/TaskScheduleDialog";
 import { GoalLevelContext, GoalProgressContext, type GoalSummary } from "@/components/todo/goalLevelContext";
 import {
   instantiateTemplateTasks,
@@ -712,12 +713,17 @@ export default function TodoApp() {
   }
 
   /** 排到某天；已经排过就是改期。status=done 用于"在清单里直接打钩 = 今天做完了"。 */
-  function scheduleGoalItem(cardId: string, date: ISODate, status: TaskStatus = "todo") {
+  function scheduleGoalItem(
+    cardId: string,
+    date: ISODate,
+    status: TaskStatus = "todo",
+    timing: Partial<Pick<Task, "startTime" | "endTime" | "targetMinutes">> = {},
+  ) {
     const card = behaviorCards.find((b) => b.id === cardId);
     if (!card) return;
     const existing = tasks.find((task) => task.id === card.taskId || task.sourceBehaviorId === cardId);
     if (existing) {
-      updateTask(existing.id, status === "done" ? { date, status, progress: existing.targetMinutes ? existing.progress : 100 } : { date });
+      updateTask(existing.id, status === "done" ? { date, status, progress: existing.targetMinutes ? existing.progress : 100 } : { date, ...timing });
       return;
     }
     const done = status === "done";
@@ -735,12 +741,30 @@ export default function TodoApp() {
       sourceBehaviorId: cardId,
       subtasks,
       startAction: instantiateStartAction(card, subtasks),
+      ...timing,
     };
     if (done) celebrateTask({ ...task, status: "todo", subtasks: instantiateBehaviorSteps(card) }, task);
     setTasks((prev) => [...prev, task]);
     snapshotLab();
     // 成果类条目一旦排进日程就是一件具体的事，类型落成一次性，避免再被当成"还不是行为"。
     setBehaviorCards((prev) => prev.map((b) => (b.id === cardId ? { ...b, taskId: task.id, type: "onetime" } : b)));
+  }
+
+  /** 清单里的排期用日视图同一个弹窗：日期 + 时间段 / 时长目标。已排过的就改那一条。 */
+  function scheduleGoalItemWith(item: GoalItem, schedule: TaskSchedule) {
+    const pending = item.tasks.find((task) => task.status !== "done") ?? item.tasks[0];
+    if (pending) updateTask(pending.id, schedule);
+    else if (item.behaviorId) scheduleGoalItem(item.behaviorId, schedule.date, "todo", schedule);
+  }
+
+  /** 「检查是不是行为」的结果只记成提示，不改类型——清单里的事是用户自己写的。 */
+  function applyGoalItemCheck(results: Array<{ id: string; type: BehaviorType; reason?: string; blocker?: string }>) {
+    const byId = new Map(results.map((result) => [result.id, result]));
+    setBehaviorCards((prev) => prev.map((card) => {
+      const result = byId.get(card.id);
+      if (!result) return card;
+      return { ...card, checkedAs: result.type, reason: result.reason, blocker: result.blocker === "endpoint" ? "endpoint" : undefined };
+    }));
   }
 
   function completeGoalItem(item: GoalItem) {
@@ -1307,53 +1331,6 @@ export default function TodoApp() {
     );
   }
 
-  /** AI 只提议结构；用户确认后才一次性建结果并给现有行为归组。 */
-  function applyGoalResultStructure(
-    aspirationId: string,
-    groups: Array<{ title: string; evidence?: string; behaviorIds: string[] }>,
-  ): string[] {
-    snapshotLab();
-    const now = Date.now();
-    const created = groups
-      .map((group, index) => ({
-        id: `gr-${now}-${index}-${Math.random().toString(36).slice(2, 7)}`,
-        aspirationId,
-        title: group.title.trim(),
-        evidence: group.evidence?.trim() || undefined,
-        createdAt: now + index,
-        behaviorIds: group.behaviorIds,
-      }))
-      .filter((group) => group.title);
-    const validBehaviorIds = new Set(
-      behaviorCards.filter((behavior) => behavior.aspirationId === aspirationId).map((behavior) => behavior.id),
-    );
-    const resultByBehavior = new Map<string, string>();
-    for (const group of created) {
-      for (const behaviorId of group.behaviorIds) {
-        if (validBehaviorIds.has(behaviorId) && !resultByBehavior.has(behaviorId)) {
-          resultByBehavior.set(behaviorId, group.id);
-        }
-      }
-    }
-    setGoalResults((prev) => [
-      ...prev,
-      ...created.map((group) => ({
-        id: group.id,
-        aspirationId: group.aspirationId,
-        title: group.title,
-        evidence: group.evidence,
-        createdAt: group.createdAt,
-      })),
-    ]);
-    setBehaviorCards((prev) =>
-      prev.map((behavior) => {
-        const resultId = resultByBehavior.get(behavior.id);
-        return resultId ? { ...behavior, resultId } : behavior;
-      }),
-    );
-    return created.map((group) => group.id);
-  }
-
   // 删愿望连它下面的行为一起删，不留孤儿卡片
   function deleteAspiration(id: string) {
     const aspirationBehaviors = behaviorCards.filter((behavior) => behavior.aspirationId === id);
@@ -1697,7 +1674,7 @@ export default function TodoApp() {
     setBehaviorCards((prev) =>
       prev.map((b) => {
         if (b.id !== id || b.text === text) return b;
-        if (b.typeSource === "user") return { ...b, text };
+        if (b.typeSource === "user") return { ...b, text, checkedAs: undefined, blocker: undefined, reason: undefined };
         return { ...b, text, type: "unsorted", typeSource: undefined, reason: undefined, blocker: undefined, hasDecision: undefined };
       }),
     );
@@ -2233,7 +2210,7 @@ export default function TodoApp() {
     for (const result of [...safeGoalResults].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))) {
       if (result.archived || result.status === "done" || resultKind(result, safeBehaviors) !== "goal") continue;
       const progress = goalProgress(goalItems(result, safeBehaviors, safeTasks));
-      (byIdentity[result.aspirationId] ??= []).push({ resultId: result.id, title: result.title, done: progress.done, total: progress.total });
+      (byIdentity[result.aspirationId] ??= []).push({ resultId: result.id, title: result.title, done: progress.done, total: progress.total, next: progress.next?.title });
     }
     return byIdentity;
   }, [safeGoalResults, safeBehaviors, safeTasks]);
@@ -2283,7 +2260,6 @@ export default function TodoApp() {
           onRestoreGoalResult={restoreGoalResult}
           onDeleteGoalResult={deleteGoalResult}
           onAssignBehaviorResult={assignBehaviorResult}
-          onApplyGoalResultStructure={applyGoalResultStructure}
           onAddBehaviors={addBehaviors}
           onApplyAIImport={applyAIHandoffImport}
           onApplyJudgements={applyJudgements}
@@ -2300,11 +2276,12 @@ export default function TodoApp() {
           onSetWeeklyLimit={setWeeklyLimit}
           onDeleteBehavior={deleteBehavior}
           onAddGoalItem={addGoalItem}
-          onScheduleGoalItem={(behaviorId, date) => scheduleGoalItem(behaviorId, date)}
           onCompleteGoalItem={completeGoalItem}
           onReopenGoalItem={reopenGoalItem}
           onPatchGoalResult={patchGoalResult}
           onPlaceInResult={placeInResult}
+          onScheduleGoalItemWith={scheduleGoalItemWith}
+          onApplyGoalItemCheck={applyGoalItemCheck}
           onDeleteBehaviors={deleteBehaviors}
           onArchiveBehavior={archiveBehavior}
           onArchiveBehaviors={archiveBehaviors}

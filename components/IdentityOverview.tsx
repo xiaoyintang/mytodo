@@ -34,7 +34,12 @@ type Props = {
   onReorder: (orderedIds: string[]) => void;
   onArchive: (id: string) => void;
   onPlace: (thing: Misplaced, resultId: string) => void;
-  onOpenManage: () => void;
+  /** 已归档的目标 / 状态，各自收在自己列表的底部。 */
+  archivedGoals: GoalResult[];
+  archivedStates: GoalResult[];
+  onRestore: (id: string) => void;
+  /** 永久删除：下面的推进项不删，回到待整理。 */
+  onDelete: (id: string) => void;
 };
 
 function Editor({ kind, initial, onSave, onCancel }: {
@@ -88,8 +93,10 @@ function Editor({ kind, initial, onSave, onCancel }: {
  */
 export default function IdentityOverview({
   goals, states, cards, habits, tasks, color, unsortedCount, misplaced, renderChecklist, mapFor, initialOpenId,
-  onOpenMap, onCreate, onUpdate, onReorder, onArchive, onPlace, onOpenManage,
+  onOpenMap, onCreate, onUpdate, onReorder, onArchive, onPlace, archivedGoals, archivedStates, onRestore, onDelete,
 }: Props) {
+  const [showArchived, setShowArchived] = useState<Kind | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(initialOpenId ?? null);
   const [editing, setEditing] = useState<string | null>(null);
   const [creating, setCreating] = useState<Kind | null>(null);
@@ -197,6 +204,7 @@ export default function IdentityOverview({
 
   function section(kind: Kind, list: GoalResult[]) {
     const isGoal = kind === "goal";
+    const archived = isGoal ? archivedGoals : archivedStates;
     return (
       <section aria-label={isGoal ? "目标" : "状态"} className="flex flex-col gap-1.5">
         <div className="flex items-center gap-2 px-0.5">
@@ -222,6 +230,35 @@ export default function IdentityOverview({
           <p className="rounded-[10px] border border-dashed border-[var(--color-border)] px-3 py-2.5 text-[11px] text-[var(--color-text-tertiary)]">
             {isGoal ? "想推进一件有终点的事（比如准备面试），点右边 ＋ 加一个目标。" : "想长期保持的状态（比如早睡早起），点右边 ＋ 加一个，再给它挑习惯。"}
           </p>
+        )}
+        {archived.length > 0 && (
+          <div className="flex flex-col gap-1 px-0.5">
+            <button type="button" onClick={() => setShowArchived(showArchived === kind ? null : kind)} aria-expanded={showArchived === kind}
+              className="flex min-h-8 items-center gap-1 self-start text-[11px] text-[var(--color-text-tertiary)]">
+              <Archive className="h-3 w-3" />已归档 {archived.length}
+              <ChevronRight className={`h-3 w-3 transition-transform ${showArchived === kind ? "rotate-90" : ""}`} />
+            </button>
+            {showArchived === kind && archived.map((result) => (
+              <div key={result.id} className="flex min-h-10 items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-gray-lighter)] px-2.5">
+                <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--color-text-secondary)]" data-full-text={result.title}>{result.title}</span>
+                {confirmDelete === result.id ? (
+                  <>
+                    <span className="text-[11px] text-[var(--color-danger)]">永久删除？下面的事会回到待整理</span>
+                    <button type="button" onClick={() => { onDelete(result.id); setConfirmDelete(null); }}
+                      className="min-h-8 rounded-md bg-[var(--color-danger)] px-2 text-[11px] font-semibold text-white">删除</button>
+                    <button type="button" onClick={() => setConfirmDelete(null)} className="min-h-8 px-1.5 text-[11px] text-[var(--color-text-secondary)]">取消</button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" onClick={() => onRestore(result.id)}
+                      className="min-h-8 rounded-md border border-[var(--color-border)] bg-white px-2 text-[11px] text-[var(--color-primary)]">恢复</button>
+                    <button type="button" onClick={() => setConfirmDelete(result.id)}
+                      className="min-h-8 px-1.5 text-[11px] text-[var(--color-text-tertiary)] hover:text-[var(--color-danger)]">删除</button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
         )}
       </section>
     );
@@ -282,10 +319,6 @@ export default function IdentityOverview({
         </section>
       )}
 
-      <button type="button" onClick={onOpenManage}
-        className="self-center text-[11px] text-[var(--color-text-tertiary)] hover:text-[var(--color-primary)]">
-        整理 · AI 检查 · 已归档
-      </button>
     </div>
   );
 }
