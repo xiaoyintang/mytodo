@@ -684,7 +684,12 @@ export default function TodoApp() {
       ...goalProgress(goalItems(result, behaviorCards, nextTasks)),
     } : undefined;
     const expiresAt = Date.now() + 6000;
-    if (finished && (goal || progress)) setWin({ headline: `完成 · ${after.title}`, goal, progress, expiresAt });
+    // 分几次做的事，做完一场不说"完成"，说清楚是第几场——这件事本身还没完。
+    const session = result ? goalItems(result, behaviorCards, nextTasks).find((item) => item.tasks.length > 1 && item.tasks.some((task) => task.id === after.id)) : undefined;
+    const headline = session && !session.done
+      ? `做完一次 · ${after.title}（${session.tasks.filter((task) => task.status === "done").length}/${session.tasks.length} 次）`
+      : `完成 · ${after.title}`;
+    if (finished && (goal || progress)) setWin({ headline, goal, progress, expiresAt });
     else if (started) setWin({
       headline: `启动成功 · ${started.title}`,
       detail: `今天第 ${startWinsOn(after.date, nextTasks)} 次启动 · 到这就算赢，多做是加分`,
@@ -757,6 +762,30 @@ export default function TodoApp() {
     else if (item.behaviorId) scheduleGoalItem(item.behaviorId, schedule.date, "todo", schedule);
   }
 
+  /** 再排一次：同一件事多加一场（分几次做 / 本来就要做几遍）。新场次和原来的归在同一件事下。 */
+  function addGoalItemSession(item: GoalItem, schedule: TaskSchedule) {
+    const base = item.tasks[0];
+    if (!base) {
+      if (item.behaviorId) scheduleGoalItem(item.behaviorId, schedule.date, "todo", schedule);
+      return;
+    }
+    const stamp = Date.now();
+    setTasks((prev) => [...prev, {
+      id: `t-${stamp}-${Math.random().toString(36).slice(2, 7)}`,
+      title: base.title,
+      date: schedule.date,
+      startTime: schedule.startTime,
+      endTime: schedule.endTime,
+      targetMinutes: schedule.targetMinutes,
+      status: "todo",
+      aspirationId: base.aspirationId,
+      resultId: base.resultId,
+      sourceBehaviorId: base.sourceBehaviorId,
+      // 每一场都是一次完整的执行：步骤重新开始，不继承上一场勾过的
+      subtasks: base.subtasks?.map((step, index) => ({ ...step, id: `st-${stamp}-${index}`, done: false, completedAt: undefined, startAction: step.startAction ? { ...step.startAction, done: false, targetStepId: `st-${stamp}-${index}` } : undefined })),
+    }]);
+  }
+
   /** 「检查是不是行为」的结果只记成提示，不改类型——清单里的事是用户自己写的。 */
   function applyGoalItemCheck(results: Array<{ id: string; type: BehaviorType; reason?: string; blocker?: string }>) {
     const byId = new Map(results.map((result) => [result.id, result]));
@@ -767,10 +796,16 @@ export default function TodoApp() {
     }));
   }
 
+  /**
+   * 打钩 = 完成**下一场**。一件事分几次做时，做完一场只勾一场；全部做完这件事才在目标进度里 +1。
+   * 曾经一次把所有场次都标完成——做了 1 场算成 3 场，经验也跟着虚涨。
+   */
   function completeGoalItem(item: GoalItem) {
-    const pending = item.tasks.filter((task) => task.status !== "done");
-    if (pending.length) {
-      pending.forEach((task) => updateTask(task.id, { status: "done", progress: task.targetMinutes ? task.progress : 100 }));
+    const next = item.tasks
+      .filter((task) => task.status !== "done")
+      .sort((a, b) => a.date.localeCompare(b.date) || (a.startTime ?? "").localeCompare(b.startTime ?? ""))[0];
+    if (next) {
+      updateTask(next.id, { status: "done", progress: next.targetMinutes ? next.progress : 100 });
     } else if (item.behaviorId) {
       scheduleGoalItem(item.behaviorId, todayIso, "done");
     }
@@ -2281,6 +2316,7 @@ export default function TodoApp() {
           onPatchGoalResult={patchGoalResult}
           onPlaceInResult={placeInResult}
           onScheduleGoalItemWith={scheduleGoalItemWith}
+          onAddGoalItemSession={addGoalItemSession}
           onApplyGoalItemCheck={applyGoalItemCheck}
           onDeleteBehaviors={deleteBehaviors}
           onArchiveBehavior={archiveBehavior}

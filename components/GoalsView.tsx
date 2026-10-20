@@ -143,6 +143,7 @@ type Props = {
   /** 待整理：把习惯放到某个状态 / 一次性的事放到某个目标。 */
   onPlaceInResult: (thing: Misplaced, resultId: string) => void;
   onScheduleGoalItemWith: (item: GoalItem, schedule: TaskSchedule) => void;
+  onAddGoalItemSession: (item: GoalItem, schedule: TaskSchedule) => void;
   onApplyGoalItemCheck: (results: Array<{ id: string; type: BehaviorType; reason?: string; blocker?: string }>) => void;
 };
 
@@ -201,6 +202,7 @@ export default function GoalsView({
   onPatchGoalResult,
   onPlaceInResult,
   onScheduleGoalItemWith,
+  onAddGoalItemSession,
   onApplyGoalItemCheck,
 }: Props) {
   const levels = useGoalLevels();
@@ -785,6 +787,7 @@ export default function GoalsView({
                   today={toISODate(new Date()) as ISODate}
                   onAdd={(title) => onAddGoalItem(goal.id, title)}
                   onSchedule={onScheduleGoalItemWith}
+                  onAddSession={onAddGoalItemSession}
                   onRename={onEditBehaviorText}
                   onCheck={() => checkGoalItems(goal)}
                   onComplete={onCompleteGoalItem}

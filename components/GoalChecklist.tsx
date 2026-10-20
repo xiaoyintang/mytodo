@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { CalendarDays, Check, ChevronDown, Flag, GripVertical, RotateCcw, Sparkles, Trash2 } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, Flag, GripVertical, Plus, RotateCcw, Sparkles, Trash2 } from "lucide-react";
 import TaskScheduleDialog, { type TaskSchedule } from "@/components/TaskScheduleDialog";
 import type { BehaviorCard, GoalResult, ISODate, Task, TimeEntry } from "@/components/todo/types";
 import { goalProgress, goalRetro, reorderGoalItems, type GoalItem } from "@/components/todo/goalProgress";
@@ -18,6 +18,8 @@ type Props = {
   onAdd: (title: string) => void;
   /** 用日视图同一个排期弹窗：日期 + 时间段 / 时长目标。 */
   onSchedule: (item: GoalItem, schedule: TaskSchedule) => void;
+  /** 再排一次：同一件事多加一场。 */
+  onAddSession: (item: GoalItem, schedule: TaskSchedule) => void;
   onRename: (behaviorId: string, text: string) => void;
   /** 检查清单里写的是不是能直接做的动作；返回 false 表示 AI 不可用。 */
   onCheck: () => Promise<boolean>;
@@ -50,10 +52,10 @@ function md(at: number): string {
  */
 export default function GoalChecklist({
   goal, color, items, behaviors, entries, today,
-  onAdd, onSchedule, onRename, onCheck, onComplete, onReopen, onReorder, onDelete, onFinish, onReopenGoal, onRetroNote,
+  onAdd, onSchedule, onAddSession, onRename, onCheck, onComplete, onReopen, onReorder, onDelete, onFinish, onReopenGoal, onRetroNote,
 }: Props) {
   const [draft, setDraft] = useState("");
-  const [scheduling, setScheduling] = useState<GoalItem | null>(null);
+  const [scheduling, setScheduling] = useState<{ item: GoalItem; another: boolean } | null>(null);
   const [renaming, setRenaming] = useState<{ key: string; text: string } | null>(null);
   const [checking, setChecking] = useState<"idle" | "busy" | "failed">("idle");
   const [showDone, setShowDone] = useState(false);
@@ -235,14 +237,20 @@ export default function GoalChecklist({
                   {(item.stepCount > 0 || item.tasks.length > 1) && (
                     <p className="text-[10px] text-[var(--color-text-tertiary)]">
                       {item.stepCount > 0 ? `${item.stepCount} 步` : ""}
-                      {item.tasks.length > 1 ? `${item.stepCount > 0 ? " · " : ""}分 ${item.tasks.length} 次做` : ""}
+                      {item.tasks.length > 1 ? `${item.stepCount > 0 ? " · " : ""}已做 ${item.tasks.filter((task) => task.status === "done").length}/${item.tasks.length} 次` : ""}
                     </p>
                   )}
                 </div>
-                <button type="button" onClick={() => setScheduling(item)} aria-label={`${label ? "改期" : "排到某天"}：${item.title}`}
+                <button type="button" onClick={() => setScheduling({ item, another: false })} aria-label={`${label ? "改期" : "排到某天"}：${item.title}`}
                   className={`flex min-h-8 flex-shrink-0 items-center gap-1 rounded-md px-1.5 text-[11px] ${label ? "text-[var(--color-text-secondary)]" : "text-[var(--color-primary)]"} hover:bg-[var(--color-bg-gray-light)]`}>
                   <CalendarDays className="h-3 w-3" />{label ? `${label}${item.tasks.find((task) => task.status !== "done")?.startTime ? ` ${item.tasks.find((task) => task.status !== "done")!.startTime}` : ""}` : "排期"}
                 </button>
+                {item.tasks.length > 0 && (
+                  <button type="button" onClick={() => setScheduling({ item, another: true })} aria-label={`再排一次：${item.title}`}
+                    className="flex h-8 w-7 flex-shrink-0 items-center justify-center rounded-md text-[var(--color-text-tertiary)] hover:bg-[var(--color-bg-gray-light)] hover:text-[var(--color-primary)]">
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                )}
                 {item.behaviorId && item.tasks.length === 0 && (
                   <button type="button" onClick={() => onDelete(item.behaviorId!)} aria-label={`删除：${item.title}`}
                     className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-[var(--color-text-tertiary)] hover:text-[var(--color-danger)]">
@@ -293,8 +301,9 @@ export default function GoalChecklist({
         </div>
       )}
       {scheduling && (
-        <TaskScheduleDialog key={scheduling.key} task={draftTask(scheduling)} today={today} focusTime={false}
-          onApply={(schedule) => { onSchedule(scheduling, schedule); setScheduling(null); }}
+        <TaskScheduleDialog key={`${scheduling.item.key}-${scheduling.another}`} today={today} focusTime={false}
+          task={scheduling.another ? { id: `draft-${scheduling.item.key}`, title: `${scheduling.item.title}（再排一次）`, date: today, status: "todo" } : draftTask(scheduling.item)}
+          onApply={(schedule) => { (scheduling.another ? onAddSession : onSchedule)(scheduling.item, schedule); setScheduling(null); }}
           onClose={() => setScheduling(null)} />
       )}
     </section>
