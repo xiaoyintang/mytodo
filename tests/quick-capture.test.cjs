@@ -130,7 +130,10 @@ test('mainline empty action edits current day, excludes archive, respects cap; g
   h.render({ dayPlans: { [date]: { date, primaryAspirationIds: ['0', '1', '2'] } } });
   choices = h.nodes().filter(n => n.type === 'button' && n.props['aria-pressed'] !== undefined);
   assert.equal(choices[3].props.disabled, true); assert.equal(choices[0].props.disabled, false);
-  h.click('打开主线 1：甲'); assert.deepEqual(calls[1], ['open', '0']);
+  // 点主线身份一律先弹目标进度面板（不管有没有目标），从面板里再进身份页。
+  h.click('打开主线 1：甲'); assert.equal(calls.length, 1);
+  assert.ok(h.nodes().some(n => n.type === 'section' && n.props['aria-label'] === '甲的目标进度'));
+  h.click('打开「甲」'); assert.deepEqual(calls[1], ['open', '0']);
   h.render({ date: '2026-09-25' }); assert.ok(!h.nodes().some(n => n.type === 'section'));
 });
 
