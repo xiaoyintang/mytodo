@@ -280,13 +280,13 @@ export default function HabitTracker({
         title: result.title,
         result,
         items: items
-          .filter((habit) => behaviorOf(habit)?.resultId === result.id)
+          .filter((habit) => (habit.resultId ?? behaviorOf(habit)?.resultId) === result.id)
           .sort(compareByFocusScore),
       }))
       .filter((group) => group.items.length > 0);
     const direct = items
       .filter((habit) => {
-        const resultId = behaviorOf(habit)?.resultId;
+        const resultId = habit.resultId ?? behaviorOf(habit)?.resultId;
         return !resultId || !resultIds.has(resultId);
       })
       .sort(compareByFocusScore);

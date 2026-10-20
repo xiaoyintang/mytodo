@@ -14,7 +14,7 @@ import type {
   StartAction,
   Task,
 } from "@/components/todo/types";
-import { guessMeasure, pendingJudgement } from "@/components/todo/behavior";
+import { guessMeasure, isRepeatable, pendingJudgement } from "@/components/todo/behavior";
 import { callBehaviorAPI } from "@/components/todo/behaviorApi";
 import type {
   AIBehaviorImportApply,
@@ -27,6 +27,7 @@ import GoalResultsPanel from "@/components/GoalResultsPanel";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import EdgeSwipeBack from "@/components/EdgeSwipeBack";
 import GoalChecklist from "@/components/GoalChecklist";
+import IdentityOverview, { type Misplaced } from "@/components/IdentityOverview";
 import { goalItems, isGoalItemBehavior, resultKind, type GoalItem } from "@/components/todo/goalProgress";
 import { toISODate } from "@/components/todo/date";
 import LevelBar from "@/components/LevelBar";
@@ -144,6 +145,8 @@ type Props = {
   onCompleteGoalItem: (item: GoalItem) => void;
   onReopenGoalItem: (item: GoalItem) => void;
   onPatchGoalResult: (id: string, patch: Partial<GoalResult>) => void;
+  /** 待整理：把习惯放到某个状态 / 一次性的事放到某个目标。 */
+  onPlaceInResult: (thing: Misplaced, resultId: string) => void;
 };
 
 
@@ -201,10 +204,14 @@ export default function GoalsView({
   onCompleteGoalItem,
   onReopenGoalItem,
   onPatchGoalResult,
+  onPlaceInResult,
 }: Props) {
   const levels = useGoalLevels();
   const [openId, setOpenId] = useState<string | null>(initialOpenId);
   const [activeResultId, setActiveResultId] = useState<string | null>(initialOpenResultId);
+  // 焦点地图不常驻：只在给某个状态「挑新习惯」或整理没判定的想法时打开。
+  const [mapFor, setMapFor] = useState<string | null>(null);
+  const [manageOpen, setManageOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newKind, setNewKind] = useState<AspirationKind>("aspiration");
@@ -276,7 +283,26 @@ export default function GoalsView({
   const selectedResult = openResults.find((result) => result.id === resolvedResultId) ?? null;
   // 目标（要达成）→ 清单；状态（要保持）→ 下面挂习惯，用焦点地图挑。两者同级。
   const selectedKind = selectedResult ? resultKind(selectedResult, behaviors) : null;
-  const focusCards =
+  const goalList = openResults.filter((result) => resultKind(result, behaviors) === "goal");
+  const stateList = openResults.filter((result) => resultKind(result, behaviors) === "state");
+  const stateIdSet = new Set(stateList.map((result) => result.id));
+  const goalIdSet = new Set(goalList.map((result) => result.id));
+  const habitStateId = (habit: Habit) => habit.resultId ?? behaviors.find((card) => card.id === habit.behaviorId)?.resultId;
+  // 规则写死：习惯只在状态下、一次性的事只在目标下。放错的集中到「待整理」，由用户选，不替他猜。
+  const identityHabits = open ? habits.filter((habit) => !habit.archived && habit.aspirationId === open.id) : [];
+  const misplaced: Misplaced[] = [
+    ...identityHabits
+      .filter((habit) => !stateIdSet.has(habitStateId(habit) ?? "") && !archivedResultIds.has(habitStateId(habit) ?? ""))
+      .map((habit) => ({ type: "habit" as const, habitId: habit.id, cardId: habit.behaviorId, title: habit.title })),
+    ...openCards
+      .filter((card) => isRepeatable(card.type) && !identityHabits.some((habit) => habit.behaviorId === card.id) && !stateIdSet.has(card.resultId ?? ""))
+      .map((card) => ({ type: "candidate" as const, cardId: card.id, title: card.text })),
+    ...openCards
+      .filter((card) => isGoalItemBehavior(card) && !goalIdSet.has(card.resultId ?? ""))
+      .map((card) => ({ type: "item" as const, cardId: card.id, title: card.text })),
+  ];
+  const unsortedCards = openCards.filter((card) => (card.type === "unsorted" || card.type === "aspiration") && !stateIdSet.has(card.resultId ?? ""));
+  const focusCards = mapFor === "unsorted" ? unsortedCards :
     openResults.length === 0 || resolvedResultId === null
       ? openCards
       : resolvedResultId === UNASSIGNED_RESULT_ID
@@ -715,164 +741,94 @@ export default function GoalsView({
               </span>
             </div>
 
-            <GoalResultsPanel
-              key={open.id}
-              aspiration={open}
-              results={openResults}
-              archivedResults={archivedResults}
+            {manageOpen && (
+              <div className="flex flex-col gap-1.5">
+                <button type="button" onClick={() => setManageOpen(false)}
+                  className="self-end text-[11px] text-[var(--color-primary)]">收起整理</button>
+                <GoalResultsPanel
+                  key={open.id}
+                  aspiration={open}
+                  results={openResults}
+                  archivedResults={archivedResults}
+                  cards={openCards}
+                  allCards={allOpenCards}
+                  activeResultId={resolvedResultId}
+                  onSelect={handleSelectResult}
+                  onCreate={(title, evidence, kind) => onCreateGoalResult(open.id, title, evidence, kind)}
+                  kindOf={(result) => resultKind(result, behaviors)}
+                  onUpdate={onUpdateGoalResult}
+                  onReorder={(orderedIds) => onReorderGoalResults(open.id, orderedIds)}
+                  onArchive={(id) => {
+                    if (resolvedResultId === id) handleSelectResult(null);
+                    onArchiveGoalResult(id);
+                  }}
+                  onRestore={onRestoreGoalResult}
+                  onDelete={onDeleteGoalResult}
+                  onApplyStructure={(groups) => onApplyGoalResultStructure(open.id, groups)}
+                />
+              </div>
+            )}
+
+            <IdentityOverview
+              key={`overview-${open.id}`}
+              goals={goalList}
+              states={stateList}
               cards={openCards}
-              allCards={allOpenCards}
-              activeResultId={resolvedResultId}
-              onSelect={handleSelectResult}
+              habits={identityHabits}
+              tasks={tasks}
+              color={goalColor(open, aspirations.indexOf(open))}
+              unsortedCount={unsortedCards.length}
+              misplaced={misplaced}
+              initialOpenId={initialOpenResultId}
+              mapFor={mapFor}
+              renderChecklist={(goal) => (
+                <GoalChecklist
+                  key={`checklist-${goal.id}`}
+                  goal={goal}
+                  color={goalColor(open, aspirations.indexOf(open))}
+                  items={goalItems(goal, behaviors, tasks)}
+                  behaviors={behaviors}
+                  entries={entries}
+                  today={toISODate(new Date()) as ISODate}
+                  onAdd={(title) => onAddGoalItem(goal.id, title)}
+                  onSchedule={onScheduleGoalItem}
+                  onComplete={onCompleteGoalItem}
+                  onReopen={onReopenGoalItem}
+                  onReorder={(keys) => onPatchGoalResult(goal.id, { itemOrder: keys })}
+                  onDelete={onDeleteBehavior}
+                  onFinish={() => onPatchGoalResult(goal.id, { status: "done", doneAt: Date.now() })}
+                  onReopenGoal={() => onPatchGoalResult(goal.id, { status: "active", doneAt: undefined })}
+                  onRetroNote={(note) => onPatchGoalResult(goal.id, { retroNote: note || undefined })}
+                />
+              )}
+              onOpenMap={(target) => {
+                setMapFor(target);
+                if (target === "unsorted") handleSelectResult(UNASSIGNED_RESULT_ID);
+                else if (target) handleSelectResult(target);
+                if (target) requestAnimationFrame(() => document.getElementById("identity-focus-map")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+              }}
               onCreate={(title, evidence, kind) => onCreateGoalResult(open.id, title, evidence, kind)}
-              kindOf={(result) => resultKind(result, behaviors)}
               onUpdate={onUpdateGoalResult}
               onReorder={(orderedIds) => onReorderGoalResults(open.id, orderedIds)}
               onArchive={(id) => {
-                if (resolvedResultId === id) handleSelectResult(null);
+                if (mapFor === id) setMapFor(null);
                 onArchiveGoalResult(id);
               }}
-              onRestore={onRestoreGoalResult}
-              onDelete={onDeleteGoalResult}
-              onApplyStructure={(groups) => onApplyGoalResultStructure(open.id, groups)}
+              onPlace={(thing, resultId) => onPlaceInResult(thing, resultId)}
+              onOpenManage={() => setManageOpen((value) => !value)}
             />
 
-            {openResults.length > 0 && (
-              <nav
-                data-testid="sticky-result-nav"
-                className="sticky top-0 z-30 -mx-6 flex items-center gap-2 border-y border-[var(--color-border)] bg-white/95 px-6 py-2 shadow-[0_4px_12px_rgba(0,0,0,0.04)] backdrop-blur-md"
-                aria-label="快速切换目标和状态"
-              >
-                <span className="flex-shrink-0 text-[10px] font-semibold text-[var(--color-text-tertiary)]">
-                  切换
-                </span>
-                <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  <button
-                    type="button"
-                    onClick={() => handleSelectResult(null)}
-                    aria-pressed={resolvedResultId === null}
-                    className={[
-                      "flex h-7 flex-shrink-0 items-center rounded-full border px-2.5 text-[10px] font-medium transition-colors",
-                      resolvedResultId === null
-                        ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
-                        : "border-[var(--color-border)] bg-white text-[var(--color-text-secondary)] hover:border-[var(--color-primary)]",
-                    ].join(" ")}
-                  >
-                    全局
-                    <span className={resolvedResultId === null ? "ml-1 text-white/75" : "ml-1 text-[var(--color-text-tertiary)]"}>
-                      {openCards.length}
-                    </span>
-                  </button>
-                  {[...openResults]
-                    .sort((a, b) => Number(resultKind(a, behaviors) === "state") - Number(resultKind(b, behaviors) === "state"))
-                    .map((result) => {
-                    const active = resolvedResultId === result.id;
-                    const isState = resultKind(result, behaviors) === "state";
-                    const items = isState ? [] : goalItems(result, behaviors, tasks);
-                    const badge = isState
-                      ? String(openCards.filter((card) => card.resultId === result.id).length)
-                      : result.status === "done" ? "✓" : `${items.filter((item) => item.done).length}/${items.length}`;
-                    return (
-                      <button
-                        key={result.id}
-                        type="button"
-                        onClick={() => handleSelectResult(result.id)}
-                        aria-pressed={active}
-                        className={[
-                          "flex h-7 max-w-[220px] flex-shrink-0 items-center rounded-full border px-2.5 text-[10px] font-medium transition-colors",
-                          active
-                            ? isState ? "border-[#059669] bg-[#059669] text-white" : "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
-                            : isState ? "border-[#A7F3D0] bg-white text-[#047857] hover:border-[#059669]" : "border-[var(--color-border)] bg-white text-[var(--color-text-secondary)] hover:border-[var(--color-primary)]",
-                        ].join(" ")}
-                        data-full-text={`${isState ? "状态" : "目标"}：${result.title}`}
-                      >
-                        <span className="mr-1 flex-shrink-0 opacity-70">{isState ? "状态" : "目标"}</span>
-                        <span className="truncate">{result.title}</span>
-                        <span className={active ? "ml-1 flex-shrink-0 tabular-nums text-white/75" : "ml-1 flex-shrink-0 tabular-nums text-[var(--color-text-tertiary)]"}>
-                          {badge}
-                        </span>
-                      </button>
-                    );
-                  })}
-                  {unassignedCards.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => handleSelectResult(UNASSIGNED_RESULT_ID)}
-                      aria-pressed={resolvedResultId === UNASSIGNED_RESULT_ID}
-                      className={[
-                        "flex h-7 flex-shrink-0 items-center rounded-full border px-2.5 text-[10px] font-medium transition-colors",
-                        resolvedResultId === UNASSIGNED_RESULT_ID
-                          ? "border-[#EA580C] bg-[#EA580C] text-white"
-                          : "border-[#FDBA74] bg-white text-[#C2410C] hover:bg-[#FFF7ED]",
-                      ].join(" ")}
-                    >
-                      未归属
-                      <span className="ml-1 opacity-75">{unassignedCards.length}</span>
-                    </button>
-                  )}
-                </div>
-              </nav>
-            )}
-
-            {!selectedResult && <div
-              className={`rounded-[10px] border px-3 py-2 ${
-                resolvedResultId === UNASSIGNED_RESULT_ID
-                  ? "border-[#FDBA74] bg-[#FFF7ED]"
-                  : "border-[#BFDBFE] bg-[#F8FAFF]"
-              }`}
-            >
-              <p className="text-[11px] font-semibold text-[var(--color-text-primary)]">
-                {openResults.length === 0
-                  ? "还没有目标 · 所有推进项共用一张图"
-                  : resolvedResultId === UNASSIGNED_RESULT_ID
-                    ? "未归属推进项 · 先决定它们属于哪个目标"
-                    : "身份全局 · 先看全部推进项"}
-              </p>
-              <p className="mt-0.5 text-[10px] leading-relaxed text-[var(--color-text-tertiary)]">
-                {openResults.length === 0
-                  ? "想推进一件有终点的事时，加一个目标，它会变成一张有顺序的清单。"
-                  : resolvedResultId === null
-                    ? "这里先看全部推进项；选择一个目标后，看它的清单和进度。"
-                    : "拖进某个目标后，就会出现在它的清单里。"}
-              </p>
-            </div>}
-
-            {selectedResult && selectedKind === "goal" && (
-              <GoalChecklist
-                key={`checklist-${selectedResult.id}`}
-                goal={selectedResult}
-                color={goalColor(open, aspirations.indexOf(open))}
-                items={goalItems(selectedResult, behaviors, tasks)}
-                behaviors={behaviors}
-                entries={entries}
-                today={toISODate(new Date()) as ISODate}
-                onAdd={(title) => onAddGoalItem(selectedResult.id, title)}
-                onSchedule={onScheduleGoalItem}
-                onComplete={onCompleteGoalItem}
-                onReopen={onReopenGoalItem}
-                onReorder={(keys) => onPatchGoalResult(selectedResult.id, { itemOrder: keys })}
-                onDelete={onDeleteBehavior}
-                onFinish={() => onPatchGoalResult(selectedResult.id, { status: "done", doneAt: Date.now() })}
-                onReopenGoal={() => onPatchGoalResult(selectedResult.id, { status: "active", doneAt: undefined })}
-                onRetroNote={(note) => onPatchGoalResult(selectedResult.id, { retroNote: note || undefined })}
-              />
-            )}
-            {selectedResult && selectedKind === "state" && (
-              <div className="rounded-[10px] border border-[#A7F3D0] bg-[#F0FDF4] px-3 py-2">
-                <p className="text-[11px] font-semibold text-[#047857]">状态 · {selectedResult.title}</p>
-                <p className="mt-0.5 text-[10px] leading-relaxed text-[#3F6650]">
-                  {selectedResult.evidence ? `怎样算保持住：${selectedResult.evidence}。` : ""}
-                  靠习惯维持：在下面脑暴候选、拖两根滑块，右上角的那几条加入习惯表。
+            {mapFor && (
+              <div id="identity-focus-map" className="flex scroll-mt-4 items-center gap-2 rounded-[10px] border border-[#A7F3D0] bg-[#F0FDF4] px-3 py-2">
+                <p className="min-w-0 flex-1 text-[12px] font-semibold text-[#047857]">
+                  {mapFor === "unsorted" ? "整理没判定过的想法" : `给「${selectedResult?.title ?? ""}」挑习惯`}
+                  <span className="ml-1.5 font-normal text-[#3F6650]">脑暴候选、拖两根滑块，右上角的加入习惯表</span>
                 </p>
+                <button type="button" onClick={() => setMapFor(null)} className="flex-shrink-0 text-[11px] text-[#047857]">收起</button>
               </div>
             )}
-            {selectedResult && selectedKind === "goal" && focusCards.length > 0 && (
-              <p className="-mb-2 mt-1 text-[11px] font-semibold text-[var(--color-text-secondary)]">
-                这个目标下还有 {focusCards.length} 条可重复的行为 · 习惯更适合放到某个「状态」下
-              </p>
-            )}
 
-            {!(selectedKind === "goal" && focusCards.length === 0) && <FocusMapView
+            {mapFor && <FocusMapView
               key={resolvedResultId ?? "direct"}
               aspiration={open}
               focusTitle={selectedResult?.title ?? open.title}

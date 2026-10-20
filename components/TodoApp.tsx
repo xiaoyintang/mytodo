@@ -53,6 +53,7 @@ import { goalLevels, goalXp, levelOf, type XpData } from "@/components/todo/goal
 import { goalItems, goalProgress, resultKind, type GoalItem } from "@/components/todo/goalProgress";
 import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
 import WinNotice, { type Win } from "@/components/WinNotice";
+import type { Misplaced } from "@/components/IdentityOverview";
 import { GoalLevelContext, GoalProgressContext, type GoalSummary } from "@/components/todo/goalLevelContext";
 import {
   instantiateTemplateTasks,
@@ -757,6 +758,17 @@ export default function TodoApp() {
       .filter((task) => task.status === "done")
       .sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0) || b.date.localeCompare(a.date))[0];
     if (last) updateTask(last.id, { status: "in_progress", progress: last.targetMinutes ? last.progress : undefined });
+  }
+
+  /** 待整理归位：有来源行为的改行为的 resultId（习惯页分组跟着走）；没有来源行为的习惯直接记在习惯上。 */
+  function placeInResult(thing: Misplaced, resultId: string) {
+    if (thing.cardId) {
+      assignBehaviorResult(thing.cardId, resultId);
+      return;
+    }
+    if (thing.type === "habit") {
+      setHabits((prev) => prev.map((habit) => (habit.id === thing.habitId ? { ...habit, resultId } : habit)));
+    }
   }
 
   function patchGoalResult(id: string, patch: Partial<GoalResult>) {
@@ -2292,6 +2304,7 @@ export default function TodoApp() {
           onCompleteGoalItem={completeGoalItem}
           onReopenGoalItem={reopenGoalItem}
           onPatchGoalResult={patchGoalResult}
+          onPlaceInResult={placeInResult}
           onDeleteBehaviors={deleteBehaviors}
           onArchiveBehavior={archiveBehavior}
           onArchiveBehaviors={archiveBehaviors}

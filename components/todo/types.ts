@@ -270,7 +270,9 @@ export interface Habit {
   anchor?: string;
   measure: HabitMeasure;
   behaviorId?: string; // 来自哪条黄金行为
-  aspirationId?: string; // 属于哪个愿望
+  aspirationId?: string; // 属于哪个身份
+  /** 属于哪个「状态」（GoalResult kind=state）。有来源行为时以行为的 resultId 为准，这里只给没有来源行为的习惯用。 */
+  resultId?: string;
   createdAt: number;
   archived?: boolean;
 }
