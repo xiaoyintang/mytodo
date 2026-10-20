@@ -50,8 +50,10 @@ import { copyTaskToDates } from "@/components/todo/taskCopy";
 import { newlyStartedAction, startWinsOn } from "@/components/todo/startWin";
 import { stampCompletion } from "@/components/todo/completion";
 import { goalLevels, goalXp, levelOf, type XpData } from "@/components/todo/goalXp";
+import { goalItems, goalProgress, type GoalItem } from "@/components/todo/goalProgress";
+import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
 import WinNotice, { type Win } from "@/components/WinNotice";
-import { GoalLevelContext } from "@/components/todo/goalLevelContext";
+import { GoalLevelContext, GoalProgressContext, type GoalSummary } from "@/components/todo/goalLevelContext";
 import {
   instantiateTemplateTasks,
   tasksToTemplateItems,
@@ -663,20 +665,103 @@ export default function TodoApp() {
 
   // 副作用在 setState 外面算（见 CLAUDE.md useTimer 硬规矩），这里只读当前快照。
   function celebrateTask(before: Task, after: Task) {
-    const nextTasks = tasks.map((t) => (t.id === after.id ? after : t));
+    const nextTasks = tasks.some((t) => t.id === after.id)
+      ? tasks.map((t) => (t.id === after.id ? after : t))
+      : [...tasks, after];
     const started = newlyStartedAction(before, after);
     const finished = before.status !== "done" && after.status === "done";
     const doneSteps = new Set((before.subtasks ?? []).filter((step) => step.done).map((step) => step.id));
     const step = (after.subtasks ?? []).find((candidate) => candidate.done && !doneSteps.has(candidate.id));
     const goal = goalWin(after.aspirationId, { tasks: nextTasks });
+    // 属于某个「目标」（有终点）时，提示里优先给出具体进度 6/12，比等级更说得清"往前走了多少"。
+    const result = resolveTaskGoalResult(after, goalResults, behaviorCards, habits);
+    const goalIndex = aspirations.findIndex((a) => a.id === after.aspirationId);
+    const progress = result ? {
+      title: result.title,
+      color: goalIndex >= 0 ? goalColor(aspirations[goalIndex], goalIndex) : "var(--color-primary)",
+      ...goalProgress(goalItems(result, behaviorCards, nextTasks)),
+    } : undefined;
     const expiresAt = Date.now() + 6000;
-    if (finished && goal) setWin({ headline: `完成 · ${after.title}`, goal, expiresAt });
+    if (finished && (goal || progress)) setWin({ headline: `完成 · ${after.title}`, goal, progress, expiresAt });
     else if (started) setWin({
       headline: `启动成功 · ${started.title}`,
       detail: `今天第 ${startWinsOn(after.date, nextTasks)} 次启动 · 到这就算赢，多做是加分`,
       goal, expiresAt,
     });
     else if (step && goal) setWin({ headline: `完成一步 · ${step.title}`, goal, expiresAt });
+  }
+
+  // ===== 目标清单（有终点的目标 = 有顺序的清单，见 10-身份与目标规格.md）=====
+
+  /** 收集即存：回车就加进清单，不调 AI、不问类型（铁律：收集与整理分离）。 */
+  function addGoalItem(resultId: string, title: string) {
+    const result = goalResults.find((r) => r.id === resultId);
+    const text = title.trim();
+    if (!result || !text) return;
+    snapshotLab();
+    setBehaviorCards((prev) => [...prev, {
+      id: `b-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      aspirationId: result.aspirationId,
+      resultId,
+      text,
+      type: "onetime",
+      typeSource: "user",
+      createdAt: Date.now(),
+    }]);
+  }
+
+  /** 排到某天；已经排过就是改期。status=done 用于"在清单里直接打钩 = 今天做完了"。 */
+  function scheduleGoalItem(cardId: string, date: ISODate, status: TaskStatus = "todo") {
+    const card = behaviorCards.find((b) => b.id === cardId);
+    if (!card) return;
+    const existing = tasks.find((task) => task.id === card.taskId || task.sourceBehaviorId === cardId);
+    if (existing) {
+      updateTask(existing.id, status === "done" ? { date, status, progress: existing.targetMinutes ? existing.progress : 100 } : { date });
+      return;
+    }
+    const done = status === "done";
+    const subtasks = instantiateBehaviorSteps(card)?.map((step) => (done ? { ...step, done: true, completedAt: Date.now() } : step));
+    const task: Task = {
+      id: `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      title: card.text,
+      date,
+      status,
+      progress: done ? 100 : undefined,
+      // 新建即完成：stampCompletion 不给新任务猜时间，这里是确实"此刻做完"，自己记上。
+      completedAt: done ? Date.now() : undefined,
+      aspirationId: card.aspirationId,
+      resultId: card.resultId,
+      sourceBehaviorId: cardId,
+      subtasks,
+      startAction: instantiateStartAction(card, subtasks),
+    };
+    if (done) celebrateTask({ ...task, status: "todo", subtasks: instantiateBehaviorSteps(card) }, task);
+    setTasks((prev) => [...prev, task]);
+    snapshotLab();
+    // 成果类条目一旦排进日程就是一件具体的事，类型落成一次性，避免再被当成"还不是行为"。
+    setBehaviorCards((prev) => prev.map((b) => (b.id === cardId ? { ...b, taskId: task.id, type: "onetime" } : b)));
+  }
+
+  function completeGoalItem(item: GoalItem) {
+    const pending = item.tasks.filter((task) => task.status !== "done");
+    if (pending.length) {
+      pending.forEach((task) => updateTask(task.id, { status: "done", progress: task.targetMinutes ? task.progress : 100 }));
+    } else if (item.behaviorId) {
+      scheduleGoalItem(item.behaviorId, todayIso, "done");
+    }
+  }
+
+  /** 点错了取消：只重新打开最后完成的那一次，分几次做的其余场次不动。 */
+  function reopenGoalItem(item: GoalItem) {
+    const last = item.tasks
+      .filter((task) => task.status === "done")
+      .sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0) || b.date.localeCompare(a.date))[0];
+    if (last) updateTask(last.id, { status: "in_progress", progress: last.targetMinutes ? last.progress : undefined });
+  }
+
+  function patchGoalResult(id: string, patch: Partial<GoalResult>) {
+    snapshotLab();
+    setGoalResults((prev) => prev.map((result) => (result.id === id ? { ...result, ...patch } : result)));
   }
 
   // Create new task
@@ -2129,9 +2214,19 @@ export default function TodoApp() {
     () => goalLevels(safeAspirations.map((goal) => goal.id), { tasks: safeTasks, habits: safeHabits, habitLogs: safeHabitLogs, entries: safeEntries }),
     [safeAspirations, safeTasks, safeHabits, safeHabitLogs, safeEntries],
   );
+  const goalSummaries = useMemo(() => {
+    const byIdentity: Record<string, GoalSummary[]> = {};
+    for (const result of [...safeGoalResults].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))) {
+      if (result.archived || result.status === "done") continue;
+      const progress = goalProgress(goalItems(result, safeBehaviors, safeTasks));
+      (byIdentity[result.aspirationId] ??= []).push({ resultId: result.id, title: result.title, done: progress.done, total: progress.total });
+    }
+    return byIdentity;
+  }, [safeGoalResults, safeBehaviors, safeTasks]);
 
   return (
     <GoalLevelContext.Provider value={levels}>
+    <GoalProgressContext.Provider value={goalSummaries}>
     <main
       data-testid="workspace-swipe-surface"
       data-tab-direction={tabDirection}
@@ -2190,6 +2285,11 @@ export default function TodoApp() {
           onResetBehaviorAxes={resetBehaviorAxes}
           onSetWeeklyLimit={setWeeklyLimit}
           onDeleteBehavior={deleteBehavior}
+          onAddGoalItem={addGoalItem}
+          onScheduleGoalItem={(behaviorId, date) => scheduleGoalItem(behaviorId, date)}
+          onCompleteGoalItem={completeGoalItem}
+          onReopenGoalItem={reopenGoalItem}
+          onPatchGoalResult={patchGoalResult}
           onDeleteBehaviors={deleteBehaviors}
           onArchiveBehavior={archiveBehavior}
           onArchiveBehaviors={archiveBehaviors}
@@ -2415,6 +2515,7 @@ export default function TodoApp() {
         onResolveConflict={sync.resolveConflict}
       />
     </main>
+    </GoalProgressContext.Provider>
     </GoalLevelContext.Provider>
   );
 }

@@ -164,7 +164,7 @@ export default function HabitLabView({
               想到什么直接往上面那个框里写。
               <br />
               不过真要挑该养哪几个，习惯不是想出来的、是<strong>筛出来的</strong>——
-              点上面那条「今天主线」进目标，把行为都倒进去，排一遍焦点地图，
+              点上面那条「今天主线」进身份，把行为都倒进去，排一遍焦点地图，
               落在右上角的才配占你一个格子。
             </p>
             <button
@@ -172,7 +172,7 @@ export default function HabitLabView({
               onClick={onOpenGoals}
               className="self-start px-3 py-1.5 rounded-lg bg-[var(--color-primary)] text-white text-[13px] font-medium hover:bg-[#1d4ed8] transition-colors"
             >
-              去目标 →
+              去身份 →
             </button>
           </div>
         )}

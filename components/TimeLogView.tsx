@@ -65,7 +65,7 @@ type Props = {
   dayPlans: Record<string, DayPlan>;
   onOpenGoals: () => void;
   onToggleMainline: (date: ISODate, aspirationId: string) => void;
-  onOpenGoal: (aspirationId: string) => void;
+  onOpenGoal: (aspirationId: string, resultId?: string) => void;
   running: { title: string; startedAt: number } | null;
   elapsedMs: number;
   onStopTimer: () => void;
@@ -1001,7 +1001,7 @@ export default function TimeLogView({
                                   backgroundColor: gi >= 0 ? `${c}14` : "var(--color-bg-gray-light)",
                                   color: gi >= 0 ? c : "var(--color-text-tertiary)",
                                 }}
-                                title="算哪个目标的投入？点一下改"
+                                title="算哪个身份的投入？点一下改"
                               >
                                 <span
                                   className="w-1.5 h-1.5 rounded-full"

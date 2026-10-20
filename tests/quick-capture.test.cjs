@@ -137,7 +137,7 @@ test('mainline empty action edits current day, excludes archive, respects cap; g
 test('no active goals guides to goals rather than an unusable selector', () => {
   const calls = []; const h = harness('components/MainlineBar.tsx', { date: '2026-09-21', aspirations: [], dayPlans: {}, running: null,
     onOpenGoals: () => calls.push('goals') });
-  h.click('还没有目标，先建一个'); assert.deepEqual(calls, ['goals']);
+  h.click('还没有身份，先建一个'); assert.deepEqual(calls, ['goals']);
 });
 
 test('week header hides daily mainlines, preserving goals and timer; week planner uses viewed week', () => {
@@ -154,7 +154,7 @@ test('week header hides daily mainlines, preserving goals and timer; week planne
     assert.ok(!h.nodes().some(n => n.props['aria-label']?.startsWith('打开主线')));
     assert.ok(!h.nodes().some(n => n.type === 'section'));
   }
-  h.click('打开我的目标');
+  h.click('打开我的身份');
   h.nodes().find(n => n.props.onClick === base.onStopTimer).props.onClick();
   assert.deepEqual(calls, ['goals', 'stop']);
   const week = harness('components/TodoWeekView.tsx', { selectedDate: '2026-10-05', today: '2026-09-21',

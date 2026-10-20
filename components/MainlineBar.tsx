@@ -5,7 +5,7 @@ import type { Aspiration, DayPlan, ISODate } from "@/components/todo/types";
 import { goalColor, mainlinesOf } from "@/components/todo/goal";
 import type { RunningTimer } from "@/components/todo/useTimer";
 import LevelBar from "@/components/LevelBar";
-import { useGoalLevels } from "@/components/todo/goalLevelContext";
+import { useGoalLevels, useGoalProgress } from "@/components/todo/goalLevelContext";
 import { Check, ChevronRight, SlidersHorizontal, Square, Target } from "lucide-react";
 
 type Props = {
@@ -14,7 +14,7 @@ type Props = {
   aspirations: Aspiration[];
   dayPlans: Record<string, DayPlan>;
   onOpenGoals: () => void;
-  onOpenGoal: (aspirationId: string) => void;
+  onOpenGoal: (aspirationId: string, resultId?: string) => void;
   onToggleMainline: (date: ISODate, aspirationId: string) => void;
   /** 周视图通过下方七天规划管理主线，顶部仅保留目标入口和计时。 */
   showMainlines?: boolean;
@@ -54,18 +54,22 @@ export default function MainlineBar({
 }: Props) {
   const mains = mainlinesOf(date, dayPlans, aspirations);
   const levels = useGoalLevels();
+  const goalProgress = useGoalProgress();
+  // 点主线身份：有进行中的目标就先摊开看进度（主线条太窄放不下），没有就直接进身份页。
+  const [peekId, setPeekId] = useState<string | null>(null);
+  const peeking = showMainlines ? mains.find((goal) => goal.id === peekId) : undefined;
   const activeGoals = aspirations.filter((goal) => !goal.archived);
   const [editingDate, setEditingDate] = useState<ISODate | null>(null);
   const editing = showMainlines && editingDate === date;
   const rootRef = useRef<HTMLDivElement>(null);
   const editButtonRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    if (!editing) return;
+    if (!editing && !peeking) return;
     function closeOutside(event: PointerEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) setEditingDate(null);
+      if (!rootRef.current?.contains(event.target as Node)) { setEditingDate(null); setPeekId(null); }
     }
     function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") { setEditingDate(null); editButtonRef.current?.focus(); }
+      if (event.key === "Escape") { setEditingDate(null); setPeekId(null); editButtonRef.current?.focus(); }
     }
     document.addEventListener("pointerdown", closeOutside);
     document.addEventListener("keydown", closeOnEscape);
@@ -73,8 +77,8 @@ export default function MainlineBar({
       document.removeEventListener("pointerdown", closeOutside);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [editing]);
-  useEffect(() => { setEditingDate(null); }, [date]);
+  }, [editing, peeking]);
+  useEffect(() => { setEditingDate(null); setPeekId(null); }, [date]);
 
   return (
     <div ref={rootRef} className="flex w-full flex-col gap-1.5 px-[18px] pb-2">
@@ -107,10 +111,10 @@ export default function MainlineBar({
           type="button"
           onClick={onOpenGoals}
           className="flex flex-shrink-0 items-center gap-1 rounded-lg border border-[var(--color-border)] bg-white px-2 py-1.5 text-[10px] font-semibold text-[var(--color-text-secondary)] transition-colors hover:border-[#BFDBFE] hover:bg-[var(--color-primary-light)] hover:text-[var(--color-primary)]"
-          aria-label="打开我的目标"
+          aria-label="打开我的身份"
         >
           <Target className="h-3 w-3 text-[var(--color-primary)]" />
-          我的目标
+          我的身份
           <ChevronRight className="h-3 w-3" />
         </button>
 
@@ -125,7 +129,11 @@ export default function MainlineBar({
                 <button
                   key={aspiration.id}
                   type="button"
-                  onClick={() => onOpenGoal(aspiration.id)}
+                  onClick={() => {
+                    if (goalProgress[aspiration.id]?.length) { setEditingDate(null); setPeekId(peekId === aspiration.id ? null : aspiration.id); }
+                    else onOpenGoal(aspiration.id);
+                  }}
+                  aria-expanded={goalProgress[aspiration.id]?.length ? peekId === aspiration.id : undefined}
                   className="flex max-w-[138px] flex-shrink-0 items-center gap-1 rounded-md bg-white px-1.5 py-1 text-left transition-colors hover:bg-[var(--color-primary-light)]"
                   aria-label={`打开主线 ${index + 1}：${aspiration.title}`}
                   title={`直接从「${aspiration.title}」的焦点地图选择行动`}
@@ -158,7 +166,7 @@ export default function MainlineBar({
               onClick={() => activeGoals.length ? setEditingDate(editing ? null : date) : onOpenGoals()}
               className="min-w-0 flex-1 truncate text-left text-[10px] text-[var(--color-text-secondary)] hover:text-[var(--color-primary)]"
             >
-              {activeGoals.length ? "选择当天主线" : "还没有目标，先建一个"}
+              {activeGoals.length ? "选择当天主线" : "还没有身份，先建一个"}
             </button>
           )}
           {mains.length > 0 && <button type="button" ref={editButtonRef}
@@ -169,6 +177,32 @@ export default function MainlineBar({
           </button>}
         </div>}
       </div>
+      {peeking && !editing && (() => {
+        const color = goalColor(peeking, aspirations.indexOf(peeking));
+        return (
+          <section aria-label={`${peeking.title}的目标进度`} data-no-tab-swipe
+            className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-white)] p-2">
+            <ul className="flex flex-col">
+              {(goalProgress[peeking.id] ?? []).map((goal) => (
+                <li key={goal.resultId}>
+                  <button type="button" onClick={() => { setPeekId(null); onOpenGoal(peeking.id, goal.resultId); }}
+                    className="flex min-h-10 w-full items-center gap-2 rounded-md px-1.5 text-left hover:bg-[var(--color-bg-gray-light)]">
+                    <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--color-text-primary)]" data-full-text={goal.title}>{goal.title}</span>
+                    <span className="block h-1 w-16 flex-shrink-0 overflow-hidden rounded-full bg-[var(--color-bg-gray-light)]">
+                      <span className="block h-full rounded-full" style={{ width: `${goal.total ? (goal.done / goal.total) * 100 : 0}%`, backgroundColor: color }} />
+                    </span>
+                    <span className="w-9 flex-shrink-0 text-right text-[11px] font-semibold tabular-nums text-[var(--color-text-secondary)]">{goal.done}/{goal.total}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <button type="button" onClick={() => { setPeekId(null); onOpenGoal(peeking.id); }}
+              className="mt-1 flex min-h-9 w-full items-center justify-end gap-0.5 px-1.5 text-[11px] text-[var(--color-primary)]">
+              打开「{peeking.title}」<ChevronRight className="h-3 w-3" />
+            </button>
+          </section>
+        );
+      })()}
       {editing && <section aria-label="选择当天主线" data-no-tab-swipe
         className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-white)] p-3">
         <div className="mb-2 flex items-center justify-between gap-2">
@@ -189,7 +223,7 @@ export default function MainlineBar({
           })}
         </div>
         <div className="mt-2 flex items-center justify-between gap-2">
-          <span className="text-[10px] text-[var(--color-text-tertiary)]">{mains.length >= 3 ? "已选满，取消一个即可换入其他目标" : "只影响这一天，周视图会同步更新"}</span>
+          <span className="text-[10px] text-[var(--color-text-tertiary)]">{mains.length >= 3 ? "已选满，取消一个即可换入其他身份" : "只影响这一天，周视图会同步更新"}</span>
           <button type="button" onClick={() => { setEditingDate(null); editButtonRef.current?.focus(); }}
             className="min-h-8 shrink-0 rounded-md px-2 text-[12px] font-medium text-[var(--color-primary)] hover:bg-[var(--color-primary-light)]">完成</button>
         </div>

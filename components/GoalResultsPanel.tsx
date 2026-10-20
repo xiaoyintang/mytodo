@@ -6,6 +6,7 @@ import { isActionable, isGolden } from "@/components/todo/behavior";
 import { UNASSIGNED_RESULT_ID } from "@/components/todo/goal";
 import { callBehaviorAPI } from "@/components/todo/behaviorApi";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { useGoalProgress } from "@/components/todo/goalLevelContext";
 import {
   Archive,
   ArchiveRestore,
@@ -141,6 +142,7 @@ export default function GoalResultsPanel({
   onDelete,
   onApplyStructure,
 }: Props) {
+  const goalProgressByIdentity = useGoalProgress();
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [title, setTitle] = useState("");
   const [evidence, setEvidence] = useState("");
@@ -286,7 +288,7 @@ export default function GoalResultsPanel({
     if (!response.ok) {
       setSuggestionNote(
         response.noKey
-          ? "还没有配置 AI，可以先手动添加关键结果"
+          ? "还没有配置 AI，可以先手动添加目标"
           : "AI 暂时没响应，已有内容没有变化",
       );
       return;
@@ -296,7 +298,7 @@ export default function GoalResultsPanel({
     if (parsed.length === 0) {
       setSuggestionNote(
         summary || (mode === "review"
-          ? "暂时没有发现必须调整的关键结果"
+          ? "暂时没有发现必须调整的目标"
           : "这次没有生成可靠建议，可以重试或手动添加"),
       );
       return;
@@ -399,14 +401,14 @@ export default function GoalResultsPanel({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">
-              关键结果 {results.length > 0 ? results.length : ""}
+              目标 {results.length > 0 ? results.length : ""}
             </span>
             <span className="rounded-full bg-white px-1.5 py-0.5 text-[9px] text-[var(--color-text-tertiary)]">
-              可选层
+              有终点
             </span>
           </div>
           <p className="mt-0.5 text-[10px] leading-relaxed text-[var(--color-text-tertiary)]">
-            先说明什么变化算推进；越靠前优先级越高，可拖动调整
+            想完成的几件事，各自一张清单；越靠前越先做，可拖动调整
           </p>
         </div>
         <button
@@ -437,8 +439,8 @@ export default function GoalResultsPanel({
           </p>
           <p className="mt-0.5 text-[10px] leading-relaxed text-[var(--color-text-tertiary)]">
             {cards.length > 0
-              ? `${cards.length} 条推进项暂时共用一张焦点地图。可以先从目标想结果，也可以把已有内容反向整理。`
-              : "简单目标可以保持这样；目标变复杂时再增加结果层。"}
+              ? `${cards.length} 条推进项暂时共用一张焦点地图。可以按"要达成哪几件有终点的事"分成目标，也可以把已有内容反向整理。`
+              : "想推进一件有终点的事（比如准备面试），就加一个目标，它会变成一张有顺序的清单。"}
           </p>
           {cards.length > 0 && (
             <button
@@ -468,7 +470,7 @@ export default function GoalResultsPanel({
                 AI 提议了 {suggestions.length} 条结果变更
               </p>
               <p className="text-[10px] text-[var(--color-text-tertiary)]">
-                {suggestionSummary || "检查标题、达成证据和变更方式，确认后才会修改"}
+                {suggestionSummary || "检查标题、完成标准和变更方式，确认后才会修改"}
               </p>
             </div>
             <button type="button" onClick={closeSuggestions} aria-label="关闭建议">
@@ -531,9 +533,9 @@ export default function GoalResultsPanel({
                           })
                         }
                         className="min-w-0 max-w-full flex-1 rounded-md bg-[#FFF7ED] px-1.5 py-1 text-[9px] font-medium text-[#C2410C] outline-none"
-                        aria-label={`第 ${index + 1} 条建议要替换的关键结果`}
+                        aria-label={`第 ${index + 1} 条建议要替换的目标`}
                       >
-                        <option value="">选择要替换的关键结果…</option>
+                        <option value="">选择要替换的目标…</option>
                         {results.map((result) => (
                           <option key={result.id} value={result.id}>{result.title}</option>
                         ))}
@@ -549,9 +551,9 @@ export default function GoalResultsPanel({
                   <input
                     value={suggestion.evidence}
                     onChange={(event) => updateSuggestion(index, { evidence: event.target.value })}
-                    placeholder="怎样算有进展或达成"
+                    placeholder="完成标准：做到什么样算完成"
                     className="mt-0.5 w-full bg-transparent text-[10px] text-[var(--color-text-secondary)] outline-none placeholder:text-[var(--color-text-tertiary)]"
-                    aria-label={`第 ${index + 1} 条结果的达成证据`}
+                    aria-label={`第 ${index + 1} 条结果的完成标准`}
                   />
                 </div>
                 {suggestion.behaviorIds.length > 0 && (
@@ -567,12 +569,12 @@ export default function GoalResultsPanel({
               )}
               {suggestion.duplicate && (
                 <p className="pl-6 text-[9px] leading-relaxed text-[#C2410C]">
-                  已有同名关键结果，默认不选
+                  已有同名目标，默认不选
                 </p>
               )}
               {suggestion.operation === "replace" && !suggestion.replaceId && (
                 <p className="pl-6 text-[9px] leading-relaxed text-[#C2410C]">
-                  请选择要替换的原关键结果
+                  请选择要替换的原目标
                 </p>
               )}
               {suggestion.behaviorIds.length > 0 && (
@@ -643,7 +645,7 @@ export default function GoalResultsPanel({
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-[12px] font-semibold text-[var(--color-text-primary)]">
-                目标全局
+                身份全局
               </span>
               <span className="block text-[9px] text-[var(--color-text-tertiary)]">
                 查看全部 {cards.length} 条推进项
@@ -699,13 +701,18 @@ export default function GoalResultsPanel({
                     </span>
                     <span
                       className="truncate text-[9px] text-[var(--color-text-tertiary)]"
-                      data-full-text={result.evidence || "还没写怎样算达成"}
+                      data-full-text={result.evidence || "还没写完成标准"}
                     >
-                      {result.evidence || "还没写怎样算达成"}
+                      {result.evidence || "还没写完成标准"}
                     </span>
                   </span>
                   <span className="flex-shrink-0 text-[9px] text-[var(--color-text-tertiary)]">
-                    {mine.length} 推进项{golden > 0 ? ` · ${golden} 优先` : ""}
+                    {(() => {
+                      // 目标看的是清单进度；结项了就标已结项。
+                      if (result.status === "done") return "已结项";
+                      const summary = (goalProgressByIdentity[aspiration.id] ?? []).find((goal) => goal.resultId === result.id);
+                      return summary && summary.total > 0 ? `${summary.done}/${summary.total}` : `${mine.length} 推进项${golden > 0 ? ` · ${golden} 优先` : ""}`;
+                    })()}
                   </span>
                   <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-text-tertiary)]" />
                 </button>
@@ -758,7 +765,7 @@ export default function GoalResultsPanel({
               <ChevronDown
                 className={`h-3.5 w-3.5 transition-transform ${showOtherResults ? "rotate-180" : ""}`}
               />
-              {showOtherResults ? "收起其他关键结果" : `展开其他 ${results.length - 3} 条`}
+              {showOtherResults ? "收起其他目标" : `展开其他 ${results.length - 3} 条`}
             </button>
           )}
 
@@ -854,7 +861,7 @@ export default function GoalResultsPanel({
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.nativeEvent.isComposing) saveResult();
             }}
-            placeholder="什么变化发生了，才算更接近目标？"
+            placeholder="想完成的一件事，例如：准备面试"
             autoFocus
             className="w-full rounded-lg border border-[var(--color-border)] px-2.5 py-2 text-[12px] outline-none focus:border-[var(--color-primary)]"
           />
@@ -867,7 +874,7 @@ export default function GoalResultsPanel({
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.nativeEvent.isComposing) saveResult();
             }}
-            placeholder="达成证据（可选）：怎样算有进展？"
+            placeholder="完成标准（可选）：做到什么样算完成？"
             className="w-full rounded-lg border border-[var(--color-border)] px-2.5 py-2 text-[12px] outline-none focus:border-[var(--color-primary)]"
           />
           {draftReview && (
@@ -941,7 +948,7 @@ export default function GoalResultsPanel({
 
       <ConfirmDialog
         isOpen={deleteId !== null}
-        title="删除这条关键结果？"
+        title="删除这个目标？"
         description="下面的推进项不会删除，只会回到“未归属推进项”，之后可以重新分组。"
         confirmLabel="删除结果"
         onConfirm={() => {

@@ -60,7 +60,7 @@ export default function EntryTaskPicker({ tasks, aspirations, value, label, onCh
         <Search className="h-4 w-4 shrink-0 text-[var(--color-text-tertiary)]" />
         <input autoFocus value={query} role="combobox" aria-label={label} aria-expanded={true} aria-controls={listId} aria-autocomplete="list"
           aria-activedescendant={active >= 0 ? `${listId}-${active}` : undefined}
-          placeholder="搜索任务或所属目标"
+          placeholder="搜索任务或所属身份"
           onChange={event => { setQuery(event.target.value); setActive(-1); }}
           onKeyDown={event => {
             if (event.nativeEvent.isComposing || event.keyCode === 229) return;
@@ -83,7 +83,7 @@ export default function EntryTaskPicker({ tasks, aspirations, value, label, onCh
             <div className="min-w-0 flex-1">
               <div className={`break-words text-[13px] ${picked ? "font-medium text-[var(--color-primary)]" : "text-[var(--color-text-primary)]"}`}>{task?.title ?? "不计入任务"}</div>
               {task && <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[var(--color-text-tertiary)]">
-                <span className="flex min-w-0 items-center gap-1"><span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: goal ? goalColor(goal, aspirations.indexOf(goal)) : "var(--color-text-tertiary)" }} /><span className="break-words">{goal?.title ?? "未归属目标"}</span></span>
+                <span className="flex min-w-0 items-center gap-1"><span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: goal ? goalColor(goal, aspirations.indexOf(goal)) : "var(--color-text-tertiary)" }} /><span className="break-words">{goal?.title ?? "未归属身份"}</span></span>
                 <span>{task.startTime ?? "不限时间"}</span><span>{task.status === "done" ? "已完成" : task.status === "in_progress" ? "进行中" : "待办"}</span>
               </div>}
             </div>
@@ -92,7 +92,7 @@ export default function EntryTaskPicker({ tasks, aspirations, value, label, onCh
         })}
         {!matched.length && <p className="px-2.5 py-3 text-[12px] text-[var(--color-text-tertiary)]">{query ? "没有匹配的任务，试试其他关键词" : "这一天还没有任务，可以暂不关联"}</p>}
       </div>
-      <p className="mt-1.5 border-t border-[var(--color-border)] px-1 pt-2 text-[11px] text-[var(--color-text-tertiary)]">选中后计入该任务，并沿用所属目标；不修改记录名称和时长。</p>
+      <p className="mt-1.5 border-t border-[var(--color-border)] px-1 pt-2 text-[11px] text-[var(--color-text-tertiary)]">选中后计入该任务，并沿用所属身份；不修改记录名称和时长。</p>
     </div>}
   </div>;
 }

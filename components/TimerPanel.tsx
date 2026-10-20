@@ -98,7 +98,7 @@ export default function TimerPanel({ running, elapsedMs, onStart, onStop, onRena
             {editing && <span className="text-[11px] text-[var(--color-text-tertiary)]">回车或点空白保存 · Esc 取消</span>}
             {!editing && !isReward && running.attribution && <span className="truncate text-[11px] text-[var(--color-text-secondary)]">
               {aspirations.find((goal) => goal.id === runningGoalId)?.title
-                ?? (runningGoalId ? "原目标已删除" : "未归属目标")}
+                ?? (runningGoalId ? "原身份已删除" : "未归属身份")}
             </span>}
             {!editing && running.attribution?.taskId && <span className="truncate text-[11px] text-[var(--color-text-secondary)]">
               {tasks.some((task) => task.id === running.attribution?.taskId)

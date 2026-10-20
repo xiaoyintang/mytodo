@@ -9,6 +9,8 @@ export type Win = {
   headline: string;
   detail?: string;
   goal?: { title: string; color: string; before: GoalLevel; after: GoalLevel };
+  /** 属于某个有终点的目标时的清单进度；有它就优先显示它，比等级更具体。 */
+  progress?: { title: string; color: string; done: number; total: number };
   expiresAt: number;
 };
 
@@ -28,7 +30,19 @@ export default function WinNotice({ win, contextKey, onDismiss }: { win: Win; co
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-semibold text-[var(--color-text-primary)]">{win.headline}</p>
-          {win.goal ? (
+          {win.progress ? (
+            <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-[var(--color-text-secondary)]">
+              <span className="truncate font-medium" style={{ color: win.progress.color }}>{win.progress.title}</span>
+              <span className="shrink-0 font-semibold tabular-nums text-[var(--color-text-primary)]">
+                {win.progress.done}/{win.progress.total}
+              </span>
+              <span className="block h-1 min-w-8 flex-1 overflow-hidden rounded-full bg-[var(--color-bg-gray-light)]">
+                <span className="block h-full rounded-full transition-[width] duration-700"
+                  style={{ width: `${win.progress.total ? (win.progress.done / win.progress.total) * 100 : 0}%`, backgroundColor: win.progress.color }} />
+              </span>
+              {gained > 0 && <span className="shrink-0 font-semibold text-[var(--color-success)]">+{gained}</span>}
+            </div>
+          ) : win.goal ? (
             <div className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-[var(--color-text-secondary)]">
               <span className="truncate font-medium" style={{ color: win.goal.color }}>{win.goal.title}</span>
               <span className={`shrink-0 font-semibold ${leveledUp ? "daily-focus-sparkle text-[var(--color-success)]" : ""}`}>

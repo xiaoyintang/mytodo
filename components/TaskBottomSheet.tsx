@@ -520,7 +520,7 @@ export default function TaskBottomSheet({
             <details key={`goal-${task.id}`} className="group/goal mb-4 rounded-lg border border-[var(--color-border)] px-3 py-2">
               <summary className="flex cursor-pointer list-none items-start gap-2 text-[12px] text-[var(--color-text-secondary)] [&::-webkit-details-marker]:hidden">
                 <Target className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-primary)]" />
-                <span className="min-w-0 flex-1 break-words">{aspirations.find((goal) => goal.id === task.aspirationId)?.title ?? "未归属目标"}
+                <span className="min-w-0 flex-1 break-words">{aspirations.find((goal) => goal.id === task.aspirationId)?.title ?? "未归属身份"}
                   {selectedTaskResult && <span className="text-[var(--color-text-tertiary)]"> › {selectedTaskResult.title}</span>}
                 </span>
                 <span className="shrink-0 text-[11px] text-[var(--color-text-tertiary)]">修改归属</span>
@@ -530,7 +530,7 @@ export default function TaskBottomSheet({
               <div className="mb-1.5 flex min-h-7 items-center justify-between gap-3">
                 <span className="flex items-center gap-1.5 text-[13px] font-medium text-[var(--color-text-primary)]">
                   <Target className="w-4 h-4 text-[var(--color-primary)]" />
-                  属于哪个目标
+                  属于哪个身份
                 </span>
                 {task.aspirationId && (
                   <button
@@ -581,7 +581,7 @@ export default function TaskBottomSheet({
                     htmlFor={`task-result-${task.id}`}
                     className="mb-1 block text-[11px] font-medium text-[var(--color-text-secondary)]"
                   >
-                    这项任务推进哪条关键结果
+                    这项任务推进哪个目标
                   </label>
                   <select
                     id={`task-result-${task.id}`}
@@ -591,7 +591,7 @@ export default function TaskBottomSheet({
                     }
                     className="w-full rounded-md border border-[var(--color-border)] bg-white px-2.5 py-2 text-[12px] text-[var(--color-text-primary)] outline-none transition-colors focus:border-[var(--color-primary)] focus:ring-2 focus:ring-blue-100"
                   >
-                    <option value="">请选择关键结果</option>
+                    <option value="">请选择目标</option>
                     {taskGoalResults.map((result) => (
                       <option key={result.id} value={result.id}>
                         {result.title}
@@ -602,7 +602,7 @@ export default function TaskBottomSheet({
               )}
               {!task.aspirationId && (
                 <p className="w-full text-[11px] text-[var(--color-text-tertiary)] leading-snug mt-1">
-                  不选也行——不归属任何目标的任务永远不会被折起来
+                  不选也行——不归属任何身份的任务永远不会被折起来
                 </p>
               )}
               </div>

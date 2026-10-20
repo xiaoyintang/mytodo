@@ -116,7 +116,7 @@ export default function EntryNameInput({ value, onChange, history, onSelect, onC
         </button>)}
         {!options.length && <div className="px-2 py-3 text-[12px] text-[var(--color-text-tertiary)]">{query ? "这一组没有匹配项，可以切换分组或直接输入名称" : grouped && selectedGroup === "task" ? "当天还没有安排任务" : "当天还没有可沿用的记录，可以直接输入名称"}</div>}
       </div>
-      <div className="mt-1 border-t border-[var(--color-border)] px-2 py-1.5 text-[11px] text-[var(--color-text-tertiary)]">选中后自动沿用目标和计入任务</div>
+      <div className="mt-1 border-t border-[var(--color-border)] px-2 py-1.5 text-[11px] text-[var(--color-text-tertiary)]">选中后自动沿用身份和计入任务</div>
     </div>}
   </div>;
 }

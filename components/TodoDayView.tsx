@@ -28,6 +28,8 @@ import TaskBottomSheet from "@/components/TaskBottomSheet";
 import DailyFocusSection from "@/components/DailyFocusSection";
 import { dailyFocusTask } from "@/components/todo/dailyFocus";
 import { hasStartWin } from "@/components/todo/startWin";
+import { goalItems, goalProgress } from "@/components/todo/goalProgress";
+import { isRepeatable } from "@/components/todo/behavior";
 import QuickAddTask from "@/components/QuickAddTask";
 import MainlineBar from "@/components/MainlineBar";
 import { AppHeader, AppShell, MonthDatePicker, ViewTabs, WeekDateStrip } from "@/components/ViewChrome";
@@ -251,9 +253,9 @@ export default function TodoDayView({
           </section>
         ))}
         {unassigned.length > 0 && (
-          <section aria-label="未归属目标的待办" className="mt-2">
+          <section aria-label="未归属身份的待办" className="mt-2">
             <h3 className="flex min-h-7 items-center justify-between rounded-md bg-[var(--color-bg-gray-lighter)] px-2 text-[11px] font-medium text-[var(--color-text-tertiary)]">
-              <span>未归属目标</span><span className="text-[10px]">{unassigned.length} 项</span>
+              <span>未归属身份</span><span className="text-[10px]">{unassigned.length} 项</span>
             </h3>
             <div className="divide-y divide-[var(--color-border)]">{unassigned.map((task) => renderTaskCard(task, showTime))}</div>
           </section>
@@ -294,6 +296,7 @@ export default function TodoDayView({
     const startActionLivesOnStep = Boolean(stepStartAction);
     const isExpanded = expanded.has(t.id);
     const taskResult = resolveTaskGoalResult(t, goalResults, behaviors, habits);
+    const taskProgress = taskResult ? goalProgress(goalItems(taskResult, behaviors, tasks)) : undefined;
 
     const hasMeta =
       t.id === keyTask?.id ||
@@ -364,7 +367,7 @@ export default function TodoDayView({
                       onClick={(event) => handleOpenTaskGoal(event, t)}
                       className="flex min-w-0 max-w-[220px] items-center gap-1 rounded-sm transition-opacity hover:opacity-70"
                       style={{ color }}
-                      aria-label={`打开${aspirations[gi].title}${taskResult ? `的关键结果：${taskResult.title}` : "的焦点地图"}`}
+                      aria-label={`打开${aspirations[gi].title}${taskResult ? `的目标：${taskResult.title}` : "的焦点地图"}`}
                     >
                       <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ backgroundColor: color }} />
                       <span
@@ -376,6 +379,9 @@ export default function TodoDayView({
                           <>
                             <span className="mx-1 opacity-45">›</span>
                             <span className="font-normal">{taskResult.title}</span>
+                            {taskProgress && taskProgress.total > 0 && (
+                              <span className="ml-1 font-semibold tabular-nums">{taskProgress.done}/{taskProgress.total}</span>
+                            )}
                           </>
                         )}
                       </span>
@@ -402,7 +408,9 @@ export default function TodoDayView({
                   aria-label={`查看任务随记：${t.title}`} className="min-h-7 rounded px-1 text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-gray-light)]">随记 {t.notes.length}</button>}
                 {isMainlineTask(t) && !isDone && <span className="font-semibold text-[var(--color-primary)]">主线</span>}
                 {t.sourceHabitId && !isDone && <span className="font-medium text-[#7C3AED]">习惯</span>}
-                {t.sourceBehaviorId && !t.sourceHabitId && !isDone && (
+                {/* 只有可重复行为排出来的才标「重复」；目标清单里的一次性事项不算 */}
+                {t.sourceBehaviorId && !t.sourceHabitId && !isDone &&
+                  isRepeatable(behaviors.find((b) => b.id === t.sourceBehaviorId)?.type ?? "onetime") && (
                   <span className="font-medium text-[#4F46E5]">重复</span>
                 )}
                 {t.tag && !isDone && !isInProgress && <span className="text-[var(--color-text-secondary)]">{t.tag}</span>}

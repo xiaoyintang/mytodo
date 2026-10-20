@@ -591,13 +591,13 @@ export default function DayTemplateModal({
 
                           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                             <label className="flex flex-col gap-1 text-[10px] font-medium text-[var(--color-text-secondary)]">
-                              所属目标
+                              所属身份
                               <select
                                 value={item.aspirationId ?? ""}
                                 onChange={(event) => updateEditItem(item.id, { aspirationId: event.target.value || undefined, resultId: undefined })}
                                 className="h-9 min-w-0 rounded-lg border border-[var(--color-border)] bg-white px-2 text-[11px] font-normal outline-none focus:border-[var(--color-primary)]"
                               >
-                                <option value="">不归属目标</option>
+                                <option value="">不归属身份</option>
                                 {aspirations
                                   .filter((aspiration) => !aspiration.archived || aspiration.id === item.aspirationId)
                                   .map((aspiration) => (
@@ -606,14 +606,14 @@ export default function DayTemplateModal({
                               </select>
                             </label>
                             <label className="flex flex-col gap-1 text-[10px] font-medium text-[var(--color-text-secondary)]">
-                              关键结果
+                              目标
                               <select
                                 value={item.resultId ?? ""}
                                 onChange={(event) => updateEditItem(item.id, { resultId: event.target.value || undefined })}
                                 disabled={!item.aspirationId}
                                 className="h-9 min-w-0 rounded-lg border border-[var(--color-border)] bg-white px-2 text-[11px] font-normal outline-none focus:border-[var(--color-primary)] disabled:bg-[var(--color-bg-gray-light)]"
                               >
-                                <option value="">不归属关键结果</option>
+                                <option value="">不归属目标</option>
                                 {results.map((result) => (
                                   <option key={result.id} value={result.id}>{result.title}</option>
                                 ))}

@@ -33,7 +33,7 @@ test('only today is shown; duplicates preserve distinct task and goal attributio
   ];
   const before = JSON.stringify(entries);
   const choices = buildEntryHistory(entries, [{ id: 'a', title: '学习' }, { id: 'b', title: '放松', archived: true }], [{ id: 'task-a', title: '读专业书', aspirationId: 'a' }, { id: 'task-b', title: '读论文', aspirationId: 'a' }], '2026-09-09');
-  assert.deepEqual(choices.map(c => c.goalLabel), ['学习', '学习', '未归属目标', '学习', '放松（已归档）']);
+  assert.deepEqual(choices.map(c => c.goalLabel), ['学习', '学习', '未归属身份', '学习', '放松（已归档）']);
   assert.deepEqual(choices.map(c => c.taskId), ['task-a', 'task-b', undefined, undefined, undefined]);
   assert.equal(choices[0].taskLabel, '读专业书');
   assert.equal(JSON.stringify(entries), before);

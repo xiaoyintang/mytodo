@@ -44,7 +44,7 @@ export default function MainlinePlanner({ days, today, aspirations, dayPlans, on
   if (activeAspirations.length === 0) {
     return (
       <div className="w-full px-4 py-3 text-[12px] text-[var(--color-text-secondary)] leading-relaxed">
-        还没有目标，点上面的「我的目标」建一个，再选择每天的主线。
+        还没有身份，点上面的「我的身份」建一个，再选择每天的主线。
       </div>
     );
   }
@@ -153,7 +153,7 @@ export default function MainlinePlanner({ days, today, aspirations, dayPlans, on
                 </button>
                 {ids.length >= 3 && (
                   <span className="w-full text-[10px] text-[var(--color-text-tertiary)]">
-                    已选满 3 个；先取消一个，才能换入其他目标
+                    已选满 3 个；先取消一个，才能换入其他身份
                   </span>
                 )}
               </div>
@@ -196,7 +196,7 @@ export default function MainlinePlanner({ days, today, aspirations, dayPlans, on
           );
         })}
         <span className="text-[10px] text-[var(--color-text-tertiary)]">
-          每周上限在目标页设（点上面那条主线进去）。超了只提示，不拦你
+          每周上限在身份页设（点上面那条主线进去）。超了只提示，不拦你
         </span>
       </div>
     </div>

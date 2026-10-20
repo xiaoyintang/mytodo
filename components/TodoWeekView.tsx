@@ -130,7 +130,7 @@ function WeekTaskRow({
         {!overview && resultTitle && (
           <span
             className="truncate text-[9px] font-medium leading-3 text-[var(--color-text-tertiary)]"
-            data-full-text={`关键结果：${resultTitle}`}
+            data-full-text={`目标：${resultTitle}`}
           >
             KR · {resultTitle}
           </span>

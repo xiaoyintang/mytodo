@@ -51,7 +51,7 @@ export default function GoalInvestChart({
   return (
     <div className="w-full flex flex-col gap-2">
       <div className="w-full flex items-center justify-between">
-        <span className="text-[var(--color-text-primary)] text-[14px] font-semibold">目标投入</span>
+        <span className="text-[var(--color-text-primary)] text-[14px] font-semibold">身份投入</span>
         <span className="text-[var(--color-text-tertiary)] text-[11px]">
           {mode === "day" ? "今日主线 vs 实际投入" : "排了几天 vs 实际投入"}
         </span>
@@ -138,7 +138,7 @@ export default function GoalInvestChart({
       {noGoal > 0 && (
         <div className="w-full flex items-center gap-2 pt-0.5">
           <span className="w-2 h-2 rounded-full bg-[#A1A1AA] flex-shrink-0" />
-          <span className="flex-1 text-[12px] text-[var(--color-text-tertiary)]">未归属目标</span>
+          <span className="flex-1 text-[12px] text-[var(--color-text-tertiary)]">未归属身份</span>
           <span className="text-[12px] text-[var(--color-text-tertiary)] tabular-nums">
             {formatMinutes(noGoal)}
           </span>

@@ -45,16 +45,27 @@ API 路由（`app/api/`）：`parse`（时间记录）、`parse-task`（任务�
 LLM 走 OpenAI 兼容接口（默认 DeepSeek），环境变量 `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL`；
 未配 key 返回 501，前端降级（时间记录走 `nlparse.ts` 规则解析，分类显示"未分类"）。
 
-## 概念层次
+## 概念层次（2026-10-20 改名，规格见 `10-身份与目标规格.md`）
+
+**界面叫法和类型名不一样，别搞混：**`Aspiration` = 「身份」（原来叫目标），`GoalResult` = 「目标」（原来叫关键结果/KR）。
+`evidence` 显示为「完成标准」。底层字段、localStorage key 都没改。
 
 ```
-目标 Aspiration
- ├─ KR GoalResult（可选，可排序/归档，带"达成证据"）
- │   └─ 推进项 BehaviorCard（独立行为，或带 steps 的任务包）
- └─ 直接挂目标的推进项
-推进项 → 焦点地图比两轴 → 排到某天（Task）或 加入习惯（Habit）
-已知要做的事 → 直接建 Task / 套日计划模板，不必经过焦点地图
+身份 Aspiration（没有终点）  → 等级 + 经验（goalXp.ts）
+ ├─ 目标 GoalResult（有终点） → 有顺序的清单 + 进度 x/y + 结项复盘（goalProgress.ts / GoalChecklist.tsx）
+ │   └─ 清单里的事 = 一次性/成果类 BehaviorCard + 直接指到这个目标的任务（同名任务算一件分几次做）
+ ├─ 习惯                     → 用焦点地图挑（只有挑习惯才打分）
+ └─ 零散任务
 ```
+
+- **只有"挑选"才打分**：焦点地图（两轴）只用来挑习惯（OR）；目标清单是 AND，只拖动排先后，第一件没做完的就是下一步。
+  选中某个目标时，焦点地图只显示可重复的候选，一次性/成果类条目在清单里。
+- 清单在目标里直接打钩 = 今天做完了：没排期的生成一条今天已完成的任务（自己带 `completedAt`），排过的就完成那一条。
+  完成时间、经验、成长记录只从任务来，不另存一份状态。
+- 清单顺序存在 `GoalResult.itemOrder`（item key：推进项用 behavior id，直接建的任务用 `task:标题`）。
+- 全部做完提示结项（**不自动结项**）；`status: "done"` + `doneAt`，复盘从数据自动生成，`retroNote` 可选一句。
+- 进度出现在：任务卡标签「准备面试 5/12」、完成任务的庆祝提示（优先于等级）、主线条点身份弹出的小面板、身份页目标列表。
+- 一件事只挂一个身份（`aspirationId`）；挂目标（`resultId`）的任务同时给身份涨经验。
 
 - **步骤**（`Task.subtasks` / `BehaviorCard.steps`）是 AND 关系，共同完成父项；**下一步** = 第一条未完成步骤，不另存字段。
 - **最小启动**（`startAction`）只负责跨过启动门槛：任务和每个步骤可各自设，完成它不等于完成任务/步骤。
@@ -104,9 +115,9 @@ LLM 走 OpenAI 兼容接口（默认 DeepSeek），环境变量 `LLM_API_KEY` / 
   「帮我说清楚」只看当前下一步，不打分，只给一个问题和一个可选改写。AI 建议都可关闭，由用户决定是否采纳。
 - `fixed` 定位 + z-index 100+，`max-h-[85vh]` 内容可滚动，Footer sticky。
 
-## 目标与焦点地图
+## 身份页与焦点地图（类型名仍是 Aspiration / GoalResult）
 
-- 目标管理页（`GoalsView`）从常驻条「我的目标」进入，不是 tab。目标、KR 都可拖动排序。
+- 身份页（`GoalsView`）从常驻条「我的身份」进入，不是 tab。身份、目标都可拖动排序。新建身份有「我是一个 ___ 的人」句式引导（Tab / 按钮），不强制。
 - 焦点地图（`FocusMapView`）一个目标/KR 一页：KR 切换导航滚动时吸顶；条目默认紧凑（标题、类型、分数、步骤数），展开才出滑块和编辑；
   多选批量排期/删除/归档；排日程可多选日期，可撤回。
 - 综合分 `impact × 60% + feasibility × 40%`（`behavior.ts`），两轴都评完才参与排序；
@@ -216,7 +227,7 @@ timing 改成看 `Habit.anchor` 字段；decision 去任务详情的「拆解」
 - `TaskNote`：追加式随记，带现场快照 context；只属于本次任务，不进模板
 - `TaskTemplate` / `TaskTemplateItem`：模板结构，不含日期/状态
 - `Aspiration`：id, title, kind, createdAt, archived?, color?, weeklyLimit?
-- `GoalResult`（KR）：id, aspirationId, title, evidence?, order?, archived?, createdAt
+- `GoalResult`（界面叫「目标」，原 KR）：id, aspirationId, title, evidence?（完成标准）, order?, archived?, createdAt, status?, doneAt?, retroNote?, itemOrder?
 - `DayPlan`：date, primaryAspirationIds, mustDoTaskId?
 - `BehaviorCard`：id, aspirationId, resultId?, text, type, typeSource?, reason?, blocker?, impact?, feasibility?, steps?, startAction?, taskId?, archived?
   - type: "unsorted" | "aspiration" | "outcome" | "onetime" | "habit" | "stop"

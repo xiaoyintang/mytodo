@@ -67,7 +67,7 @@ export default function TaskCopyDialog({ task, onApply, onClose }: {
       </div>
       {dates.filter(day => !days.includes(day)).map(day => <button key={day} type="button" onClick={() => toggle(day)} aria-label={`取消 ${day}`}
         className="mb-2 mr-2 rounded-lg bg-[var(--color-primary-light)] px-3 py-2 text-[12px] text-[var(--color-primary)]">{label(day)} ×</button>)}
-      <p className="rounded-lg bg-[var(--color-bg-gray-lighter)] p-3 text-[11px] leading-relaxed text-[var(--color-text-secondary)]">保留目标 / KR、时间安排、所有步骤、最小启动和当前进度。新任务为待办；不复制计时记录、随记和当天关键任务标记。复制后各自独立修改。</p>
+      <p className="rounded-lg bg-[var(--color-bg-gray-lighter)] p-3 text-[11px] leading-relaxed text-[var(--color-text-secondary)]">保留身份 / 目标、时间安排、所有步骤、最小启动和当前进度。新任务为待办；不复制计时记录、随记和当天关键任务标记。复制后各自独立修改。</p>
       {error && <p role="alert" className="mt-2 text-[12px] text-[var(--color-danger)]">{error}</p>}
       <div className="mt-4 flex justify-end gap-2">
         <button type="button" onClick={onClose} className="min-h-11 rounded-lg px-4 text-[12px] text-[var(--color-text-secondary)]">取消</button>

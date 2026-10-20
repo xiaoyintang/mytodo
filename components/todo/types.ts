@@ -161,6 +161,16 @@ export interface GoalResult {
   /** 暂时不推进的结果路径。归档只收起这一层，下面的行为和历史关联都保留。 */
   archived?: boolean;
   createdAt: number;
+  /**
+   * 界面上现在叫「目标」（有终点的一件大事），见 10-身份与目标规格.md。
+   * `evidence` 显示为「完成标准」。done = 已结项，结项后看复盘。
+   */
+  status?: "active" | "done";
+  doneAt?: number;
+  /** 结项时可选的一句「这次学到了什么」。 */
+  retroNote?: string;
+  /** 清单的手动顺序（GoalItem.key）；没拖过就按创建先后。 */
+  itemOrder?: string[];
 }
 
 /**

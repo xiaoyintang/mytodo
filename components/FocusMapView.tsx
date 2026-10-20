@@ -705,7 +705,7 @@ export default function FocusMapView({
     const behaviorReplaces = chosenBehaviors.length - behaviorAdds;
     const procedureChanges = chosenBehaviors.filter((item) => item.stepsMode).length;
     const resultPart = chosenResults.length > 0
-      ? `关键结果 ${resultAdds ? `新增 ${resultAdds}` : ""}${resultAdds && resultReplaces ? "、" : ""}${resultReplaces ? `替换 ${resultReplaces}` : ""}`
+      ? `目标 ${resultAdds ? `新增 ${resultAdds}` : ""}${resultAdds && resultReplaces ? "、" : ""}${resultReplaces ? `替换 ${resultReplaces}` : ""}`
       : "";
     const behaviorPart = chosenBehaviors.length > 0
       ? `推进项 ${behaviorAdds ? `新增 ${behaviorAdds}` : ""}${behaviorAdds && behaviorReplaces ? "、" : ""}${behaviorReplaces ? `替换 ${behaviorReplaces}` : ""}${procedureChanges ? `（含步骤流程 ${procedureChanges}）` : ""}`
@@ -1443,7 +1443,7 @@ export default function FocusMapView({
           <div className="min-w-[150px] flex-1">
             <p className="text-[11px] font-semibold text-[var(--color-text-primary)]">需要聊一聊，才理得清结果和行为？</p>
             <p className="mt-0.5 text-[9px] leading-3.5 text-[var(--color-text-tertiary)]">
-              把完整上下文带去任意聊天 AI，聊完可调整关键结果和行为。
+              把完整上下文带去任意聊天 AI，聊完可调整目标和行为。
             </p>
           </div>
           <button
@@ -1490,7 +1490,7 @@ export default function FocusMapView({
             />
             <div className="flex items-center justify-between gap-2">
               <span className="text-[9px] leading-3.5 text-[var(--color-text-tertiary)]">
-                先确认关键结果，再确认行为归属；所有替换都要匹配原文。
+                先确认目标，再确认行为归属；所有替换都要匹配原文。
               </span>
               <button
                 type="button"
@@ -1512,7 +1512,7 @@ export default function FocusMapView({
               <div className="flex w-full flex-col gap-1.5">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-semibold text-[var(--color-text-secondary)]">
-                    关键结果 {importResults.length} 条 · 行为 {importItems.length} 条，确认后才生效
+                    目标 {importResults.length} 条 · 行为 {importItems.length} 条，确认后才生效
                   </span>
                   <button
                     type="button"
@@ -1541,7 +1541,7 @@ export default function FocusMapView({
                 {importResults.length > 0 && (
                   <div className="flex flex-col gap-1.5">
                     <p className="text-[9px] font-semibold text-[var(--color-primary)]">
-                      1 · 先确认关键结果
+                      1 · 先确认目标
                     </p>
                     {importResults.map((item) => (
                       <div
@@ -1556,7 +1556,7 @@ export default function FocusMapView({
                           checked={item.checked}
                           onChange={(event) => updateImportResult(item.id, { checked: event.target.checked })}
                           className="mt-1 h-3.5 w-3.5 flex-shrink-0 accent-[var(--color-primary)]"
-                          aria-label={`选择应用关键结果「${item.title}」`}
+                          aria-label={`选择应用目标「${item.title}」`}
                         />
                         <div className="min-w-0 flex-1">
                           <div className="mb-1.5 flex w-full flex-wrap items-center gap-1.5">
@@ -1569,7 +1569,7 @@ export default function FocusMapView({
                                 )
                               }
                               className="rounded-md bg-[var(--color-primary-light)] px-1.5 py-1 text-[9px] font-semibold text-[var(--color-primary)] outline-none"
-                              aria-label={`关键结果「${item.title}」的变更方式`}
+                              aria-label={`目标「${item.title}」的变更方式`}
                             >
                               <option value="add">新增</option>
                               <option value="replace">替换</option>
@@ -1581,9 +1581,9 @@ export default function FocusMapView({
                                   changeResultImportTarget(item, event.target.value || undefined)
                                 }
                                 className="min-w-0 max-w-full flex-1 rounded-md bg-[#FFF7ED] px-1.5 py-1 text-[9px] font-medium text-[#C2410C] outline-none"
-                                aria-label={`选择「${item.title}」要替换的原关键结果`}
+                                aria-label={`选择「${item.title}」要替换的原目标`}
                               >
-                                <option value="">选择要替换的原关键结果…</option>
+                                <option value="">选择要替换的原目标…</option>
                                 {resultOptions.map((result) => (
                                   <option key={result.id} value={result.id}>{result.title}</option>
                                 ))}
@@ -1594,21 +1594,21 @@ export default function FocusMapView({
                             value={item.title}
                             onChange={(event) => changeResultImportText(item, { title: event.target.value })}
                             className="w-full bg-transparent text-[11px] font-semibold text-[var(--color-text-primary)] outline-none"
-                            aria-label="变更后的关键结果"
+                            aria-label="变更后的目标"
                           />
                           <input
                             value={item.evidence ?? ""}
                             onChange={(event) => changeResultImportText(item, { evidence: event.target.value })}
-                            placeholder="达成证据：怎样确认有进展？"
+                            placeholder="完成标准：怎样确认有进展？"
                             className="mt-0.5 w-full bg-transparent text-[9px] text-[var(--color-text-secondary)] outline-none placeholder:text-[var(--color-text-tertiary)]"
-                            aria-label={`关键结果「${item.title}」的达成证据`}
+                            aria-label={`目标「${item.title}」的完成标准`}
                           />
                           <div className="mt-1 flex flex-wrap items-center gap-1.5">
                             {item.duplicate && (
                               <span className="rounded bg-[#FFF7ED] px-1.5 py-0.5 text-[8px] font-medium text-[#C2410C]">
                                 {item.operation === "add"
-                                  ? "已有同名关键结果，默认不选"
-                                  : "会与另一条关键结果重名，默认不选"}
+                                  ? "已有同名目标，默认不选"
+                                  : "会与另一个目标重名，默认不选"}
                               </span>
                             )}
                             {item.unchanged && (
@@ -1619,8 +1619,8 @@ export default function FocusMapView({
                             {item.operation === "replace" && !item.replaceId && (
                               <span className="text-[8px] font-medium text-[#C2410C]">
                                 {item.unmatchedReplacement
-                                  ? `没找到原关键结果「${item.unmatchedReplacement}」，请手动选择`
-                                  : "请选择要替换的原关键结果"}
+                                  ? `没找到原目标「${item.unmatchedReplacement}」，请手动选择`
+                                  : "请选择要替换的原目标"}
                               </span>
                             )}
                             {item.operation === "replace" && item.replaceId && !item.unchanged && (
@@ -1766,9 +1766,9 @@ export default function FocusMapView({
                               });
                             }}
                             className="min-w-0 max-w-[220px] rounded-md bg-[var(--color-bg-gray-lighter)] px-1.5 py-1 text-[9px] text-[var(--color-text-secondary)] outline-none"
-                            aria-label={`「${item.text}」归属的关键结果`}
+                            aria-label={`「${item.text}」归属的目标`}
                           >
-                            <option value="">未归属关键结果</option>
+                            <option value="">未归属目标</option>
                             {resultOptions.map((result) => (
                               <option key={result.id} value={result.id}>{result.title}</option>
                             ))}
@@ -1827,7 +1827,7 @@ export default function FocusMapView({
                           (result) => result.id === item.resultImportClientId && resultImportReady(result),
                         ) && (
                           <span className="text-[8px] text-[#C27720]">
-                            先勾选并补全它引用的关键结果
+                            先勾选并补全它引用的目标
                           </span>
                         )}
                       </div>
@@ -2191,7 +2191,7 @@ export default function FocusMapView({
                     value={b.resultId ?? ""}
                     onChange={(event) => onAssignResult(b.id, event.target.value || undefined)}
                     className="min-w-0 flex-1 bg-transparent text-[10px] font-medium text-[var(--color-text-secondary)] outline-none"
-                    aria-label={`${b.text} 归属的关键结果`}
+                    aria-label={`${b.text} 归属的目标`}
                   >
                     <option value="">未归属</option>
                     {resultOptions.map((result) => (

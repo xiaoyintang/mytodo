@@ -292,7 +292,7 @@ export default function HabitTracker({
       .sort(compareByFocusScore);
 
     if (direct.length > 0) {
-      grouped.push({ key: "__direct__", title: "直接服务目标", items: direct });
+      grouped.push({ key: "__direct__", title: "直接服务身份", items: direct });
     }
     return grouped;
   }
@@ -329,7 +329,7 @@ export default function HabitTracker({
   if (orphans.length > 0) {
     groups.push({
       key: "__none__",
-      title: "未归属目标",
+      title: "未归属身份",
       items: orphans,
       resultGroups: resultGroupsFor(undefined, orphans),
     });
@@ -446,7 +446,7 @@ export default function HabitTracker({
           className="text-[var(--color-text-tertiary)] text-[10px]"
           title="综合分 = 影响力 × 60% + 能做到 × 40%"
         >
-          按目标 / 关键结果分组 · 组内焦点分排序
+          按身份 / 目标分组 · 组内焦点分排序
         </span>
       </div>
 
@@ -581,7 +581,7 @@ export default function HabitTracker({
                                   : "bg-[#EAF2FF] text-[var(--color-primary)]",
                               ].join(" ")}
                             >
-                              {isDirect ? "目标直属" : "关键结果"}
+                              {isDirect ? "身份直属" : "目标"}
                             </span>
                             <span
                               className="min-w-0 flex-1 truncate text-[10px] font-semibold text-[var(--color-text-secondary)]"

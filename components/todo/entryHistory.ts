@@ -16,7 +16,7 @@ export function buildTimerChoices(entries: TimeEntry[], goals: Aspiration[], tas
   const taskChoices: EntryHistoryChoice[] = planned.filter(task => task.title.trim()).map(task => {
     const goal = goals.find(goal => goal.id === task.aspirationId);
     return { title: task.title.trim(), taskId: task.id, taskLabel: task.title, aspirationId: task.aspirationId,
-      goalLabel: goal ? `${goal.title}${goal.archived ? "（已归档）" : ""}` : task.aspirationId ? "原目标已删除" : "未归属目标", source: "task" };
+      goalLabel: goal ? `${goal.title}${goal.archived ? "（已归档）" : ""}` : task.aspirationId ? "原身份已删除" : "未归属身份", source: "task" };
   });
   // 两个来源分别展示：已做过的今日任务也应能在“今日做过”中找到。
   const history = buildEntryHistory(entries, goals, tasks, today);
@@ -54,7 +54,7 @@ export function buildEntryHistory(entries: TimeEntry[], goals: Aspiration[], tas
         taskId: task?.id,
         taskLabel: task?.title,
         goalLabel: goal ? `${goal.title}${goal.archived ? "（已归档）" : ""}`
-          : aspirationId ? "原目标已删除" : "未归属目标",
+          : aspirationId ? "原身份已删除" : "未归属身份",
       }];
     });
 }
