@@ -446,7 +446,7 @@ export default function HabitTracker({
           className="text-[var(--color-text-tertiary)] text-[10px]"
           title="综合分 = 影响力 × 60% + 能做到 × 40%"
         >
-          按身份 / 目标分组 · 组内焦点分排序
+          按身份 / 状态分组 · 组内焦点分排序
         </span>
       </div>
 

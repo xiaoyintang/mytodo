@@ -83,7 +83,7 @@ export default function GoalChecklist({
   }
 
   return (
-    <section className="rounded-[12px] border border-[var(--color-border)] bg-white p-3" aria-label={`身份清单：${goal.title}`}>
+    <section className="rounded-[12px] border border-[var(--color-border)] bg-white p-3" aria-label={`目标清单：${goal.title}`}>
       {goal.evidence && (
         <p className="mb-2 text-[11px] leading-relaxed text-[var(--color-text-secondary)]">
           <span className="font-semibold text-[var(--color-text-primary)]">完成标准：</span>{goal.evidence}
@@ -229,7 +229,7 @@ export default function GoalChecklist({
             if (event.nativeEvent.isComposing || event.keyCode === 229) return;
             if (event.key === "Enter") { event.preventDefault(); submit(); }
           }}
-          placeholder="＋ 加一件要做的事，回车即存" aria-label="给身份加一件事"
+          placeholder="＋ 加一件要做的事，回车即存" aria-label="给目标加一件事"
           className="mt-2 min-h-10 w-full rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-bg-gray-lighter)] px-3 text-[13px] outline-none focus:border-[var(--color-primary)] focus:bg-white" />
       )}
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import type { Aspiration, BehaviorCard, GoalResult } from "@/components/todo/types";
 import { isActionable, isGolden } from "@/components/todo/behavior";
 import { UNASSIGNED_RESULT_ID } from "@/components/todo/goal";
@@ -42,6 +42,8 @@ type DraftReview = {
 };
 type DropPlacement = { targetId: string; edge: "before" | "after" };
 
+type ResultKind = "goal" | "state";
+
 type Props = {
   aspiration: Aspiration;
   results: GoalResult[];
@@ -50,8 +52,10 @@ type Props = {
   allCards: BehaviorCard[];
   activeResultId: string | null;
   onSelect: (resultId: string | null) => void;
-  onCreate: (title: string, evidence?: string) => string;
-  onUpdate: (id: string, patch: { title?: string; evidence?: string }) => void;
+  onCreate: (title: string, evidence: string | undefined, kind: ResultKind) => string;
+  onUpdate: (id: string, patch: { title?: string; evidence?: string; kind?: ResultKind }) => void;
+  /** 目标（要达成，有终点）还是状态（要保持，下面挂习惯）。 */
+  kindOf: (result: GoalResult) => ResultKind;
   onReorder: (orderedIds: string[]) => void;
   onArchive: (id: string) => void;
   onRestore: (id: string) => void;
@@ -141,11 +145,13 @@ export default function GoalResultsPanel({
   onRestore,
   onDelete,
   onApplyStructure,
+  kindOf,
 }: Props) {
   const goalProgressByIdentity = useGoalProgress();
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [title, setTitle] = useState("");
   const [evidence, setEvidence] = useState("");
+  const [editKind, setEditKind] = useState<ResultKind>("goal");
   const [suggesting, setSuggesting] = useState(false);
   const [suggestMode, setSuggestMode] = useState<SuggestMode | null>(null);
   const [suggestions, setSuggestions] = useState<SuggestedResult[] | null>(null);
@@ -163,9 +169,16 @@ export default function GoalResultsPanel({
   const resultIds = new Set(results.map((result) => result.id));
   const unassigned = cards.filter((card) => !card.resultId || !resultIds.has(card.resultId));
   const cardById = new Map(cards.map((card) => [card.id, card]));
-  const visibleResults = showOtherResults ? results : results.slice(0, 3);
+  const goalList = results.filter((result) => kindOf(result) === "goal");
+  const stateList = results.filter((result) => kindOf(result) === "state");
+  const hiddenCount = Math.max(0, goalList.length - 3) + Math.max(0, stateList.length - 3);
+  const sections: Array<{ kind: ResultKind; all: GoalResult[]; visible: GoalResult[] }> = [
+    { kind: "goal", all: goalList, visible: showOtherResults ? goalList : goalList.slice(0, 3) },
+    { kind: "state", all: stateList, visible: showOtherResults ? stateList : stateList.slice(0, 3) },
+  ];
 
-  function beginCreate() {
+  function beginCreate(kind: ResultKind) {
+    setEditKind(kind);
     setEditingId("new");
     setTitle("");
     setEvidence("");
@@ -173,6 +186,7 @@ export default function GoalResultsPanel({
   }
 
   function beginEdit(result: GoalResult) {
+    setEditKind(kindOf(result));
     setEditingId(result.id);
     setTitle(result.title);
     setEvidence(result.evidence ?? "");
@@ -190,11 +204,11 @@ export default function GoalResultsPanel({
     const cleanTitle = title.trim();
     if (!cleanTitle) return;
     if (editingId === "new") {
-      const id = onCreate(cleanTitle, evidence);
-      if (results.length >= 3) setShowOtherResults(true);
+      const id = onCreate(cleanTitle, evidence, editKind);
+      if ((editKind === "goal" ? goalList : stateList).length >= 3) setShowOtherResults(true);
       onSelect(id);
     } else if (editingId) {
-      onUpdate(editingId, { title: cleanTitle, evidence });
+      onUpdate(editingId, { title: cleanTitle, evidence, kind: editKind });
       onSelect(editingId);
     }
     cancelEdit();
@@ -401,14 +415,11 @@ export default function GoalResultsPanel({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className="text-[13px] font-semibold text-[var(--color-text-primary)]">
-              目标 {results.length > 0 ? results.length : ""}
-            </span>
-            <span className="rounded-full bg-white px-1.5 py-0.5 text-[9px] text-[var(--color-text-tertiary)]">
-              有终点
+              目标与状态
             </span>
           </div>
           <p className="mt-0.5 text-[10px] leading-relaxed text-[var(--color-text-tertiary)]">
-            想完成的几件事，各自一张清单；越靠前越先做，可拖动调整
+            目标要达成：有终点，是一张清单。状态要保持：没有终点，下面挂习惯。
           </p>
         </div>
         <button
@@ -422,13 +433,23 @@ export default function GoalResultsPanel({
             ? results.length === 0 ? "思考中" : "检查中"
             : results.length === 0 ? "AI 一起想" : "AI 检查"}
         </button>
+      </div>
+      <div className="-mt-1 flex justify-end gap-1.5">
         <button
           type="button"
-          onClick={beginCreate}
-          className="flex flex-shrink-0 items-center gap-0.5 rounded-lg bg-[var(--color-primary)] px-2 py-1.5 text-[11px] font-medium text-white"
+          onClick={() => beginCreate("goal")}
+          className="flex min-h-8 items-center gap-0.5 rounded-lg bg-[var(--color-primary)] px-2.5 text-[11px] font-medium text-white"
         >
           <Plus className="h-3.5 w-3.5" />
-          添加
+          目标
+        </button>
+        <button
+          type="button"
+          onClick={() => beginCreate("state")}
+          className="flex min-h-8 items-center gap-0.5 rounded-lg border border-[#A7F3D0] bg-white px-2.5 text-[11px] font-medium text-[#047857]"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          状态
         </button>
       </div>
 
@@ -617,11 +638,11 @@ export default function GoalResultsPanel({
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between px-0.5">
             <span className="text-[10px] font-semibold text-[var(--color-text-secondary)]">
-              当前焦点 {Math.min(results.length, 3)}/3
+              各显示前 3 个
             </span>
-            {results.length > 3 && (
+            {hiddenCount > 0 && !showOtherResults && (
               <span className="text-[9px] text-[var(--color-text-tertiary)]">
-                其余 {results.length - 3} 条已收起
+                其余 {hiddenCount} 个已收起
               </span>
             )}
           </div>
@@ -653,7 +674,13 @@ export default function GoalResultsPanel({
             </span>
             <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-text-tertiary)]" />
           </button>
-          {visibleResults.map((result, index) => {
+          {sections.map((section) => section.all.length > 0 && (
+          <Fragment key={section.kind}>
+          <p className={`mt-1 px-0.5 text-[10px] font-semibold ${section.kind === "goal" ? "text-[var(--color-primary)]" : "text-[#047857]"}`}>
+            {section.kind === "goal" ? `目标 ${section.all.length} · 要达成` : `状态 ${section.all.length} · 要保持`}
+          </p>
+          {section.visible.map((result, index) => {
+            const isState = section.kind === "state";
             const mine = cards.filter((card) => card.resultId === result.id);
             const golden = mine.filter((card) => isActionable(card.type) && isGolden(card)).length;
             const active = activeResultId === result.id;
@@ -685,9 +712,9 @@ export default function GoalResultsPanel({
                 >
                   <span
                     className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-[10px] font-bold ${
-                      active
-                        ? "bg-[var(--color-primary)] text-white"
-                        : "bg-[var(--color-primary-light)] text-[var(--color-primary)]"
+                      isState
+                        ? active ? "bg-[#059669] text-white" : "bg-[#ECFDF5] text-[#047857]"
+                        : active ? "bg-[var(--color-primary)] text-white" : "bg-[var(--color-primary-light)] text-[var(--color-primary)]"
                     }`}
                   >
                     {index + 1}
@@ -701,14 +728,15 @@ export default function GoalResultsPanel({
                     </span>
                     <span
                       className="truncate text-[9px] text-[var(--color-text-tertiary)]"
-                      data-full-text={result.evidence || "还没写完成标准"}
+                      data-full-text={result.evidence || (isState ? "要保持的状态" : "还没写完成标准")}
                     >
-                      {result.evidence || "还没写完成标准"}
+                      {result.evidence || (isState ? "要保持的状态" : "还没写完成标准")}
                     </span>
                   </span>
                   <span className="flex-shrink-0 text-[9px] text-[var(--color-text-tertiary)]">
                     {(() => {
-                      // 目标看的是清单进度；结项了就标已结项。
+                      // 状态看下面挂了几条行为；目标看清单进度，结项了就标已结项。
+                      if (isState) return `${mine.length} 条行为`;
                       if (result.status === "done") return "已结项";
                       const summary = (goalProgressByIdentity[aspiration.id] ?? []).find((goal) => goal.resultId === result.id);
                       return summary && summary.total > 0 ? `${summary.done}/${summary.total}` : `${mine.length} 推进项${golden > 0 ? ` · ${golden} 优先` : ""}`;
@@ -716,7 +744,7 @@ export default function GoalResultsPanel({
                   </span>
                   <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-[var(--color-text-tertiary)]" />
                 </button>
-                {results.length > 1 && (
+                {section.all.length > 1 && (
                   <button
                     type="button"
                     onPointerDown={(event) => beginDrag(event, result.id)}
@@ -726,11 +754,11 @@ export default function GoalResultsPanel({
                     onKeyDown={(event) => {
                       if (event.key === "ArrowUp" && index > 0) {
                         event.preventDefault();
-                        commitOrder(reorderResults(results, result.id, results[index - 1].id, "before"));
+                        commitOrder(reorderResults(results, result.id, section.all[index - 1].id, "before"));
                       }
-                      if (event.key === "ArrowDown" && index < results.length - 1) {
+                      if (event.key === "ArrowDown" && index < section.all.length - 1) {
                         event.preventDefault();
-                        commitOrder(reorderResults(results, result.id, results[index + 1].id, "after"));
+                        commitOrder(reorderResults(results, result.id, section.all[index + 1].id, "after"));
                       }
                     }}
                     className="flex h-6 w-6 flex-shrink-0 touch-none select-none items-center justify-center rounded-md cursor-grab hover:bg-white active:cursor-grabbing"
@@ -755,8 +783,10 @@ export default function GoalResultsPanel({
               </div>
             );
           })}
+          </Fragment>
+          ))}
 
-          {results.length > 3 && (
+          {hiddenCount > 0 && (
             <button
               type="button"
               onClick={() => setShowOtherResults((current) => !current)}
@@ -765,7 +795,7 @@ export default function GoalResultsPanel({
               <ChevronDown
                 className={`h-3.5 w-3.5 transition-transform ${showOtherResults ? "rotate-180" : ""}`}
               />
-              {showOtherResults ? "收起其他目标" : `展开其他 ${results.length - 3} 条`}
+              {showOtherResults ? "收起" : `展开其他 ${hiddenCount} 个`}
             </button>
           )}
 
@@ -852,6 +882,17 @@ export default function GoalResultsPanel({
 
       {editingId && (
         <div className="flex flex-col gap-2 rounded-[10px] border border-[var(--color-primary)] bg-white p-2.5">
+          <div className="flex gap-1.5" role="radiogroup" aria-label="这是目标还是状态">
+            {([["goal", "目标 · 要达成", "有终点，一张清单"], ["state", "状态 · 要保持", "没有终点，下面挂习惯"]] as const).map(([kind, label, hint]) => (
+              <button key={kind} type="button" role="radio" aria-checked={editKind === kind} onClick={() => setEditKind(kind)}
+                className={`flex min-h-10 flex-1 flex-col items-start justify-center rounded-lg border px-2.5 py-1 text-left ${
+                  editKind === kind ? "border-[var(--color-primary)] bg-[var(--color-primary-light)]" : "border-[var(--color-border)] bg-white"
+                }`}>
+                <span className="text-[11px] font-semibold text-[var(--color-text-primary)]">{label}</span>
+                <span className="text-[9px] text-[var(--color-text-tertiary)]">{hint}</span>
+              </button>
+            ))}
+          </div>
           <input
             value={title}
             onChange={(event) => {
@@ -861,7 +902,7 @@ export default function GoalResultsPanel({
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.nativeEvent.isComposing) saveResult();
             }}
-            placeholder="想完成的一件事，例如：准备面试"
+            placeholder={editKind === "goal" ? "想完成的一件事，例如：准备面试" : "要保持的状态，例如：早睡早起"}
             autoFocus
             className="w-full rounded-lg border border-[var(--color-border)] px-2.5 py-2 text-[12px] outline-none focus:border-[var(--color-primary)]"
           />
@@ -874,7 +915,7 @@ export default function GoalResultsPanel({
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.nativeEvent.isComposing) saveResult();
             }}
-            placeholder="完成标准（可选）：做到什么样算完成？"
+            placeholder={editKind === "goal" ? "完成标准（可选）：做到什么样算完成？" : "怎样算保持住（可选）：例如每周至少 5 天 12 点前睡"}
             className="w-full rounded-lg border border-[var(--color-border)] px-2.5 py-2 text-[12px] outline-none focus:border-[var(--color-primary)]"
           />
           {draftReview && (
@@ -939,7 +980,7 @@ export default function GoalResultsPanel({
                 disabled={!title.trim()}
                 className="rounded-lg bg-[var(--color-primary)] px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-40"
               >
-                {editingId === "new" ? "添加结果" : "保存"}
+                {editingId === "new" ? "添加" : "保存"}
               </button>
             </div>
           </div>

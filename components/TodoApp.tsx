@@ -50,7 +50,7 @@ import { copyTaskToDates } from "@/components/todo/taskCopy";
 import { newlyStartedAction, startWinsOn } from "@/components/todo/startWin";
 import { stampCompletion } from "@/components/todo/completion";
 import { goalLevels, goalXp, levelOf, type XpData } from "@/components/todo/goalXp";
-import { goalItems, goalProgress, type GoalItem } from "@/components/todo/goalProgress";
+import { goalItems, goalProgress, resultKind, type GoalItem } from "@/components/todo/goalProgress";
 import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
 import WinNotice, { type Win } from "@/components/WinNotice";
 import { GoalLevelContext, GoalProgressContext, type GoalSummary } from "@/components/todo/goalLevelContext";
@@ -676,7 +676,7 @@ export default function TodoApp() {
     // 属于某个「目标」（有终点）时，提示里优先给出具体进度 6/12，比等级更说得清"往前走了多少"。
     const result = resolveTaskGoalResult(after, goalResults, behaviorCards, habits);
     const goalIndex = aspirations.findIndex((a) => a.id === after.aspirationId);
-    const progress = result ? {
+    const progress = result && resultKind(result, behaviorCards) === "goal" ? {
       title: result.title,
       color: goalIndex >= 0 ? goalColor(aspirations[goalIndex], goalIndex) : "var(--color-primary)",
       ...goalProgress(goalItems(result, behaviorCards, nextTasks)),
@@ -1198,7 +1198,7 @@ export default function TodoApp() {
   }
 
   /** 给复杂目标增加可选的结果层；简单目标可以完全不用。 */
-  function createGoalResult(aspirationId: string, title: string, evidence?: string): string {
+  function createGoalResult(aspirationId: string, title: string, evidence?: string, kind?: GoalResult["kind"]): string {
     snapshotLab();
     const id = `gr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const result: GoalResult = {
@@ -1206,13 +1206,14 @@ export default function TodoApp() {
       aspirationId,
       title: title.trim(),
       evidence: evidence?.trim() || undefined,
+      kind,
       createdAt: Date.now(),
     };
     setGoalResults((prev) => [...prev, result]);
     return id;
   }
 
-  function updateGoalResult(id: string, patch: { title?: string; evidence?: string }) {
+  function updateGoalResult(id: string, patch: { title?: string; evidence?: string; kind?: GoalResult["kind"] }) {
     snapshotLab();
     setGoalResults((prev) =>
       prev.map((result) =>
@@ -1223,6 +1224,7 @@ export default function TodoApp() {
               ...(patch.evidence !== undefined
                 ? { evidence: patch.evidence.trim() || undefined }
                 : {}),
+              ...(patch.kind ? { kind: patch.kind } : {}),
             }
           : result,
       ),
@@ -2217,7 +2219,7 @@ export default function TodoApp() {
   const goalSummaries = useMemo(() => {
     const byIdentity: Record<string, GoalSummary[]> = {};
     for (const result of [...safeGoalResults].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))) {
-      if (result.archived || result.status === "done") continue;
+      if (result.archived || result.status === "done" || resultKind(result, safeBehaviors) !== "goal") continue;
       const progress = goalProgress(goalItems(result, safeBehaviors, safeTasks));
       (byIdentity[result.aspirationId] ??= []).push({ resultId: result.id, title: result.title, done: progress.done, total: progress.total });
     }

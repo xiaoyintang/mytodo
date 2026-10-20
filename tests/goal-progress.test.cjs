@@ -11,7 +11,7 @@ function load(file) {
   new Function('require', 'module', 'exports', code)(require, module, module.exports);
   return module.exports;
 }
-const { goalItems, goalProgress, reorderGoalItems, goalRetro } = load('components/todo/goalProgress.ts');
+const { goalItems, goalProgress, reorderGoalItems, goalRetro, resultKind } = load('components/todo/goalProgress.ts');
 
 const goal = { id: 'r1', aspirationId: 'g', title: '准备面试', createdAt: Date.parse('2026-10-10T09:00:00') };
 const card = (id, text, extra = {}) => ({ id, aspirationId: 'g', resultId: 'r1', text, type: 'onetime', createdAt: 1, ...extra });
@@ -60,4 +60,18 @@ test('retro uses completion times, time invested and marks legacy rows approxima
   assert.equal(retro.minutes, 90);
   assert.deepEqual(retro.timeline.map(r => [r.title, r.approximate]), [['B', true], ['A', false]]);
   assert.equal(retro.days, 6, '10/10 → 10/15 inclusive');
+});
+
+test('old KRs: only habits underneath → state; any one-off item → goal; explicit kind wins', () => {
+  const habitsOnly = { ...goal, id: 'sleep' };
+  const behaviors = [
+    card('h1', '11 点放下手机', { resultId: 'sleep', type: 'habit' }),
+    card('h2', '睡前不看短视频', { resultId: 'sleep', type: 'stop' }),
+    card('o1', '模拟面试', { resultId: 'r1' }),
+    card('h3', '每天刷 2 题', { resultId: 'r1', type: 'habit' }),
+  ];
+  assert.equal(resultKind(habitsOnly, behaviors), 'state');
+  assert.equal(resultKind(goal, behaviors), 'goal', 'mixed KR with a one-off item is a goal');
+  assert.equal(resultKind({ ...habitsOnly, kind: 'goal' }, behaviors), 'goal');
+  assert.equal(resultKind({ ...goal, id: 'empty' }, behaviors), 'goal', 'new empty KR defaults to goal');
 });

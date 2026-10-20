@@ -27,7 +27,7 @@ import GoalResultsPanel from "@/components/GoalResultsPanel";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import EdgeSwipeBack from "@/components/EdgeSwipeBack";
 import GoalChecklist from "@/components/GoalChecklist";
-import { goalItems, isGoalItemBehavior, type GoalItem } from "@/components/todo/goalProgress";
+import { goalItems, isGoalItemBehavior, resultKind, type GoalItem } from "@/components/todo/goalProgress";
 import { toISODate } from "@/components/todo/date";
 import LevelBar from "@/components/LevelBar";
 import { useGoalLevels } from "@/components/todo/goalLevelContext";
@@ -96,8 +96,8 @@ type Props = {
   onArchiveAspiration: (id: string) => void;
   onRestoreAspiration: (id: string) => void;
   onDeleteAspiration: (id: string) => void;
-  onCreateGoalResult: (aspirationId: string, title: string, evidence?: string) => string;
-  onUpdateGoalResult: (id: string, patch: { title?: string; evidence?: string }) => void;
+  onCreateGoalResult: (aspirationId: string, title: string, evidence?: string, kind?: GoalResult["kind"]) => string;
+  onUpdateGoalResult: (id: string, patch: { title?: string; evidence?: string; kind?: GoalResult["kind"] }) => void;
   onReorderGoalResults: (aspirationId: string, orderedIds: string[]) => void;
   onArchiveGoalResult: (id: string) => void;
   onRestoreGoalResult: (id: string) => void;
@@ -274,13 +274,15 @@ export default function GoalsView({
         ? activeResultId
         : null;
   const selectedResult = openResults.find((result) => result.id === resolvedResultId) ?? null;
+  // 目标（要达成）→ 清单；状态（要保持）→ 下面挂习惯，用焦点地图挑。两者同级。
+  const selectedKind = selectedResult ? resultKind(selectedResult, behaviors) : null;
   const focusCards =
     openResults.length === 0 || resolvedResultId === null
       ? openCards
       : resolvedResultId === UNASSIGNED_RESULT_ID
         ? unassignedCards
-        // 选中某个目标时，一次性/成果类条目进上面的清单（只排先后），地图上只留可重复的候选来挑习惯。
-        : openCards.filter((card) => card.resultId === resolvedResultId && !isGoalItemBehavior(card));
+        // 选中目标时，一次性/成果类条目在清单里（只排先后），地图上只剩可重复的；选中状态时全部上地图。
+        : openCards.filter((card) => card.resultId === resolvedResultId && (selectedKind === "state" || !isGoalItemBehavior(card)));
   const focusArchivedCards =
     openResults.length === 0 || resolvedResultId === null
       ? archivedOpenCards
@@ -722,7 +724,8 @@ export default function GoalsView({
               allCards={allOpenCards}
               activeResultId={resolvedResultId}
               onSelect={handleSelectResult}
-              onCreate={(title, evidence) => onCreateGoalResult(open.id, title, evidence)}
+              onCreate={(title, evidence, kind) => onCreateGoalResult(open.id, title, evidence, kind)}
+              kindOf={(result) => resultKind(result, behaviors)}
               onUpdate={onUpdateGoalResult}
               onReorder={(orderedIds) => onReorderGoalResults(open.id, orderedIds)}
               onArchive={(id) => {
@@ -738,10 +741,10 @@ export default function GoalsView({
               <nav
                 data-testid="sticky-result-nav"
                 className="sticky top-0 z-30 -mx-6 flex items-center gap-2 border-y border-[var(--color-border)] bg-white/95 px-6 py-2 shadow-[0_4px_12px_rgba(0,0,0,0.04)] backdrop-blur-md"
-                aria-label="快速切换目标"
+                aria-label="快速切换目标和状态"
               >
                 <span className="flex-shrink-0 text-[10px] font-semibold text-[var(--color-text-tertiary)]">
-                  目标
+                  切换
                 </span>
                 <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   <button
@@ -760,9 +763,15 @@ export default function GoalsView({
                       {openCards.length}
                     </span>
                   </button>
-                  {openResults.map((result, index) => {
+                  {[...openResults]
+                    .sort((a, b) => Number(resultKind(a, behaviors) === "state") - Number(resultKind(b, behaviors) === "state"))
+                    .map((result) => {
                     const active = resolvedResultId === result.id;
-                    const count = openCards.filter((card) => card.resultId === result.id).length;
+                    const isState = resultKind(result, behaviors) === "state";
+                    const items = isState ? [] : goalItems(result, behaviors, tasks);
+                    const badge = isState
+                      ? String(openCards.filter((card) => card.resultId === result.id).length)
+                      : result.status === "done" ? "✓" : `${items.filter((item) => item.done).length}/${items.length}`;
                     return (
                       <button
                         key={result.id}
@@ -772,15 +781,15 @@ export default function GoalsView({
                         className={[
                           "flex h-7 max-w-[220px] flex-shrink-0 items-center rounded-full border px-2.5 text-[10px] font-medium transition-colors",
                           active
-                            ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
-                            : "border-[var(--color-border)] bg-white text-[var(--color-text-secondary)] hover:border-[var(--color-primary)]",
+                            ? isState ? "border-[#059669] bg-[#059669] text-white" : "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
+                            : isState ? "border-[#A7F3D0] bg-white text-[#047857] hover:border-[#059669]" : "border-[var(--color-border)] bg-white text-[var(--color-text-secondary)] hover:border-[var(--color-primary)]",
                         ].join(" ")}
-                        data-full-text={`${index + 1}. ${result.title}`}
+                        data-full-text={`${isState ? "状态" : "目标"}：${result.title}`}
                       >
-                        <span className="mr-1 flex-shrink-0 tabular-nums opacity-70">{index + 1}</span>
+                        <span className="mr-1 flex-shrink-0 opacity-70">{isState ? "状态" : "目标"}</span>
                         <span className="truncate">{result.title}</span>
-                        <span className={active ? "ml-1 flex-shrink-0 text-white/75" : "ml-1 flex-shrink-0 text-[var(--color-text-tertiary)]"}>
-                          {count}
+                        <span className={active ? "ml-1 flex-shrink-0 tabular-nums text-white/75" : "ml-1 flex-shrink-0 tabular-nums text-[var(--color-text-tertiary)]"}>
+                          {badge}
                         </span>
                       </button>
                     );
@@ -828,7 +837,7 @@ export default function GoalsView({
               </p>
             </div>}
 
-            {selectedResult && (
+            {selectedResult && selectedKind === "goal" && (
               <GoalChecklist
                 key={`checklist-${selectedResult.id}`}
                 goal={selectedResult}
@@ -848,13 +857,22 @@ export default function GoalsView({
                 onRetroNote={(note) => onPatchGoalResult(selectedResult.id, { retroNote: note || undefined })}
               />
             )}
-            {selectedResult && (
+            {selectedResult && selectedKind === "state" && (
+              <div className="rounded-[10px] border border-[#A7F3D0] bg-[#F0FDF4] px-3 py-2">
+                <p className="text-[11px] font-semibold text-[#047857]">状态 · {selectedResult.title}</p>
+                <p className="mt-0.5 text-[10px] leading-relaxed text-[#3F6650]">
+                  {selectedResult.evidence ? `怎样算保持住：${selectedResult.evidence}。` : ""}
+                  靠习惯维持：在下面脑暴候选、拖两根滑块，右上角的那几条加入习惯表。
+                </p>
+              </div>
+            )}
+            {selectedResult && selectedKind === "goal" && focusCards.length > 0 && (
               <p className="-mb-2 mt-1 text-[11px] font-semibold text-[var(--color-text-secondary)]">
-                想养成的习惯 · 用焦点地图挑
+                这个目标下还有 {focusCards.length} 条可重复的行为 · 习惯更适合放到某个「状态」下
               </p>
             )}
 
-            <FocusMapView
+            {!(selectedKind === "goal" && focusCards.length === 0) && <FocusMapView
               key={resolvedResultId ?? "direct"}
               aspiration={open}
               focusTitle={selectedResult?.title ?? open.title}
@@ -896,7 +914,8 @@ export default function GoalsView({
               rejudgeTotal={focusCards.length}
               onUndo={onUndo}
               canUndo={canUndo}
-            />
+            />}
+
           </>
         ) : (
           <>

@@ -28,7 +28,7 @@ import TaskBottomSheet from "@/components/TaskBottomSheet";
 import DailyFocusSection from "@/components/DailyFocusSection";
 import { dailyFocusTask } from "@/components/todo/dailyFocus";
 import { hasStartWin } from "@/components/todo/startWin";
-import { goalItems, goalProgress } from "@/components/todo/goalProgress";
+import { goalItems, goalProgress, resultKind } from "@/components/todo/goalProgress";
 import { isRepeatable } from "@/components/todo/behavior";
 import QuickAddTask from "@/components/QuickAddTask";
 import MainlineBar from "@/components/MainlineBar";
@@ -296,7 +296,8 @@ export default function TodoDayView({
     const startActionLivesOnStep = Boolean(stepStartAction);
     const isExpanded = expanded.has(t.id);
     const taskResult = resolveTaskGoalResult(t, goalResults, behaviors, habits);
-    const taskProgress = taskResult ? goalProgress(goalItems(taskResult, behaviors, tasks)) : undefined;
+    // 只有「目标」（有终点）才有 x/y；「状态」只显示名字。
+    const taskProgress = taskResult && resultKind(taskResult, behaviors) === "goal" ? goalProgress(goalItems(taskResult, behaviors, tasks)) : undefined;
 
     const hasMeta =
       t.id === keyTask?.id ||

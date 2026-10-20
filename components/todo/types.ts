@@ -165,6 +165,12 @@ export interface GoalResult {
    * 界面上现在叫「目标」（有终点的一件大事），见 10-身份与目标规格.md。
    * `evidence` 显示为「完成标准」。done = 已结项，结项后看复盘。
    */
+  /**
+   * goal = 「目标」：要达成的结果，有终点 → 清单 + 进度 + 结项。
+   * state = 「状态」：要保持的结果，没有终点 → 下面挂习惯（原 KR 的分组作用）。
+   * 两者同级，都挂在身份下。老数据没有这个字段，用 resultKind() 推断。
+   */
+  kind?: "goal" | "state";
   status?: "active" | "done";
   doneAt?: number;
   /** 结项时可选的一句「这次学到了什么」。 */

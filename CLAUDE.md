@@ -47,16 +47,23 @@ LLM 走 OpenAI 兼容接口（默认 DeepSeek），环境变量 `LLM_API_KEY` / 
 
 ## 概念层次（2026-10-20 改名，规格见 `10-身份与目标规格.md`）
 
-**界面叫法和类型名不一样，别搞混：**`Aspiration` = 「身份」（原来叫目标），`GoalResult` = 「目标」（原来叫关键结果/KR）。
-`evidence` 显示为「完成标准」。底层字段、localStorage key 都没改。
+**界面叫法和类型名不一样，别搞混：**`Aspiration` = 「身份」（原来叫目标）。`GoalResult`（原来叫关键结果/KR）现在分两种，**同级**，都挂在身份下：
+- `kind: "goal"` = 「目标」：**要达成**的结果，有终点 → 清单 + 进度 + 结项。`evidence` 显示为「完成标准」
+- `kind: "state"` = 「状态」：**要保持**的结果，没有终点 → 下面挂习惯（原 KR 的分组作用，用户明确要求习惯必须分组）
+- 老数据没有 `kind`，用 `resultKind()` 推断：下面有一次性/成果类推进项 → 目标；只有可重复行为 → 状态。用户可在编辑里切换
+- 底层字段、localStorage key 都没改
 
 ```
-身份 Aspiration（没有终点）  → 等级 + 经验（goalXp.ts）
- ├─ 目标 GoalResult（有终点） → 有顺序的清单 + 进度 x/y + 结项复盘（goalProgress.ts / GoalChecklist.tsx）
+身份 Aspiration（愿望，长期）       → 等级 + 经验（goalXp.ts）
+ ├─ 目标 GoalResult kind=goal（要达成） → 有顺序的清单 + 进度 x/y + 结项复盘（goalProgress.ts / GoalChecklist.tsx）
  │   └─ 清单里的事 = 一次性/成果类 BehaviorCard + 直接指到这个目标的任务（同名任务算一件分几次做）
- ├─ 习惯                     → 用焦点地图挑（只有挑习惯才打分）
+ ├─ 状态 GoalResult kind=state（要保持） → 习惯，用焦点地图挑（只有挑习惯才打分）
  └─ 零散任务
 ```
+
+> 🔴 **2026-10-20 踩过的坑：**第 1 期把每个旧 KR 都当成了「目标」，结果用户的「早睡早起」「保持运动习惯」
+> 这种习惯分组出现了清单、进度、甚至「可以结项了吗？」，模板套出来的「起床、早饭」被算成清单里的一件。
+> 旧 KR 有两种含义（要达成 / 要保持），必须区分。所有进度显示（任务标签、庆祝提示、主线面板、身份页列表）都只对 `goal` 生效。
 
 - **只有"挑选"才打分**：焦点地图（两轴）只用来挑习惯（OR）；目标清单是 AND，只拖动排先后，第一件没做完的就是下一步。
   选中某个目标时，焦点地图只显示可重复的候选，一次性/成果类条目在清单里。
@@ -227,7 +234,7 @@ timing 改成看 `Habit.anchor` 字段；decision 去任务详情的「拆解」
 - `TaskNote`：追加式随记，带现场快照 context；只属于本次任务，不进模板
 - `TaskTemplate` / `TaskTemplateItem`：模板结构，不含日期/状态
 - `Aspiration`：id, title, kind, createdAt, archived?, color?, weeklyLimit?
-- `GoalResult`（界面叫「目标」，原 KR）：id, aspirationId, title, evidence?（完成标准）, order?, archived?, createdAt, status?, doneAt?, retroNote?, itemOrder?
+- `GoalResult`（原 KR，界面按 kind 叫「目标」或「状态」）：id, aspirationId, title, evidence?（完成标准 / 怎样算保持住）, order?, archived?, createdAt, kind?, status?, doneAt?, retroNote?, itemOrder?
 - `DayPlan`：date, primaryAspirationIds, mustDoTaskId?
 - `BehaviorCard`：id, aspirationId, resultId?, text, type, typeSource?, reason?, blocker?, impact?, feasibility?, steps?, startAction?, taskId?, archived?
   - type: "unsorted" | "aspiration" | "outcome" | "onetime" | "habit" | "stop"

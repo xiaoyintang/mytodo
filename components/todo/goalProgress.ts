@@ -30,6 +30,20 @@ export function isGoalItemBehavior(card: BehaviorCard): boolean {
   return ITEM_TYPES.has(card.type);
 }
 
+/**
+ * 这是「目标」（要达成）还是「状态」（要保持）。用户指定过就听用户的；
+ * 老 KR 按下面挂了什么推断：有一次性/成果类的事 → 目标；只有可重复行为 → 状态。
+ * 从模板套出来的例行任务（起床、早饭）不参与判断——它们不说明这是个有终点的事。
+ */
+export function resultKind(result: GoalResult, behaviors: BehaviorCard[]): "goal" | "state" {
+  if (result.kind) return result.kind;
+  if (result.status === "done" || result.itemOrder?.length) return "goal";
+  const mine = behaviors.filter((card) => card.resultId === result.id && !card.archived);
+  if (mine.some(isGoalItemBehavior)) return "goal";
+  if (mine.some((card) => card.type === "habit" || card.type === "stop")) return "state";
+  return "goal";
+}
+
 function itemFromTasks(key: string, title: string, linked: Task[], behaviorId?: string, stepCount = 0): GoalItem {
   const done = linked.length > 0 && linked.every((task) => task.status === "done");
   const stamps = linked.map((task) => task.completedAt).filter((stamp): stamp is number => stamp !== undefined);
