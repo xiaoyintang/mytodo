@@ -6,6 +6,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > 本文件只记**代码现状和踩过的坑**。文档与代码冲突时以代码为准，并顺手更新本文件。
 > `README.md`、`prompts/`、`notes/` 里多是早期设计，可能已过时。
 
+## 产品的理论来源（改功能前先想清楚它服务哪条）
+
+功能都从这几本书来，不是凭空加的。动一个功能前，先确认它对应的是哪条原理，别为了"能做"而做：
+
+| 来源 | 核心观点 | 在 App 里对应 |
+|---|---|---|
+| 福格《福格行为模型 / Tiny Habits》 | 行为 = 动机 × 能力 × 提示；把行为变小；做完立刻庆祝 | 焦点地图挑黄金行为、习惯锚点、最小启动、「启动也算赢」、完成时的庆祝提示 |
+| 《原子习惯》 | 身份驱动行为；每做一次都是为想成为的人投一票 | 身份（Aspiration）、经验值/等级（只涨不掉）、计划中的成长记录 |
+| 幻想实现理论 / WOOP（Oettingen，心理对照 + 执行意图） | 只想美好结果会削弱行动；要先想结果、再想**自己的**障碍，再写"如果…那么…"计划 | **待做**：遇到阻碍时的计划功能（规格见 `10-身份与目标规格.md`） |
+| 用户提到的第四本（"work of art"，待用户确认书名与对应功能） | — | — |
+
+用户的论文摘录：`~/Desktop/claude code项目/obsidian/00_inbox/2026-09-18-未来思维与行为改变-全文中文翻译.md`（Oettingen 2012 全文译文）。
+
 ## 常用命令
 
 ```bash
@@ -33,7 +46,8 @@ Next.js 15 App Router + React 19 + TypeScript + Tailwind v4 + lucide-react。只
 | 日视图 | `TodoDayView`、`TaskQuickActions`、`TaskScheduleDialog`、`TaskTitleEditor`、`DailyFocusSection`、`QuickAddTask` | `dailyFocus.ts`、`taskCopy.ts` |
 | 周视图 | `TodoWeekView`、`MainlinePlanner` | `weekOverview.ts` |
 | 任务详情 | `TaskBottomSheet`、`StartActionEditor`、`TaskNotes`、`TaskCopyDialog` | `taskNotes.ts`、`taskGoal.ts` |
-| 目标 / KR / 焦点地图 | `GoalsView`、`GoalResultsPanel`、`FocusMapView`、`BehaviorStepsEditor` | `goal.ts`、`behavior.ts`、`blocker.ts`、`behaviorApi.ts`、`aiBridge.ts` |
+| 身份 / 目标 / 状态 / 焦点地图 | `GoalsView`（外壳）、`IdentityOverview`（两个列表）、`GoalChecklist`（目标清单）、`FocusMapView`、`BehaviorStepsEditor` | `goal.ts`、`goalProgress.ts`、`behavior.ts`、`blocker.ts`、`behaviorApi.ts`、`aiBridge.ts` |
+| 反馈 / 等级 | `WinNotice`（庆祝提示）、`LevelBar` | `goalXp.ts`、`goalLevelContext.ts`、`startWin.ts`、`completion.ts` |
 | 习惯 | `HabitLabView`、`HabitTracker` | — |
 | 日计划模板 | `DayTemplateModal`、`TemplateBatchNotice` | `taskTemplate.ts`、`templateHistory.ts` |
 | 时间记录 | `TimeLogView`、`TimerPanel`、`TimerStartEditor`、`TimerRewardPanel`、`EntryNameInput`、`EntryTaskPicker`、`CategoryDonut`、`GoalInvestChart` | `useTimer.ts`、`timerStart.ts`、`timerReward.ts`、`entryHistory.ts`、`time.ts`、`category.ts`、`nlparse.ts` |
@@ -91,7 +105,6 @@ LLM 走 OpenAI 兼容接口（默认 DeepSeek），环境变量 `LLM_API_KEY` / 
 - **规则写死：目标里只有任务，习惯只在状态下。**放错地方的（目标下的习惯、没分组的习惯、不在目标下的一次性事项）
   集中在「待整理」，每条一个「放到…」（可当场新建），**不自动替用户选**。没有来源行为的习惯用 `Habit.resultId` 记状态。
 - 一件事只挂一个身份（`aspirationId`）；挂目标（`resultId`）的任务同时给身份涨经验。
-
 - **步骤**（`Task.subtasks` / `BehaviorCard.steps`）是 AND 关系，共同完成父项；**下一步** = 第一条未完成步骤，不另存字段。
 - **最小启动**（`startAction`）只负责跨过启动门槛：任务和每个步骤可各自设，完成它不等于完成任务/步骤。
   但**启动本身算一次赢**（福格：做了最小版本就是成功）：点完当场弹庆祝提示「今天第 N 次启动」，
@@ -103,15 +116,14 @@ LLM 走 OpenAI 兼容接口（默认 DeepSeek），环境变量 `LLM_API_KEY` / 
   升级所需 60、90、120…递增；**只涨不掉**。时间占大头，避免"拆碎任务刷分"。
   展示在三处：做完那一下的庆祝提示（`WinNotice`，任务/步骤/启动共用；没挂目标的普通任务完成不弹，免得每勾一件杂事都弹）、
   主线常驻条、目标列表；打卡的庆祝由习惯页自己的卡片负责，带上等级行，不另叠提示。
-  等级通过 `GoalLevelContext`（`goalLevelContext.ts`）下发，不逐层传 props。
-  背景：用户每天只用任务和记录，觉得目标链路（目标→KR→行为→评分）太重、做了事感受不到在往目标推进。
-  这是三步计划的第一步（只加反馈）；第二步拟分身份型（等级）/项目型（按行动流程算完成度），第三步给目标页减负——用户用过再定。
-- 目标/KR/推进项的**归档**只是退出当前关注，不删任何关联数据。默认只突出前三项，也不是数量上限。
+  等级通过 `GoalLevelContext`、目标进度通过 `GoalProgressContext`（都在 `goalLevelContext.ts`）下发，不逐层传 props。
+  背景：用户每天只用任务和记录，觉得旧链路（目标→KR→行为→评分）太重、做了事感受不到在往前走。后续分期见 `10-身份与目标规格.md`。
+- 身份/目标/状态/推进项的**归档**只是退出当前关注，不删任何关联数据。
 
 ## 日视图（TodoDayView）
 
-- 有 `startTime` 的任务进「日程」按时间排；没有的进「待办」**按目标分组**（主线目标排前），不再分上午/下午/晚间。
-- **非主线目标的任务默认折叠**（可展开）。两条边界：没归属目标的任务不折；那天没排主线时一条都不折。
+- 有 `startTime` 的任务进「日程」按时间排；没有的进「待办」**按身份分组**（主线身份排前），不再分上午/下午/晚间。
+- **非主线身份的任务默认折叠**（可展开）。两条边界：没归属身份的任务不折；那天没排主线时一条都不折。
 - 任务卡交互（已定稿，别把讨论过但没采用的方案当现状）：
   - 点**标题** → 打开 TaskBottomSheet（**不是**原位改名）
   - 点**状态圆圈** → todo → in_progress → done → todo
@@ -134,23 +146,24 @@ LLM 走 OpenAI 兼容接口（默认 DeepSeek），环境变量 `LLM_API_KEY` / 
 ## 任务详情（TaskBottomSheet）
 
 - 标题编辑、日期/时间编辑（复用 TimePicker）、三态状态按钮（标记为进行中 / 标记为已完成 / 取消完成）、删除二次确认。
-- 归属（目标 + KR）、AI 辅助、进度与时长目标、随记（`TaskNotes`）按需展开。
+- 归属（身份 + 目标/状态，底层 `aspirationId` + `resultId`）、AI 辅助、进度与时长目标、随记（`TaskNotes`）按需展开。
 - 「行动步骤」：手动加/编辑/打勾/删除/拖动排序（鼠标、触摸、键盘方向键）；
-  AI「拆成步骤/重新拆解」生成新一套建议；「检查整体」结合目标、KR、父任务和全部步骤找问题；
+  AI「拆成步骤/重新拆解」生成新一套建议；「检查整体」结合身份、目标、父任务和全部步骤找问题；
   「帮我说清楚」只看当前下一步，不打分，只给一个问题和一个可选改写。AI 建议都可关闭，由用户决定是否采纳。
 - `fixed` 定位 + z-index 100+，`max-h-[85vh]` 内容可滚动，Footer sticky。
 
 ## 身份页与焦点地图（类型名仍是 Aspiration / GoalResult）
 
-- 身份页（`GoalsView`）从常驻条「我的身份」进入，不是 tab。身份、目标都可拖动排序。新建身份有「我是一个 ___ 的人」句式引导（Tab / 按钮），不强制。
-- 焦点地图（`FocusMapView`）一个目标/KR 一页：KR 切换导航滚动时吸顶；条目默认紧凑（标题、类型、分数、步骤数），展开才出滑块和编辑；
-  多选批量排期/删除/归档；排日程可多选日期，可撤回。
+- 身份页（`GoalsView`）从常驻条「我的身份」或主线面板「打开「XX」」进入，不是 tab。身份、目标、状态都可拖动排序。
+  新建身份有「我是一个 ___ 的人」句式引导（Tab / 按钮），不强制。
+- 焦点地图（`FocusMapView`）只在某个状态「挑新习惯」、或「待整理」里整理没判定的想法时打开：条目默认紧凑（标题、类型、分数、步骤数），
+  展开才出滑块和编辑；多选批量排期/删除/归档；排日程可多选日期，可撤回。
 - 综合分 `impact × 60% + feasibility × 40%`（`behavior.ts`），两轴都评完才参与排序；
   "黄金/优先推进"门槛仍是两轴都 ≥ 50——**用户明确质疑过这个阈值，别当成定论**。分数只由用户给，AI 不代填。
 - 收集口回车即存为 `unsorted`；**收集与整理必须分离**——收集时不调 AI、不问类型、不要求决定。
   自动判定：新条目 700ms 后攒成一次 `/api/behavior (mode:sort)`；判定中显示"判定中…"，失败显示"未判定"。
   **去重 key 必须是 `id + 文字`**——改完文字要能重判，只按 id 记会永远停在未判定。
-- 外部聊天桥接（`aiBridge.ts`）：「带去聊」导出目标/KR/推进项/步骤给 Claude、ChatGPT；
+- 外部聊天桥接（`aiBridge.ts`，导出格式里仍叫"目标/关键结果"，导回解析依赖这些字样，别随手改）：「带去聊」导出身份/目标/推进项/步骤给 Claude、ChatGPT；
   「带回来」粘贴结构化变更 → 匹配 → 预览 → 用户勾选应用，可批次撤回。替换必须引用原文匹配，不让 AI 猜 id；
   省略 steps = 保留，明确 clear 才清空。
 
@@ -192,24 +205,26 @@ timing 改成看 `Habit.anchor` 字段；decision 去任务详情的「拆解」
 
 ## 主线（方案 A，规格见 `09-app重构规格.md`）
 
-- 「主线」不是新实体，就是 `DayPlan.primaryAspirationIds`，最多三个目标；目标可设 `weeklyLimit`（每周投入天数），超了只提示不拦。
-- 底部 tab 一个不动（日/周/记录/习惯）。目标是这些东西的来源，是正交维度，所以放常驻条 `MainlineBar`，不做 tab。
-- `MainlineBar` 在标题下、tab 栏上，四个 tab 通用：显示当天主线，可直接选当天主线，「我的目标」进目标管理页。周规划在周视图。
+- 「主线」不是新实体，就是 `DayPlan.primaryAspirationIds`，最多三个**身份**；身份可设 `weeklyLimit`（每周投入天数），超了只提示不拦。
+- 底部 tab 一个不动（日/周/记录/习惯）。身份是这些东西的来源，是正交维度，所以放常驻条 `MainlineBar`，不做 tab。
+- `MainlineBar` 在标题下、tab 栏上，四个 tab 通用：显示当天主线身份（带等级），点身份弹目标进度面板，可直接选当天主线，
+  「我的身份」进身份页。周规划在周视图。
 - **习惯不受主线过滤**（硬约束）：任务靠日程触发、习惯靠锚点触发，两套机制不能混。
-- 任务卡第二行带**写着目标名字**的浅色标签，点它直达对应 KR 的焦点地图（没 KR 进目标地图）。
+- 任务卡第二行带**写着身份名字（› 目标/状态名、目标进度 x/y）**的浅色标签，点它进身份页并展开那个目标/状态。
 - **任务的 `aspirationId` / `resultId` 只有这几个来源**：从推进项/习惯排期时继承；模板带过来；详情页自己指。
   **手动/AI 建的任务不自动归属**——曾默认落到当天主线第一条，「扔垃圾」也被算进主线，污染投入统计。
 
 ## 习惯
 
-- 按目标 → KR 两层分组、可折叠，组内参考对应推进项综合分排序。**分组不能为了扁平化删掉。**展开与跳转入口分开防误触。
+- 按身份 → 状态两层分组、可折叠，组内参考对应推进项综合分排序。**分组不能为了扁平化删掉。**展开与跳转入口分开防误触。
+  习惯属于哪个状态：有来源行为看行为的 `resultId`，没有就看 `Habit.resultId`。
 - 锚点「在 ___ 之后」可先不填。`measure`：count 计次；duration 时长型从时间记录同名匹配读出，不用打第二次卡。
 - 显示今天情况、累计次数、最近 30 天做了几天；可选记一句正向影响。**不做 streak**——断掉是概率事件，越长崩得越惨。
 - 可多选日期排成任务（主要覆盖本周，周日开放下周）；从习惯排出的任务完成后回写 HabitLog（`taskId` 防重复计次）。
 
 ## 日计划模板
 
-- 从任务整理出模板，按需套到某天；可直接编辑模板和条目。保存时间、目标/KR、步骤、时长目标、最小启动等结构，不存日期和完成状态。
+- 从任务整理出模板，按需套到某天；可直接编辑模板和条目。保存时间、身份/目标、步骤、时长目标、最小启动等结构，不存日期和完成状态。
 - 套用后生成独立任务，按 `sourceTemplateId + sourceTemplateItemId` 去重；套用批次可撤销/恢复（`templateHistory.ts`，key `mytodo.template-batches.v1`）。
 - 修改模板只影响以后套用。它不是自动重复规则引擎。
 
@@ -238,7 +253,7 @@ timing 改成看 `Habit.anchor` 字段；decision 去任务详情的「拆解」
 - **TimeEntry 的目标归属只从 task/habit 复制（快照），不做任何推导。**
   ❌ 不默认填今日主线（会把杂事算进主线）；❌ **绝不在开始计时前弹窗问归属**——计时是进入工作状态的扳机。
   归属事后在台账里点标签改。明确关联的任务改目标时同步更新，独立记录保留自身归属。
-- 记录 tab「本周投入」：计划与实际并排，不做达标率/百分比。目标列表显示 `任务 N · 习惯 N · 本周 Xh`，为 0 标灰橙，不弹提示不打分。
+- 记录 tab「本周投入」：计划与实际并排，不做达标率/百分比。身份列表显示 `任务 N · 习惯 N · 本周 Xh`，为 0 标灰橙，不弹提示不打分。
 
 ## 关键类型（`components/todo/types.ts`）
 
@@ -254,9 +269,9 @@ timing 改成看 `Habit.anchor` 字段；decision 去任务详情的「拆解」
 - `Aspiration`：id, title, kind, createdAt, archived?, color?, weeklyLimit?
 - `GoalResult`（原 KR，界面按 kind 叫「目标」或「状态」）：id, aspirationId, title, evidence?（完成标准 / 怎样算保持住）, order?, archived?, createdAt, kind?, status?, doneAt?, retroNote?, itemOrder?
 - `DayPlan`：date, primaryAspirationIds, mustDoTaskId?
-- `BehaviorCard`：id, aspirationId, resultId?, text, type, typeSource?, reason?, blocker?, impact?, feasibility?, steps?, startAction?, taskId?, archived?
+- `BehaviorCard`：id, aspirationId, resultId?, text, type, typeSource?, reason?, blocker?, checkedAs?, impact?, feasibility?, steps?, startAction?, taskId?, archived?
   - type: "unsorted" | "aspiration" | "outcome" | "onetime" | "habit" | "stop"
-- `Habit`：id, title, anchor?, measure ("count" | "duration"), behaviorId?, aspirationId?, createdAt, archived?
+- `Habit`：id, title, anchor?, measure ("count" | "duration"), behaviorId?, aspirationId?, resultId?（所属状态，仅无来源行为时用）, createdAt, archived?
 - `HabitLog`：id, habitId, date, at, taskId?, impact?
 - `TimeEntry`：id, date, dateAnchor?, title, minutes, startTime?, endTime?, taskId?, taskLinkMode?, aspirationId?, category?, categorySource?
 - `TaskStatus`："todo" | "in_progress" | "done"（**不是 "completed"**）；`tag` 是单数 `TaskTag`，不是数组
