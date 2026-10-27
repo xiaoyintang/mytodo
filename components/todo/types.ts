@@ -313,4 +313,6 @@ export interface TimeEntry {
   aspirationId?: string; // 归属目标；明确关联的任务调整目标时同步更新，独立记录保留自身归属
   category?: EntryCategory; // 大类（关键词规则或 AI 判定）
   categorySource?: "user" | "ai"; // "user"=手动改过，以后同名记录都听它的，AI 不再覆盖
+  /** 本轮专注的来源凭据；复制/补记不继承。未改时保留秒精度，改时长后以台账为准。 */
+  focusCredit?: { cycleId: string; elapsedMs: number; originalMinutes: number };
 }

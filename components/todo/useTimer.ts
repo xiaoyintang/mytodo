@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TimeEntry } from "./types";
-import { beginReward, configureReward, readRewardCycle, resumeFocus, rewardProgress, stopTimer, type RewardConfig, type RewardCycle, type TimerTransition } from "./timerReward";
+import { beginReward, configureReward, readRewardCycle, resumeFocus, rewardProgress, rewardWithEntries, stopTimer, type RewardConfig, type RewardCycle, type TimerTransition } from "./timerReward";
 import { playRewardSound, unlockRewardSound } from "./rewardSound";
 import { changeTimerStart } from "./timerStart";
 
@@ -66,13 +66,15 @@ function write(state: TimerState) {
  * 计时状态管理。支持任意标题（三类按钮传 "正事/娱乐/休息"，自然语言传 "养号" 等）。
  * 停止时按真实毫秒差算时长（跨午夜/超长都正确），标题即记录标题，无需事后改名。
  */
-export function useTimer(onRecord: (entry: Omit<TimeEntry, "id">) => void) {
+export function useTimer(onRecord: (entry: Omit<TimeEntry, "id">) => void, entries?: readonly TimeEntry[]) {
   const [state, setState] = useState<TimerState>(EMPTY);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const notifiedRef = useRef(new Set<string>());
   // 用 ref 存回调，让 start/stop 保持稳定，不随父组件每次渲染重建
   const onRecordRef = useRef(onRecord);
   onRecordRef.current = onRecord;
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
   // 也用 ref 跟一份当前状态：**副作用绝不能写在 setState 的更新函数里**——
   // 严格模式会把更新函数跑两次，记一笔就会重复。
   const stateRef = useRef(state);
@@ -114,7 +116,7 @@ export function useTimer(onRecord: (entry: Omit<TimeEntry, "id">) => void) {
   useEffect(() => {
     const cycle = state.reward;
     if (!cycle) return;
-    const progress = rewardProgress(state, nowMs);
+    const progress = rewardProgress(state, nowMs, entries);
     const phase = progress.ready ? "focus" : progress.rewardOver ? "reward" : undefined;
     if (!phase) return;
     const key = `${cycle.id}:${phase}`;
@@ -127,7 +129,7 @@ export function useTimer(onRecord: (entry: Omit<TimeEntry, "id">) => void) {
     } catch { /* 内存去重仍有效 */ }
     const enabled = phase === "focus" ? cycle.config.focusSound : cycle.config.rewardSound;
     if (enabled) playRewardSound();
-  }, [state, nowMs]);
+  }, [state, nowMs, entries]);
 
   const start = useCallback((title: string) => {
     const t = title.trim();
@@ -151,7 +153,7 @@ export function useTimer(onRecord: (entry: Omit<TimeEntry, "id">) => void) {
   const startReward = useCallback((id: string) => {
     if (stateRef.current.reward?.id !== id) return;
     if (stateRef.current.reward.config.rewardSound) unlockRewardSound();
-    transitionRef.current(beginReward(stateRef.current, Date.now()));
+    transitionRef.current(beginReward(stateRef.current, Date.now(), entriesRef.current));
   }, []);
 
   const continueFocus = useCallback((id: string) => {
@@ -209,7 +211,7 @@ export function useTimer(onRecord: (entry: Omit<TimeEntry, "id">) => void) {
 
   const elapsedMs = state.running ? nowMs - state.running.startedAt : 0;
   return { running: state.running, elapsedMs, start, stop, rename, adjustStart, state, adopt,
-    reward: state.reward, enableReward, startReward, continueFocus, dismissReward };
+    reward: rewardWithEntries(state.reward, entries), enableReward, startReward, continueFocus, dismissReward };
 }
 
 export type TimerRewardControls = Pick<ReturnType<typeof useTimer>, "reward" | "enableReward" | "startReward" | "continueFocus" | "dismissReward">;

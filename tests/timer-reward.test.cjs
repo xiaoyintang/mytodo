@@ -13,11 +13,112 @@ function load(file, mocks = {}) {
     ? load(path.join(path.dirname(file), name + '.ts'), mocks) : require(name)), module, module.exports);
   return module.exports;
 }
-const { DEFAULT_REWARD, configureReward, rewardProgress, beginReward, resumeFocus, stopTimer, readRewardCycle } = load('components/todo/timerReward.ts');
+const { DEFAULT_REWARD, configureReward, rewardProgress, rewardWithEntries, beginReward, resumeFocus, stopTimer, readRewardCycle } = load('components/todo/timerReward.ts');
 const start = new Date(2026, 8, 29, 10, 0).getTime();
 const min = 60000;
 const idle = { running: null, updatedAt: 0 };
 const focus = () => configureReward({ ...idle, running: { title: '学概率统计', startedAt: start, attribution: { taskId: 't', aspirationId: 'g' } } }, DEFAULT_REWARD, start);
+
+test('editing recorded focus updates progress and eligibility, preserving exact seconds until edited', () => {
+  const stopped = stopTimer(focus(), start + 25 * min + 38000);
+  const entry = { ...stopped.entry, id: 'e1' };
+  assert.equal(rewardProgress(stopped.state, start, [entry]).focusMs, 25 * min + 38000);
+  const edited = { ...entry, minutes: 16, startTime: '10:10', endTime: '10:26' };
+  assert.equal(rewardProgress(stopped.state, start, [edited]).focusMs, 16 * min);
+  assert.equal(beginReward(stopped.state, start + 40 * min, [edited]).state, stopped.state);
+  const extended = { ...entry, minutes: 35 };
+  assert.equal(rewardProgress(stopped.state, start, [extended]).ready, true);
+  assert.equal(beginReward(stopped.state, start + 40 * min, [extended]).state.reward.phase, 'reward');
+  assert.equal(stopped.state.reward.creditedMs, 25 * min + 38000); // derivation never mutates synced timer
+});
+
+test('delete, undo, redo and cloud reload derive from the current ledger without accumulating deltas', () => {
+  const stopped = stopTimer(focus(), start + 20 * min);
+  const entry = { ...stopped.entry, id: 'e1' };
+  const state = JSON.parse(JSON.stringify(stopped.state));
+  for (const [entries, expected] of [
+    [[entry], 20], [[{ ...entry, minutes: 15 }], 15], [[], 0], [[{ ...entry, minutes: 15 }], 15], [[entry], 20], [[], 0],
+  ]) assert.equal(rewardProgress(state, start, entries).focusMs, expected * min);
+  assert.equal(readRewardCycle(state.reward).ledgerBaseMs, 0);
+});
+
+test('continuing adds only live elapsed time and each new segment once', () => {
+  const first = stopTimer(focus(), start + 20 * min);
+  const entries = [{ ...first.entry, id: 'e1', minutes: 10 }];
+  const resumed = resumeFocus(first.state, start + 30 * min).state;
+  assert.equal(rewardProgress(resumed, start + 35 * min, entries).focusMs, 15 * min);
+  const second = stopTimer(resumed, start + 35 * min);
+  entries.push({ ...second.entry, id: 'e2' });
+  assert.equal(rewardProgress(second.state, start + 50 * min, entries).focusMs, 15 * min);
+  assert.equal(rewardProgress(second.state, start + 50 * min, entries.slice(1)).focusMs, 5 * min);
+});
+
+test('ordinary, same-name and reward entries do not contribute; a new round does not reuse old focus', () => {
+  const claimed = beginReward(focus(), start + 30 * min);
+  const back = resumeFocus(claimed.state, start + 40 * min);
+  const entries = [{ ...claimed.entry, id: 'focus' }, { ...back.entry, id: 'reward' },
+    { id: 'ordinary', title: '学概率统计', date: '2026-09-29', minutes: 60 }];
+  assert.equal(back.entry.focusCredit, undefined);
+  assert.equal(rewardProgress(back.state, start + 45 * min, entries).focusMs, 5 * min);
+  const corrected = [{ ...entries[0], minutes: 1 }];
+  assert.equal(rewardWithEntries(claimed.state.reward, corrected).phase, 'reward'); // no clawback
+  assert.equal(rewardProgress(claimed.state, start + 35 * min, corrected).rewardMs, 5 * min);
+});
+
+test('old paused progress is preserved without guessing links; future segments can be edited', () => {
+  const legacy = { ...idle, reward: { ...focus().reward, activeStartedAt: undefined, ledgerBaseMs: undefined, creditedMs: 12 * min } };
+  assert.equal(rewardProgress(legacy, start, []).focusMs, 12 * min);
+  const resumed = resumeFocus(legacy, start + 20 * min).state;
+  const stopped = stopTimer(resumed, start + 30 * min);
+  assert.equal(stopped.state.reward.ledgerBaseMs, 12 * min);
+  assert.equal(rewardProgress(stopped.state, start, [{ ...stopped.entry, id: 'new', minutes: 5 }]).focusMs, 17 * min);
+  assert.equal(rewardProgress(stopped.state, start, []).focusMs, 12 * min);
+});
+
+test('cross-midnight corrections use the edited duration, not clock string subtraction', () => {
+  const late = new Date(2026, 8, 29, 23, 50).getTime();
+  const stopped = stopTimer(configureReward(idle, DEFAULT_REWARD, late), late + 20 * min);
+  assert.equal(rewardProgress(stopped.state, late, [{ ...stopped.entry, id: 'night', startTime: '23:40', endTime: '00:10', minutes: 30 }]).focusMs, 30 * min);
+  assert.equal(rewardProgress(stopped.state, late, [{ ...stopped.entry, id: 'renamed', title: '不同名字' }]).focusMs, 20 * min);
+});
+
+test('hook reads edited ledger for display and claim, reloads safely, and never rewrites timer on edits', () => {
+  const realNow = Date.now, originalWindow = global.window;
+  let now = start, entries = [];
+  Date.now = () => now;
+  const storage = new Map();
+  global.window = { localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) } };
+  function mount() {
+    const slots = []; let cursor = 0, first = true; const effects = [];
+    const react = {
+      useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = typeof initial === 'function' ? initial() : initial;
+        return [slots[i], v => slots[i] = typeof v === 'function' ? v(slots[i]) : v]; },
+      useRef(initial) { const i = cursor++; return slots[i] ?? (slots[i] = { current: initial }); }, useCallback: fn => fn,
+      useEffect(fn, deps) { if (first && deps?.length === 0) effects.push(fn); },
+    };
+    const { useTimer } = load('components/todo/useTimer.ts', { react });
+    const render = () => { cursor = 0; return useTimer(entry => { entries = [...entries, { ...entry, id: `e-${entries.length}` }]; }, entries); };
+    render(); effects.forEach(fn => fn()); first = false;
+    return render;
+  }
+  try {
+    let render = mount(), timer = render();
+    timer.enableReward(DEFAULT_REWARD); now += 35 * min; timer.stop(); timer = render();
+    assert.equal(timer.reward.creditedMs, 35 * min);
+    const persisted = storage.get('mytodo.timer.v1');
+    entries = entries.map(e => ({ ...e, minutes: 16 })); timer = render();
+    assert.equal(timer.reward.creditedMs, 16 * min);
+    assert.equal(storage.get('mytodo.timer.v1'), persisted);
+    timer.startReward(timer.reward.id); assert.equal(render().running, null); // no stale 35-minute claim
+    render = mount(); timer = render(); assert.equal(timer.reward.creditedMs, 16 * min);
+    timer.continueFocus(timer.reward.id); now += 5 * min; timer.stop(); timer = render();
+    assert.equal(timer.reward.creditedMs, 21 * min);
+    const snapshot = entries; entries = []; timer = render(); assert.equal(timer.reward.creditedMs, 0);
+    entries = snapshot; timer = render(); assert.equal(timer.reward.creditedMs, 21 * min);
+    entries = entries.map((e, i) => i === 0 ? { ...e, minutes: 30 } : e); timer = render();
+    timer.startReward(timer.reward.id); assert.equal(render().reward.phase, 'reward');
+  } finally { Date.now = realNow; global.window = originalWindow; }
+});
 
 test('reward is optional, validates settings and can attach without restarting existing focus', () => {
   const old = { ...idle, running: { title: '读书', startedAt: start } };

@@ -535,7 +535,7 @@ export default function TodoApp() {
 
   // 多设备同步码
   // 计时器提到这一层，才能进云同步（手机上开始，电脑上看得到还在跑）
-  const timer = useTimer((entry) => addEntries([entry]));
+  const timer = useTimer((entry) => addEntries([entry]), entriesHydrated ? entries : undefined);
 
   const labHydrated =
     aspHydrated &&

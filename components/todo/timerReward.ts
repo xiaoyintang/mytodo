@@ -17,6 +17,8 @@ export type RewardCycle = {
   phase: "focus" | "reward" | "finished";
   focus: Pick<RunningTimer, "title" | "attribution">;
   creditedMs: number;
+  /** 未建立台账关联的旧进度；新轮次为 0。关联记录的贡献从台账动态计算。 */
+  ledgerBaseMs?: number;
   activeStartedAt?: number;
 };
 export const DEFAULT_REWARD: RewardConfig = {
@@ -39,12 +41,25 @@ export function readRewardCycle(value: unknown): RewardCycle | undefined {
   if (!r.config || !validRewardConfig(r.config) || !r.focus || typeof r.focus.title !== "string"
     || typeof r.id !== "string" || !["focus", "reward", "finished"].includes(r.phase)
     || !Number.isFinite(r.creditedMs) || r.creditedMs < 0
+    || (r.ledgerBaseMs !== undefined && (!Number.isFinite(r.ledgerBaseMs) || r.ledgerBaseMs < 0))
     || (r.activeStartedAt !== undefined && !Number.isFinite(r.activeStartedAt))) return undefined;
   return r;
 }
 
-export function rewardProgress(state: TimerState, now: number) {
-  const cycle = state.reward;
+/** 派生展示/达标值，不回写 timer，避免台账编辑覆盖其他设备正在跑的计时。 */
+export function rewardWithEntries(cycle: RewardCycle | undefined, entries?: readonly TimeEntry[]): RewardCycle | undefined {
+  if (!cycle || cycle.ledgerBaseMs === undefined || !entries) return cycle;
+  const creditedMs = entries.reduce((total, entry) => {
+    const credit = entry.focusCredit;
+    if (!credit || credit.cycleId !== cycle.id || !Number.isFinite(entry.minutes) || entry.minutes < 0
+      || !Number.isFinite(credit.elapsedMs) || credit.elapsedMs < 0) return total;
+    return total + (entry.minutes === credit.originalMinutes ? credit.elapsedMs : entry.minutes * 60000);
+  }, cycle.ledgerBaseMs);
+  return creditedMs === cycle.creditedMs ? cycle : { ...cycle, creditedMs };
+}
+
+export function rewardProgress(state: TimerState, now: number, entries?: readonly TimeEntry[]) {
+  const cycle = rewardWithEntries(state.reward, entries);
   const active = Boolean(cycle && state.running && cycle.activeStartedAt === state.running.startedAt);
   const elapsed = active ? Math.max(0, now - state.running!.startedAt) : 0;
   const focusMs = (cycle?.creditedMs ?? 0) + (cycle?.phase === "focus" ? elapsed : 0);
@@ -65,7 +80,7 @@ export function configureReward(state: TimerState, config: RewardConfig, now: nu
   const running = state.running ?? { title: "正事", startedAt: now };
   return { ...state, running, updatedAt: stamp(state, now), reward: {
     id: `reward-${now}`, config: { ...config, title: config.title.trim() }, phase: "focus",
-    focus: { title: running.title, attribution: running.attribution }, creditedMs: 0, activeStartedAt: running.startedAt,
+    focus: { title: running.title, attribution: running.attribution }, creditedMs: 0, ledgerBaseMs: 0, activeStartedAt: running.startedAt,
   } };
 }
 
@@ -78,19 +93,24 @@ export function stopTimer(state: TimerState, now: number): TimerTransition {
   const cycle = state.reward;
   const active = cycle && cycle.activeStartedAt === running.startedAt;
   const elapsed = Math.max(0, now - running.startedAt);
+  const minutes = Math.max(1, Math.round(elapsed / 60000));
   const startD = new Date(running.startedAt), endD = new Date(now);
   const clock = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   const reward = active ? { ...cycle, activeStartedAt: undefined,
     creditedMs: cycle.creditedMs + (cycle.phase === "focus" ? elapsed : 0),
+    ...(cycle.phase === "focus" ? { ledgerBaseMs: cycle.ledgerBaseMs ?? cycle.creditedMs } : {}),
     phase: cycle.phase === "reward" ? "finished" as const : cycle.phase,
   } : cycle;
   return {
     state: { ...state, running: null, reward, updatedAt: stamp(state, now) },
     entry: {
       date: toISODate(endD), dateAnchor: "end", title: running.title,
-      minutes: Math.max(1, Math.round(elapsed / 60000)), startTime: clock(startD), endTime: clock(endD),
+      minutes, startTime: clock(startD), endTime: clock(endD),
       ...(running.attribution ? historyEntryFields(running.attribution) : {}),
-      ...(active && cycle.phase === "focus" ? { category: "正事" as const, categorySource: "user" as const } : {}),
+      ...(active && cycle.phase === "focus" ? {
+        category: "正事" as const, categorySource: "user" as const,
+        focusCredit: { cycleId: cycle.id, elapsedMs: elapsed, originalMinutes: minutes },
+      } : {}),
       ...(active && cycle.phase === "reward" ? {
         ...historyEntryFields({}), category: cycle.config.category, categorySource: "user" as const,
       } : {}),
@@ -99,8 +119,8 @@ export function stopTimer(state: TimerState, now: number): TimerTransition {
 }
 
 /** 达标本身不停止正事；用户点击时才结算并开始奖励。 */
-export function beginReward(state: TimerState, now: number): TimerTransition {
-  const cycle = state.reward, progress = rewardProgress(state, now);
+export function beginReward(state: TimerState, now: number, entries?: readonly TimeEntry[]): TimerTransition {
+  const cycle = state.reward, progress = rewardProgress(state, now, entries);
   if (!cycle || !progress.ready || (state.running && !progress.active)) return { state };
   const stopped = stopTimer(state, now);
   return { entry: stopped.entry, state: {
@@ -120,6 +140,6 @@ export function resumeFocus(state: TimerState, now: number): TimerTransition {
     ...stopped.state, updatedAt: stamp(stopped.state, now),
     running: { ...cycle.focus, startedAt: now },
     reward: { ...cycle, id: newRound ? `reward-${now}` : cycle.id, phase: "focus",
-      creditedMs: newRound ? 0 : cycle.creditedMs, activeStartedAt: now },
+      creditedMs: newRound ? 0 : cycle.creditedMs, ledgerBaseMs: newRound ? 0 : cycle.ledgerBaseMs, activeStartedAt: now },
   } };
 }
