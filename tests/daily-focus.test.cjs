@@ -67,6 +67,49 @@ function flatten(node) {
   if (!node || typeof node !== 'object') return [];
   return [node, ...flatten(node.props?.children)];
 }
+
+test('task cards show automatic step progress in both anytime and scheduled lists, collapsed or expanded', () => {
+  const slots = []; let cursor = 0;
+  const react = { useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = initial;
+    return [slots[i], value => slots[i] = typeof value === 'function' ? value(slots[i]) : value]; } };
+  const Component = load('components/TodoDayView.tsx', react).default;
+  let task = { id: 'steps', title: '准备六道题', date, status: 'in_progress', progress: 90,
+    subtasks: Array.from({ length: 6 }, (_, i) => ({ id: `s${i}`, title: `题目${i + 1}`, done: i < 2 })) };
+  const render = () => { cursor = 0; return Component({ viewMode: 'day', selectedDate: date, today: date,
+    tasks: [task], entries: [], aspirations: [], goalResults: [], behaviors: [], habits: [], dayPlans: {}, running: null, elapsedMs: 0,
+    onToggleSubtask: (_, id) => { task = { ...task, subtasks: task.subtasks.map(s => s.id === id ? { ...s, done: !s.done } : s) }; },
+  }); };
+  const progress = tree => flatten(tree).find(n => n.props.role === 'progressbar');
+  let tree = render();
+  assert.equal(progress(tree).props['aria-valuenow'], 33);
+  assert.equal(progress(tree).props['aria-valuetext'], '已完成 2/6 步（33%）');
+  assert.equal(progress(tree).props.children.props.style.width, '33%');
+  assert.equal(flatten(tree).some(n => n.props.style?.width === '90%'), false);
+  flatten(tree).find(n => n.props['aria-label'] === '完成下一步：题目3').props.onClick({ stopPropagation() {} });
+  tree = render(); assert.equal(progress(tree).props['aria-valuenow'], 50);
+  task = { ...task, startTime: '14:00' }; tree = render();
+  assert.equal(progress(tree).props['aria-valuenow'], 50);
+  flatten(tree).find(n => n.props['aria-label'] === '展开任务步骤：准备六道题').props.onClick({ stopPropagation() {} });
+  tree = render(); assert.equal(progress(tree).props['aria-valuenow'], 50);
+  for (const done of [true, false]) {
+    task = { ...task, status: done ? 'done' : 'todo', subtasks: task.subtasks.map(s => ({ ...s, done })) };
+    tree = render(); assert.equal(progress(tree).props['aria-valuenow'], done ? 100 : 0);
+  }
+  task = { ...task, subtasks: [] }; tree = render();
+  assert.equal(progress(tree), undefined);
+  assert.ok(flatten(tree).some(n => n.props.style?.width === '90%'));
+});
+
+test('step progress and duration targets remain separate measures', () => {
+  const Component = load('components/TodoDayView.tsx', { useState: value => [value, () => {}] }).default;
+  const tree = Component({ viewMode: 'day', selectedDate: date, today: date,
+    tasks: [{ id: 't', title: '练习', date, status: 'todo', targetMinutes: 60,
+      subtasks: [{ id: 's1', title: '题一', done: true }, { id: 's2', title: '题二', done: false }] }],
+    entries: [{ id: 'e', title: '练习', date, minutes: 15, taskId: 't', taskLinkMode: 'manual' }],
+    aspirations: [], goalResults: [], behaviors: [], habits: [], dayPlans: {}, running: null, elapsedMs: 0 });
+  assert.equal(flatten(tree).find(n => n.props.role === 'progressbar').props['aria-valuenow'], 50);
+  assert.ok(flatten(tree).some(n => n.props.style?.width === '25%'));
+});
 test('picker searches only that day’s unfinished alternatives, selects once and can cancel designation', () => {
   const state = []; let cursor = 0; let selected; let tree;
   const react = { useEffect() {}, useRef(value) { return { current: value }; }, useState(initial) { const i = cursor++; if (!(i in state)) state[i] = initial; return [state[i], v => state[i] = v]; } };

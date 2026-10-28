@@ -277,6 +277,7 @@ export default function TodoDayView({
     const manualPct = target > 0 ? 0 : (t.progress ?? 0);
     const subs = t.subtasks ?? [];
     const subDone = subs.filter((x) => x.done).length;
+    const stepPct = subs.length > 0 ? Math.round((subDone / subs.length) * 100) : 0;
     const nextSubtask = subs.find((x) => !x.done);
     const stepStartAction =
       nextSubtask?.startAction && !nextSubtask.startAction.done
@@ -420,6 +421,26 @@ export default function TodoDayView({
             )}
             </div>
 
+            {subs.length > 0 && (
+              <div className="mt-1 flex items-center gap-2">
+                <div
+                  role="progressbar"
+                  aria-label={`任务步骤进度：${t.title}`}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={stepPct}
+                  aria-valuetext={`已完成 ${subDone}/${subs.length} 步（${stepPct}%）`}
+                  className="h-1 flex-1 overflow-hidden rounded-full bg-[var(--color-bg-gray-light)]"
+                >
+                  <div
+                    className={`h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none ${subDone === subs.length ? "bg-[var(--color-success)]" : "bg-[var(--color-primary)]"}`}
+                    style={{ width: `${stepPct}%` }}
+                  />
+                </div>
+                <span className="shrink-0 text-[10px] tabular-nums text-[var(--color-text-secondary)]">步骤 {stepPct}%</span>
+              </div>
+            )}
+
             {nextSubtask && !isExpanded && (
               <button
                 type="button"
@@ -506,7 +527,7 @@ export default function TodoDayView({
               </div>
             )}
 
-            {manualPct > 0 && !isDone && (
+            {subs.length === 0 && manualPct > 0 && !isDone && (
               <div className="mt-0.5 flex items-center gap-2">
                 <div className="h-1 flex-1 overflow-hidden rounded-full bg-[var(--color-bg-gray-light)]">
                   <div className="h-full rounded-full bg-[var(--color-primary)]" style={{ width: `${manualPct}%` }} />
