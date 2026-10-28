@@ -299,6 +299,29 @@ test('quick-log preserves tasks, workflows, goals and timer and retries concurre
   assert.equal(cloud.aspirations[0].title, '目标'); assert.deepEqual(cloud.timer, fixture().timer);
 });
 
+test('quick-log anchors a recent overnight entry to start day and matches that day’s task', async () => {
+  let cloud = { tasks: [
+    { id: 'yesterday', date: '2025-12-31', title: '阅读', status: 'todo' },
+    { id: 'today', date: '2026-01-01', title: '阅读', status: 'todo' },
+  ], entries: [] };
+  const api = load('app/api/quick-log/route.ts', {
+    'next/server': { NextResponse: { json: (body, init) => ({ body, status: init?.status ?? 200 }) } },
+    '@/components/todo/llmparse': { parseWithLLM: async () => null },
+    '@/components/todo/kv': {
+      kvConfig: () => ({}), kvGetSync: async () => copy(cloud),
+      kvReadSync: async () => ({ data: copy(cloud), revision: 'v1' }),
+      kvCompareAndSetSync: async (_kv, _code, data) => { cloud = data; return true; },
+    },
+  });
+  const result = await api.POST({ json: async () => ({ code: 'test-code', text: '刚阅读15分钟', date: '2026-01-01', now: '00:10' }) });
+  assert.equal(result.status, 200);
+  assert.equal(cloud.entries.length, 1);
+  assert.equal(cloud.entries[0].date, '2025-12-31');
+  assert.equal(cloud.entries[0].dateAnchor, 'start');
+  assert.equal(cloud.entries[0].minutes, 15);
+  assert.equal(cloud.entries[0].taskId, 'yesterday');
+});
+
 test('conflict UI shows both workflows and selects only the chosen field', () => {
   const base = fixture(), local = fixture(), cloud = fixture();
   local.tasks[0].subtasks[0].title = '本机步骤'; cloud.tasks[0].subtasks[0].title = '云端步骤';

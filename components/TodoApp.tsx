@@ -44,7 +44,7 @@ import type {
   AIResultImportApply,
 } from "@/components/todo/aiBridge";
 import { useTimer } from "@/components/todo/useTimer";
-import { matchTaskByTitle } from "@/components/todo/time";
+import { matchTaskByTitle, entryOnStartDay, entriesOnStartDay } from "@/components/todo/time";
 import { reassignTaskEntries } from "@/components/todo/entryHistory";
 import { copyTaskToDates } from "@/components/todo/taskCopy";
 import { newlyStartedAction, startWinsOn } from "@/components/todo/startWin";
@@ -368,10 +368,15 @@ export default function TodoApp() {
     [setTasksRaw],
   );
 
-  const { value: entries, setValue: setEntries, hydrated: entriesHydrated } = useLocalStorageState<TimeEntry[]>(
+  const { value: storedEntries, setValue: setStoredEntries, hydrated: entriesHydrated } = useLocalStorageState<TimeEntry[]>(
     ENTRIES_KEY,
     EMPTY_ENTRIES,
   );
+  // 所有台账、任务累计和日/周统计共用开始日视图；同步保留原快照，避免把读取兼容当成批量编辑。
+  const entries = useMemo(() => entriesOnStartDay(storedEntries), [storedEntries]);
+  const setEntries = useCallback((action: TimeEntry[] | ((prev: TimeEntry[]) => TimeEntry[])) => {
+    setStoredEntries(prev => entriesOnStartDay(typeof action === "function" ? action(entriesOnStartDay(prev)) : action));
+  }, [setStoredEntries]);
 
   const { value: aspirations, setValue: setAspirations, hydrated: aspHydrated } =
     useLocalStorageState<Aspiration[]>(ASPIRATIONS_KEY, EMPTY_ASPIRATIONS);
@@ -562,11 +567,11 @@ export default function TodoApp() {
     // 五张新表也要等 hydrate 完再同步，否则会拿初始空数组去覆盖云端
     hydrated: hydrated && entriesHydrated && labHydrated,
     tasks,
-    entries,
+    entries: storedEntries,
     lab,
     timer: timer.state,
     setTasks: (incoming) => setTasksRaw(incoming.map(migrateTaskStartAction)),
-    setEntries,
+    setEntries: setStoredEntries,
     setLab: (patch) => {
       if (patch.aspirations) setAspirations(patch.aspirations);
       if (patch.goalResults) setGoalResults(patch.goalResults);
@@ -1078,7 +1083,8 @@ export default function TodoApp() {
 
   function addEntries(entryList: Omit<TimeEntry, "id">[]) {
     snapshotEntries();
-    const newEntries: TimeEntry[] = entryList.map((e, i) => {
+    const newEntries: TimeEntry[] = entryList.map((input, i) => {
+      const e = entryOnStartDay(input);
       // 停止计时、快捷记录和行内新增都走同一套关联规则；调用方明确给 taskId 时优先。
       const hasExplicitTaskChoice = Object.prototype.hasOwnProperty.call(e, "taskId");
       const matchedTask = hasExplicitTaskChoice

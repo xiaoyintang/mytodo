@@ -41,8 +41,8 @@ test('invalid/future/stale requests do nothing; explicit dates handle midnight a
   const yesterday = timerStartTimestamp('2026-10-08', '23:50');
   const adjusted = changeTimerStart({ running: { title: '阅读', startedAt: midnight }, updatedAt: midnight }, midnight, yesterday, midnight);
   const stopped = stopTimer(adjusted, midnight);
-  assert.equal(stopped.entry.minutes, 20); assert.equal(stopped.entry.date, '2026-10-09');
-  assert.equal(stopped.entry.dateAnchor, 'end'); assert.equal(stopped.entry.startTime, '23:50');
+  assert.equal(stopped.entry.minutes, 20); assert.equal(stopped.entry.date, '2026-10-08');
+  assert.equal(stopped.entry.dateAnchor, 'start'); assert.equal(stopped.entry.startTime, '23:50');
 });
 
 test('adjustment keeps active reward/focus linkage and previously credited focus time', () => {

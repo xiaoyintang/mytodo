@@ -107,7 +107,8 @@ test('ending-time preview repairs AI output before rendering and preserves back-
   }
   const h = harness('2026-10-04', false, [{title:'阅读', startTime:'19:59', endTime:'00:30', minutes:271}]);
   await h.parse('阅读两小时，到凌晨0点30');
-  assert.equal(h.nodes().find(n => n.type === 'button' && n.props.children === '前一天 → 当天').props['aria-pressed'], true);
+  assert.equal(h.nodes().find(n => n.type === 'button' && n.props.children === '当天 → 次日').props['aria-pressed'], true);
+  assert.equal(h.nodes().find(n => n.props['aria-label'] === '第 1 笔记录日期').props.value, '2026-10-03');
 });
 
 test('record toolbar exposes redo after undo, even when there is no older undo step', () => {
@@ -187,12 +188,18 @@ test('explicit overnight preview defaults to selected day then next day and allo
   assert.equal(h.additions[0][0].date, '2026-09-23');
 });
 
-test('recent overnight preview keeps end-day anchoring when confirmed', async () => {
+test('recent overnight preview uses start day and selects that day on confirmation', async () => {
+  const realNow = new Date();
+  realNow.setDate(realNow.getDate() - 1);
+  const yesterday = `${realNow.getFullYear()}-${String(realNow.getMonth() + 1).padStart(2, '0')}-${String(realNow.getDate()).padStart(2, '0')}`;
   const h = harness('2026-09-23', false, [{ title: '阅读', startTime: '23:55', endTime: '00:10', minutes: 15, endsNow: true }]);
   await h.parse('刚阅读15分钟');
-  assert.equal(h.nodes().find(n => n.type === 'button' && n.props.children === '前一天 → 当天').props['aria-pressed'], true);
+  assert.equal(h.nodes().find(n => n.type === 'button' && n.props.children === '当天 → 次日').props['aria-pressed'], true);
+  assert.equal(h.nodes().find(n => n.props['aria-label'] === '第 1 笔记录日期').props.value, yesterday);
   h.nodes().find(n => n.type === 'button' && n.props.children?.includes?.('确认记录')).props.onClick();
-  assert.equal(h.additions[0][0].dateAnchor, 'end');
+  assert.equal(h.additions[0][0].dateAnchor, 'start');
+  assert.equal(h.additions[0][0].date, yesterday);
+  assert.equal(h.nodes().find(n => n.type === 'WeekDateStrip').props.selectedDate, yesterday);
   assert.equal(h.additions[0][0].minutes, 15);
 });
 
@@ -203,7 +210,8 @@ test('saved record editor can correct overnight direction without changing the t
   time('结束时间').props.onChange('00:30'); h.render();
   h.nodes().find(n => n.type === 'button' && n.props.children === '前一天 → 当天').props.onClick(); h.render();
   h.save();
-  assert.equal(h.updates[0][1].dateAnchor, 'end');
+  assert.equal(h.updates[0][1].dateAnchor, 'start');
+  assert.equal(h.updates[0][1].date, '2026-09-22');
   assert.equal(h.updates[0][1].minutes, 120);
   assert.equal(h.updates[0][1].taskId, 'old');
 });
@@ -258,6 +266,6 @@ for (const date of ['2026-09-16', '2026-09-14']) {
     assert.ok(choices.some(c => c.source === 'history' && c.title === '原记录'));
     assert.equal(choices.some(c => c.taskId === 'other'), false);
     h.select(choices.find(c => c.taskId === 'planned')); h.save();
-    assert.deepEqual(h.updates, [['entry', { title: '还没记过的任务', minutes: 15, startTime: '10:00', endTime: '10:15', dateAnchor: 'start', taskId: 'planned', taskLinkMode: 'manual', aspirationId: 'goal' }]]);
+    assert.deepEqual(h.updates, [['entry', { date, title: '还没记过的任务', minutes: 15, startTime: '10:00', endTime: '10:15', dateAnchor: 'start', taskId: 'planned', taskLinkMode: 'manual', aspirationId: 'goal' }]]);
   });
 }

@@ -18,6 +18,33 @@ function loadTs(relative) {
 }
 const { parseTimeEntries, resolveRecentTimeEntries, resolveRelativeEntryDays, resolveEndingTimeEntries } = loadTs('components/todo/nlparse.ts');
 
+test('start-day attribution rehomes legacy cross-midnight records once without losing duration or links', () => {
+  const { entryOnStartDay, entriesOnStartDay, entryTimeLabel, taskLoggedMinutes } = loadTs('components/todo/time.ts');
+  for (const [endDay, startDay] of [['2026-10-29', '2026-10-28'], ['2026-01-01', '2025-12-31'], ['2024-03-01', '2024-02-29']]) {
+    const old = { id: 'night', date: endDay, dateAnchor: 'end', title: '阅读', startTime: '23:30', endTime: '00:19', minutes: 50,
+      taskId: 'task', aspirationId: 'goal', focusCredit: { cycleId: 'round', elapsedMs: 2980000, originalMinutes: 50 } };
+    const result = entryOnStartDay(old);
+    assert.deepEqual(result, { ...old, date: startDay, dateAnchor: 'start' });
+    assert.equal(entryTimeLabel(result), '23:30 - 次日 00:19');
+    assert.equal(entryOnStartDay(result), result);
+    assert.equal(old.date, endDay);
+    assert.equal(old.dateAnchor, 'end');
+    const sameDay = { id: 'morning', date: endDay, title: '阅读', startTime: '10:00', endTime: '10:30', minutes: 30 };
+    const ledger = entriesOnStartDay([old, sameDay]);
+    assert.deepEqual(ledger.filter(e => e.date === startDay).map(e => e.id), ['night']);
+    assert.deepEqual(ledger.filter(e => e.date === endDay).map(e => e.id), ['morning']);
+    assert.equal(ledger.reduce((sum, e) => sum + e.minutes, 0), 80);
+    assert.equal(taskLoggedMinutes({ id: 'task', date: startDay, title: '阅读' }, ledger), 50);
+    assert.equal(entriesOnStartDay(ledger), ledger); // 重载/撤回/重做/重复同步不会再减一天
+  }
+  for (const row of [
+    { date: '2026-10-29', dateAnchor: 'end', minutes: 50 },
+    { date: '2026-10-29', startTime: '23:30', endTime: '00:19' },
+    { date: '2026-10-29', dateAnchor: 'start', startTime: '23:30', endTime: '00:19' },
+    { date: '2026-10-29', dateAnchor: 'end', startTime: '10:00', endTime: '11:00' },
+  ]) assert.equal(entryOnStartDay(row), row);
+});
+
 test('duration plus explicit ending back-calculates, keeping comma-separated supplements together', () => {
   for (const text of [
     '今天买菜+爸妈烧饭+打扫卫生，约2小时，到18点37',

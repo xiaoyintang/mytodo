@@ -200,15 +200,23 @@ test('stopping reward early is allowed, restart survives serialization, legacy t
   assert.equal(legacy.entry.category, undefined);
 });
 
-test('reward and focused records crossing midnight retain end-day date semantics', () => {
+test('focused and reward records belong to their start day, including across months', () => {
   const late = new Date(2026, 8, 29, 23, 40).getTime();
   const state = configureReward(idle, DEFAULT_REWARD, late);
   const claimed = beginReward(state, late + 30 * min);
-  assert.equal(claimed.entry.date, '2026-09-30');
+  assert.equal(claimed.entry.date, '2026-09-29');
   assert.equal(claimed.entry.startTime, '23:40');
   assert.equal(claimed.entry.endTime, '00:10');
-  assert.equal(claimed.entry.dateAnchor, 'end');
+  assert.equal(claimed.entry.dateAnchor, 'start');
   assert.equal(claimed.entry.minutes, 30);
+  assert.equal(stopTimer(claimed.state, late + 40 * min).entry.date, '2026-09-30');
+  const monthEnd = new Date(2026, 8, 30, 23, 55).getTime();
+  const reward = beginReward(configureReward(idle, DEFAULT_REWARD, monthEnd - 30 * min), monthEnd);
+  const stopped = stopTimer(reward.state, monthEnd + 20 * min);
+  assert.equal(stopped.entry.date, '2026-09-30');
+  assert.equal(stopped.entry.category, '娱乐');
+  assert.equal(stopped.entry.minutes, 20);
+  assert.equal(stopped.entry.dateAnchor, 'start');
 });
 
 test('hook actions prevent duplicate claims, persist reward state, and preserve rename association on return', () => {

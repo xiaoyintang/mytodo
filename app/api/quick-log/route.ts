@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { kvConfig, kvGetSync, kvReadSync, kvCompareAndSetSync } from "@/components/todo/kv";
 import { parseWithLLM } from "@/components/todo/llmparse";
 import { parseTimeEntries } from "@/components/todo/nlparse";
-import { matchTaskByTitle, formatMinutes } from "@/components/todo/time";
+import { matchTaskByTitle, formatMinutes, entryOnStartDay } from "@/components/todo/time";
 import type { ISODate, Task, TimeEntry } from "@/components/todo/types";
 
 // 一步到位记录接口（给 iOS 快捷指令 / Siri 用）：
@@ -63,16 +63,19 @@ export async function POST(req: Request) {
   const tasks: Task[] = Array.isArray(cloud.tasks) ? cloud.tasks : [];
 
   const added: TimeEntry[] = parsed.map((p, i) => {
-    const matched = matchTaskByTitle(p.title, targetDate, tasks);
-    return {
+    const day = new Date(`${targetDate}T00:00:00Z`);
+    day.setUTCDate(day.getUTCDate() + (p.dayOffset ?? 0));
+    const entry = entryOnStartDay({
       id: `e-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
-      date: targetDate as ISODate,
+      date: day.toISOString().slice(0, 10) as ISODate,
+      dateAnchor: p.endsNow ? "end" as const : p.dateAnchor,
       title: p.title,
       minutes: p.minutes,
       startTime: p.startTime,
       endTime: p.endTime,
-      taskId: matched?.id,
-    };
+    });
+    const matched = matchTaskByTitle(p.title, entry.date, tasks);
+    return { ...entry, taskId: matched?.id };
   });
 
   try {

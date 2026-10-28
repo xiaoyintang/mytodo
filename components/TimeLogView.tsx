@@ -7,6 +7,7 @@ import {
   durationBetweenTimes,
   compareEntriesByStartTime,
   entryTimeLabel,
+  entryOnStartDay,
   formatMinutes,
   matchTaskByTitle,
   timeToMinutes,
@@ -367,11 +368,14 @@ export default function TimeLogView({
         const date = entry.dayOffset !== undefined
           ? toISODate(addDays(parseISODate(parsedToday), entry.dayOffset))
           : entry.endsNow ? parsedToday : selectedDate;
-        const matched = matchTaskByTitle(entry.title, date, tasks);
-        return {
+        const normalized = entryOnStartDay({
           ...entry,
           date,
           ...(entry.endsNow ? { dateAnchor: "end" as const } : {}),
+        });
+        const matched = matchTaskByTitle(entry.title, normalized.date, tasks);
+        return {
+          ...normalized,
           ...(matched
             ? { taskId: matched.id, taskLinkMode: "auto" as const }
             : { taskLinkMode: "none" as const }),
@@ -382,8 +386,9 @@ export default function TimeLogView({
 
   function handleConfirm() {
     if (!pending || !canConfirmPending) return;
+    const confirmed = pending.map(entryOnStartDay);
     onAddEntries(
-      pending.map((p) => ({
+      confirmed.map((p) => ({
         date: p.date,
         ...(p.dateAnchor ? { dateAnchor: p.dateAnchor } : {}),
         title: p.title,
@@ -394,8 +399,8 @@ export default function TimeLogView({
         taskLinkMode: p.taskLinkMode,
       })),
     );
-    if (pending.every((p) => p.date === pending[0].date) && pending[0].date !== selectedDate) {
-      onSelectDate(pending[0].date);
+    if (confirmed.every((p) => p.date === confirmed[0].date) && confirmed[0].date !== selectedDate) {
+      onSelectDate(confirmed[0].date);
     }
     setPending(null);
     setInput("");
@@ -515,7 +520,8 @@ export default function TimeLogView({
         : rematched
           ? "auto"
           : "none";
-    onUpdateEntry(e.id, {
+    const updated = entryOnStartDay({
+      date: e.date,
       title,
       minutes,
       startTime: editStart || undefined,
@@ -525,6 +531,8 @@ export default function TimeLogView({
       taskLinkMode,
       ...(editHistoryChoice ? historyEntryFields(editHistoryChoice) : {}),
     });
+    onUpdateEntry(e.id, updated);
+    if (updated.date !== selectedDate) onSelectDate(updated.date);
     setEditingId(null);
   }
 
@@ -545,26 +553,31 @@ export default function TimeLogView({
     const title = editTitle.trim();
     const minutes = resolvedEditMinutes();
     if (!title || !Number.isFinite(minutes) || minutes <= 0) return;
-    const matched = matchTaskByTitle(title, selectedDate, tasks);
-    onAddEntries([{
+    const range = entryOnStartDay({
       date: selectedDate,
       dateAnchor: editDateAnchor,
-      title,
-      minutes,
       startTime: editStart || undefined,
       endTime: editEnd || undefined,
+    });
+    const matched = matchTaskByTitle(title, range.date, tasks);
+    const created = {
+      ...range,
+      title,
+      minutes,
       taskId: matched?.id,
-      taskLinkMode: matched ? "auto" : "none",
+      taskLinkMode: matched ? "auto" as const : "none" as const,
       ...(editHistoryChoice ? historyEntryFields(editHistoryChoice) : {}),
-    }]);
+    };
+    onAddEntries([created]);
+    if (created.date !== selectedDate) onSelectDate(created.date);
     setEditingId(null);
   }
 
-  // 日期是台账归属日，不移动旧记录；允许明确两种跨日方向。
+  // 输入仍可表达前一天开始，但保存时整笔统一归到实际开始日。
   function renderDateAnchor(value: TimeEntry["dateAnchor"], onChange: (value: "start" | "end") => void) {
     return (
       <div className="flex flex-wrap items-center gap-1.5 text-[11px]" role="group" aria-label="跨天时段">
-        <span className="text-[var(--color-text-tertiary)]">相对记录日期</span>
+        <span className="text-[var(--color-text-tertiary)]">相对所选日期 · 整笔计入开始日</span>
         {(["start", "end"] as const).map(anchor => (
           <button key={anchor} type="button" aria-pressed={(value ?? "start") === anchor}
             onClick={() => onChange(anchor)}

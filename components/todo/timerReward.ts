@@ -104,7 +104,7 @@ export function stopTimer(state: TimerState, now: number): TimerTransition {
   return {
     state: { ...state, running: null, reward, updatedAt: stamp(state, now) },
     entry: {
-      date: toISODate(endD), dateAnchor: "end", title: running.title,
+      date: toISODate(startD), dateAnchor: "start", title: running.title,
       minutes, startTime: clock(startD), endTime: clock(endD),
       ...(running.attribution ? historyEntryFields(running.attribution) : {}),
       ...(active && cycle.phase === "focus" ? {

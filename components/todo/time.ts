@@ -1,4 +1,21 @@
-import type { Task, TimeEntry } from "./types";
+import type { ISODate, Task, TimeEntry } from "./types";
+
+/** 归属统一到开始日；保留实际时段、分钟数、任务和奖励关联。纯时长不猜日期。 */
+export function entryOnStartDay<T extends Pick<TimeEntry, "date" | "dateAnchor" | "startTime" | "endTime">>(entry: T): T {
+  if (entry.dateAnchor !== "end" || !entry.startTime || !entry.endTime) return entry;
+  if (timeToMinutes(entry.startTime) <= timeToMinutes(entry.endTime)) return entry;
+  // 用 UTC 做纯日历日期运算，不受夏令时或服务端时区影响。
+  const day = new Date(`${entry.date}T00:00:00Z`);
+  if (!Number.isFinite(day.getTime())) return entry;
+  day.setUTCDate(day.getUTCDate() - 1);
+  return { ...entry, date: day.toISOString().slice(0, 10) as ISODate, dateAnchor: "start" };
+}
+
+/** 旧记录和旧客户端同步的记录在读取时兼容；纯函数，不触发历史重写。 */
+export function entriesOnStartDay(entries: TimeEntry[]): TimeEntry[] {
+  const next = entries.map(entryOnStartDay);
+  return next.some((entry, i) => entry !== entries[i]) ? next : entries;
+}
 
 /** "HH:mm" → 从 0 点起的分钟数 */
 export function timeToMinutes(t: string): number {
