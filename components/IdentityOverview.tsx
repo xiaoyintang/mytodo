@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { Archive, ChevronRight, GripVertical, Pencil, Plus, Sparkles } from "lucide-react";
+import { Archive, ChevronDown, ChevronRight, GripVertical, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import type { BehaviorCard, BehaviorType, GoalResult, Habit } from "@/components/todo/types";
 import { TYPE_LABEL } from "@/components/todo/behavior";
 import { goalItems, goalProgress, isGoalItemBehavior } from "@/components/todo/goalProgress";
@@ -35,6 +36,7 @@ type Props = {
   onReorder: (orderedIds: string[]) => void;
   onArchive: (id: string) => void;
   onPlace: (thing: Misplaced, resultId: string) => void;
+  onDeleteMisplaced: (thing: Misplaced) => void;
   onSetBehaviorType: (id: string, type: BehaviorType) => void;
   /** 已归档的目标 / 状态，各自收在自己列表的底部。 */
   archivedGoals: GoalResult[];
@@ -95,10 +97,11 @@ function Editor({ kind, initial, onSave, onCancel }: {
  */
 export default function IdentityOverview({
   goals, states, cards, habits, tasks, color, unsortedCount, misplaced, renderChecklist, mapFor, initialOpenId,
-  onOpenMap, onCreate, onUpdate, onReorder, onArchive, onPlace, onSetBehaviorType, archivedGoals, archivedStates, onRestore, onDelete,
+  onOpenMap, onCreate, onUpdate, onReorder, onArchive, onPlace, onDeleteMisplaced, onSetBehaviorType, archivedGoals, archivedStates, onRestore, onDelete,
 }: Props) {
   const [showArchived, setShowArchived] = useState<Kind | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deleteItem, setDeleteItem] = useState<Misplaced | null>(null);
   const [openId, setOpenId] = useState<string | null>(initialOpenId ?? null);
   const [editing, setEditing] = useState<string | null>(null);
   const [creating, setCreating] = useState<Kind | null>(null);
@@ -273,24 +276,27 @@ export default function IdentityOverview({
       {section("state", states)}
 
       {(misplaced.length > 0 || unsortedCount > 0) && (
-        <section aria-label="待整理" className="flex flex-col gap-1.5 rounded-[10px] border border-[#FDBA74] bg-[#FFF7ED] p-2.5">
-          <h2 className="text-[12px] font-semibold text-[#9A3412]">待整理 · 放到合适的位置</h2>
-          <p className="text-[10px] leading-relaxed text-[#9A3412]/80">习惯放在状态下，一次性的事放在目标下。类型判错了？点类型标签修改，不必搬走。</p>
+        <section aria-label="待整理" className="flex flex-col rounded-xl border border-[var(--color-border)] bg-white px-3 py-2 sm:px-4">
+          <div className="flex items-center gap-2 py-1">
+            <h2 className="text-[13px] font-semibold text-[var(--color-text-secondary)]">待整理</h2>
+            <span className="rounded-md bg-[var(--color-bg-gray-light)] px-1.5 text-[11px] tabular-nums text-[var(--color-text-secondary)]">{misplaced.length + unsortedCount}</span>
+            <span className="ml-auto text-[11px] text-[var(--color-text-secondary)]">改类型 · 选归属 · 删除</span>
+          </div>
           <ul className="flex flex-col">
             {misplaced.map((thing, index) => {
               const toState = thing.type !== "item";
               const options = toState ? states : goals;
               const card = thing.type !== "habit" ? cards.find(card => card.id === thing.cardId) : undefined;
               return (
-                <li key={`${thing.type}-${"habitId" in thing ? thing.habitId : thing.cardId}`} className="flex min-h-10 flex-wrap items-center gap-2 border-b border-[#FED7AA] py-1 last:border-b-0">
+                <li key={`${thing.type}-${"habitId" in thing ? thing.habitId : thing.cardId}`} className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-[var(--color-border)] py-2 last:border-b-0">
+                  <span className="w-full min-w-0 truncate text-[13px] text-[var(--color-text-primary)] sm:w-auto sm:flex-1" data-full-text={thing.title}>{thing.title}</span>
                   {card ? (
                     <button type="button" aria-label={`修改「${thing.title}」的行为类型`} aria-expanded={typeEditingId === card.id}
                       onClick={() => { setTypeEditingId(typeEditingId === card.id ? null : card.id); setNaming(null); }}
-                      className="flex min-h-10 shrink-0 items-center gap-1 rounded-md border border-[var(--color-border)] bg-white px-2 text-[11px] text-[var(--color-text-secondary)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]">
-                      {TYPE_LABEL[card.type]}<Pencil className="h-3 w-3" />
+                      className="flex min-h-10 shrink-0 items-center gap-1 rounded-lg px-2 text-[11px] text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-bg-gray-light)] hover:text-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-[var(--color-primary)]">
+                      {TYPE_LABEL[card.type]}<ChevronDown className="h-3 w-3" />
                     </button>
-                  ) : <span className="flex-shrink-0 rounded bg-white px-1.5 py-0.5 text-[10px] text-[#9A3412]">习惯</span>}
-                  <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--color-text-primary)]" data-full-text={thing.title}>{thing.title}</span>
+                  ) : <span className="shrink-0 px-2 text-[11px] text-[var(--color-text-secondary)]">习惯</span>}
                   {naming?.index === index ? (
                     <input autoFocus value={naming.title} onChange={(event) => setNaming({ ...naming, title: event.target.value })}
                       onKeyDown={(event) => {
@@ -302,7 +308,7 @@ export default function IdentityOverview({
                         }
                       }}
                       placeholder={toState ? "新状态名，回车" : "新目标名，回车"} aria-label={toState ? "新建状态" : "新建目标"}
-                      className="min-h-8 w-40 rounded-md border border-[#FDBA74] bg-white px-2 text-[12px] outline-none" />
+                      className="min-h-10 w-40 rounded-lg border border-[var(--color-border)] bg-white px-2 text-[12px] outline-none focus:border-[var(--color-primary)]" />
                   ) : (
                     <select value="" aria-label={`把「${thing.title}」放到…`}
                       onChange={(event) => {
@@ -310,12 +316,16 @@ export default function IdentityOverview({
                         if (value === "__new__") setNaming({ index, kind: toState ? "state" : "goal", title: "" });
                         else if (value) onPlace(thing, value);
                       }}
-                      className="min-h-8 rounded-md border border-[#FDBA74] bg-white px-2 text-[12px] text-[#9A3412]">
-                      <option value="">{toState ? "放到哪个状态…" : "放到哪个目标…"}</option>
+                      className="min-h-10 min-w-0 max-w-40 rounded-lg border border-[var(--color-border)] bg-white px-2 text-[12px] text-[var(--color-text-secondary)] focus:border-[var(--color-primary)]">
+                      <option value="">{toState ? "选择状态" : "选择目标"}</option>
                       {options.map((result) => <option key={result.id} value={result.id}>{result.title}</option>)}
                       <option value="__new__">＋ 新建{toState ? "状态" : "目标"}…</option>
                     </select>
                   )}
+                  <button type="button" aria-label={`删除待整理「${thing.title}」`} onClick={() => setDeleteItem(thing)}
+                    className="ml-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-danger-light)] hover:text-[var(--color-danger)] focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] sm:ml-0">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                   {card && typeEditingId === card.id && (
                     <div className="flex w-full flex-wrap items-center gap-1.5 pb-1" role="group" aria-label={`为「${thing.title}」选择类型`}>
                       {(["habit", "onetime", "stop"] as const).map(type => (
@@ -335,13 +345,16 @@ export default function IdentityOverview({
           </ul>
           {unsortedCount > 0 && (
             <button type="button" onClick={() => onOpenMap(mapFor === "unsorted" ? null : "unsorted")}
-              className="self-start text-[11px] font-medium text-[#C2410C]">
+              className="min-h-10 self-start text-[11px] font-medium text-[var(--color-primary)]">
               还有 {unsortedCount} 条没判定过的想法 · {mapFor === "unsorted" ? "收起" : "去焦点地图整理"}
             </button>
           )}
         </section>
       )}
-
+      <ConfirmDialog isOpen={deleteItem !== null} title="删除这条待整理项？"
+        description={`「${deleteItem?.title ?? ""}」将从候选中删除；如已加入习惯，习惯会归档。已有日程和记录保留，可通过行为操作的撤回恢复。`}
+        onCancel={() => setDeleteItem(null)}
+        onConfirm={() => { if (deleteItem) onDeleteMisplaced(deleteItem); setDeleteItem(null); setNaming(null); setTypeEditingId(null); }} />
     </div>
   );
 }

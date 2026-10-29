@@ -11,6 +11,7 @@ function load(file, react) {
   }).outputText;
   new Function('require', 'module', 'exports', code)(name => {
     if (name === 'react') return react;
+    if (name === '@/components/ConfirmDialog') return { default: 'ConfirmDialog' };
     if (name.startsWith('@/components/todo/')) return load(name.slice(2) + '.ts', react);
     return require(name);
   }, module, module.exports);
@@ -78,4 +79,51 @@ test('misplaced type label opens accessible choices, allows cancel, and corrects
   assert.deepEqual(calls, [['b', 'habit']]);
   assert.ok(!nodes.some(n => n.props['aria-label'] === '待整理'));
   assert.equal(h.cards()[0].resultId, 'state');
+});
+
+test('misplaced delete requires confirmation and supports cancel for candidates and habits', () => {
+  for (const thing of [{ type: 'item', cardId: 'b', title: original.text }, { type: 'habit', habitId: 'h', title: '拉伸' }]) {
+    let cursor = 0; const slots = [], calls = [];
+    const react = { useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = initial;
+      return [slots[i], value => { slots[i] = typeof value === 'function' ? value(slots[i]) : value; }]; } };
+    const Component = load('components/IdentityOverview.tsx', react).default;
+    const render = () => { cursor = 0; return flatten(Component({ goals: [], states: [], tasks: [], habits: [],
+      archivedGoals: [], archivedStates: [], cards: [original], misplaced: [thing], unsortedCount: 0,
+      onDeleteMisplaced: item => calls.push(item),
+    })); };
+    let nodes = render();
+    const trash = () => nodes.find(n => n.props['aria-label'] === `删除待整理「${thing.title}」`);
+    const dialog = () => nodes.find(n => n.type === 'ConfirmDialog');
+    trash().props.onClick(); nodes = render();
+    assert.equal(dialog().props.isOpen, true); assert.equal(calls.length, 0);
+    dialog().props.onCancel(); nodes = render();
+    assert.equal(dialog().props.isOpen, false); assert.equal(calls.length, 0);
+    trash().props.onClick(); nodes = render(); dialog().props.onConfirm(); nodes = render();
+    assert.deepEqual(calls, [thing]); assert.equal(dialog().props.isOpen, false);
+  }
+});
+
+test('deleting misplaced items preserves scheduled tasks/history and snapshots linked habits for undo', () => {
+  const file = ts.createSourceFile('TodoApp.tsx', fs.readFileSync(path.join(root, 'components/TodoApp.tsx'), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let source;
+  const visit = node => { if (ts.isFunctionDeclaration(node) && node.name?.text === 'deleteMisplaced') source = node.getText(file); ts.forEachChild(node, visit); };
+  visit(file); assert.ok(source);
+  const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText;
+  for (const thing of [{ type: 'item', cardId: 'b' }, { type: 'habit', habitId: 'h', cardId: 'b' }, { type: 'habit', habitId: 'standalone' }]) {
+    let cards = [original, { id: 'other' }];
+    let habits = [{ id: 'h', behaviorId: 'b' }, { id: 'standalone' }, { id: 'other', behaviorId: 'other' }];
+    const before = structuredClone({ cards, habits }); let snapshot;
+    const remove = new Function('habits', 'setBehaviorCards', 'setHabits', 'snapshotLab', code + '\nreturn deleteMisplaced;')(
+      habits, fn => { cards = fn(cards); }, fn => { habits = fn(habits); },
+      (tasks, affectedHabits) => { assert.equal(tasks, undefined); snapshot = structuredClone({ cards, affectedHabits }); },
+    );
+    remove(thing);
+    assert.deepEqual(cards, thing.cardId ? [{ id: 'other' }] : before.cards);
+    assert.equal(habits.find(h => h.id === (thing.cardId ? 'h' : 'standalone')).archived, true);
+    assert.deepEqual(habits.find(h => h.id === 'other'), before.habits[2]);
+    // Same scoped restore used by undoLab, without touching unrelated task or log collections.
+    cards = snapshot.cards;
+    habits = habits.map(h => snapshot.affectedHabits.find(old => old.id === h.id) ?? h);
+    assert.deepEqual({ cards, habits }, before);
+  }
 });

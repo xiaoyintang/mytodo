@@ -142,6 +142,7 @@ type Props = {
   onPatchGoalResult: (id: string, patch: Partial<GoalResult>) => void;
   /** 待整理：把习惯放到某个状态 / 一次性的事放到某个目标。 */
   onPlaceInResult: (thing: Misplaced, resultId: string) => void;
+  onDeleteMisplaced: (thing: Misplaced) => void;
   onScheduleGoalItemWith: (item: GoalItem, schedule: TaskSchedule) => void;
   onAddGoalItemSession: (item: GoalItem, schedule: TaskSchedule) => void;
   onApplyGoalItemCheck: (results: Array<{ id: string; type: BehaviorType; reason?: string; blocker?: string }>) => void;
@@ -201,6 +202,7 @@ export default function GoalsView({
   onReopenGoalItem,
   onPatchGoalResult,
   onPlaceInResult,
+  onDeleteMisplaced,
   onScheduleGoalItemWith,
   onAddGoalItemSession,
   onApplyGoalItemCheck,
@@ -813,6 +815,7 @@ export default function GoalsView({
                 onArchiveGoalResult(id);
               }}
               onPlace={(thing, resultId) => onPlaceInResult(thing, resultId)}
+              onDeleteMisplaced={onDeleteMisplaced}
               onSetBehaviorType={onSetBehaviorType}
               archivedGoals={archivedResults.filter((result) => resultKind(result, behaviors) === "goal")}
               archivedStates={archivedResults.filter((result) => resultKind(result, behaviors) === "state")}

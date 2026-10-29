@@ -2061,6 +2061,20 @@ export default function TodoApp() {
     deleteBehaviors([id]);
   }
 
+  // 清理候选不取消已经排好的日程；关联习惯归档，保留其打卡历史。
+  function deleteMisplaced(thing: Misplaced) {
+    const affectedHabits = habits.filter(habit =>
+      (thing.type === "habit" && habit.id === thing.habitId) ||
+      Boolean(thing.cardId && habit.behaviorId === thing.cardId),
+    );
+    snapshotLab(undefined, affectedHabits);
+    if (thing.cardId) setBehaviorCards(prev => prev.filter(card => card.id !== thing.cardId));
+    if (affectedHabits.length) {
+      const ids = new Set(affectedHabits.map(habit => habit.id));
+      setHabits(prev => prev.map(habit => ids.has(habit.id) ? { ...habit, archived: true } : habit));
+    }
+  }
+
   /**
    * 归档是焦点管理，不是删除：卡片从焦点地图退出，但已排日程、习惯和归属不动。
    * 批量归档只记一份快照，整批可以一次撤回。
@@ -2323,6 +2337,7 @@ export default function TodoApp() {
           onReopenGoalItem={reopenGoalItem}
           onPatchGoalResult={patchGoalResult}
           onPlaceInResult={placeInResult}
+          onDeleteMisplaced={deleteMisplaced}
           onScheduleGoalItemWith={scheduleGoalItemWith}
           onAddGoalItemSession={addGoalItemSession}
           onApplyGoalItemCheck={applyGoalItemCheck}
