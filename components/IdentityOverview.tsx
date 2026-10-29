@@ -2,7 +2,8 @@
 
 import { useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Archive, ChevronRight, GripVertical, Pencil, Plus, Sparkles } from "lucide-react";
-import type { BehaviorCard, GoalResult, Habit } from "@/components/todo/types";
+import type { BehaviorCard, BehaviorType, GoalResult, Habit } from "@/components/todo/types";
+import { TYPE_LABEL } from "@/components/todo/behavior";
 import { goalItems, goalProgress, isGoalItemBehavior } from "@/components/todo/goalProgress";
 import type { Task } from "@/components/todo/types";
 
@@ -34,6 +35,7 @@ type Props = {
   onReorder: (orderedIds: string[]) => void;
   onArchive: (id: string) => void;
   onPlace: (thing: Misplaced, resultId: string) => void;
+  onSetBehaviorType: (id: string, type: BehaviorType) => void;
   /** 已归档的目标 / 状态，各自收在自己列表的底部。 */
   archivedGoals: GoalResult[];
   archivedStates: GoalResult[];
@@ -93,7 +95,7 @@ function Editor({ kind, initial, onSave, onCancel }: {
  */
 export default function IdentityOverview({
   goals, states, cards, habits, tasks, color, unsortedCount, misplaced, renderChecklist, mapFor, initialOpenId,
-  onOpenMap, onCreate, onUpdate, onReorder, onArchive, onPlace, archivedGoals, archivedStates, onRestore, onDelete,
+  onOpenMap, onCreate, onUpdate, onReorder, onArchive, onPlace, onSetBehaviorType, archivedGoals, archivedStates, onRestore, onDelete,
 }: Props) {
   const [showArchived, setShowArchived] = useState<Kind | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -102,6 +104,7 @@ export default function IdentityOverview({
   const [creating, setCreating] = useState<Kind | null>(null);
   const [drag, setDrag] = useState<{ id: string; kind: Kind; target?: string; edge?: "before" | "after" } | null>(null);
   const [naming, setNaming] = useState<{ index: number; kind: Kind; title: string } | null>(null);
+  const [typeEditingId, setTypeEditingId] = useState<string | null>(null);
 
   function moveDrag(event: ReactPointerEvent) {
     if (!drag) return;
@@ -272,14 +275,21 @@ export default function IdentityOverview({
       {(misplaced.length > 0 || unsortedCount > 0) && (
         <section aria-label="待整理" className="flex flex-col gap-1.5 rounded-[10px] border border-[#FDBA74] bg-[#FFF7ED] p-2.5">
           <h2 className="text-[12px] font-semibold text-[#9A3412]">待整理 · 放到合适的位置</h2>
-          <p className="text-[10px] leading-relaxed text-[#9A3412]/80">习惯要放在某个状态下，一次性的事要放在某个目标下。选好就会从这里消失。</p>
+          <p className="text-[10px] leading-relaxed text-[#9A3412]/80">习惯放在状态下，一次性的事放在目标下。类型判错了？点类型标签修改，不必搬走。</p>
           <ul className="flex flex-col">
             {misplaced.map((thing, index) => {
               const toState = thing.type !== "item";
               const options = toState ? states : goals;
+              const card = thing.type !== "habit" ? cards.find(card => card.id === thing.cardId) : undefined;
               return (
                 <li key={`${thing.type}-${"habitId" in thing ? thing.habitId : thing.cardId}`} className="flex min-h-10 flex-wrap items-center gap-2 border-b border-[#FED7AA] py-1 last:border-b-0">
-                  <span className="flex-shrink-0 rounded bg-white px-1.5 py-0.5 text-[10px] text-[#9A3412]">{toState ? (thing.type === "habit" ? "习惯" : "习惯候选") : "一次性"}</span>
+                  {card ? (
+                    <button type="button" aria-label={`修改「${thing.title}」的行为类型`} aria-expanded={typeEditingId === card.id}
+                      onClick={() => { setTypeEditingId(typeEditingId === card.id ? null : card.id); setNaming(null); }}
+                      className="flex min-h-10 shrink-0 items-center gap-1 rounded-md border border-[var(--color-border)] bg-white px-2 text-[11px] text-[var(--color-text-secondary)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]">
+                      {TYPE_LABEL[card.type]}<Pencil className="h-3 w-3" />
+                    </button>
+                  ) : <span className="flex-shrink-0 rounded bg-white px-1.5 py-0.5 text-[10px] text-[#9A3412]">习惯</span>}
                   <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--color-text-primary)]" data-full-text={thing.title}>{thing.title}</span>
                   {naming?.index === index ? (
                     <input autoFocus value={naming.title} onChange={(event) => setNaming({ ...naming, title: event.target.value })}
@@ -305,6 +315,19 @@ export default function IdentityOverview({
                       {options.map((result) => <option key={result.id} value={result.id}>{result.title}</option>)}
                       <option value="__new__">＋ 新建{toState ? "状态" : "目标"}…</option>
                     </select>
+                  )}
+                  {card && typeEditingId === card.id && (
+                    <div className="flex w-full flex-wrap items-center gap-1.5 pb-1" role="group" aria-label={`为「${thing.title}」选择类型`}>
+                      {(["habit", "onetime", "stop"] as const).map(type => (
+                        <button key={type} type="button" aria-pressed={card.type === type}
+                          onClick={() => { onSetBehaviorType(card.id, type); setTypeEditingId(null); setNaming(null); }}
+                          className={`min-h-10 rounded-lg border px-3 text-[12px] ${card.type === type ? "border-[var(--color-primary)] bg-[var(--color-primary-light)] text-[var(--color-primary)]" : "border-[var(--color-border)] bg-white text-[var(--color-text-secondary)]"}`}>
+                          {TYPE_LABEL[type]}
+                        </button>
+                      ))}
+                      <button type="button" onClick={() => setTypeEditingId(null)} className="min-h-10 px-2 text-[12px] text-[var(--color-text-secondary)]">取消</button>
+                      <span className="w-full text-[10px] text-[var(--color-text-secondary)]">手动修改后，AI 不再覆盖；文字、步骤和原归属保留。</span>
+                    </div>
                   )}
                 </li>
               );

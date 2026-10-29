@@ -1739,7 +1739,9 @@ export default function TodoApp() {
   function setBehaviorType(id: string, type: BehaviorType) {
     snapshotLab();
     setBehaviorCards((prev) =>
-      prev.map((b) => (b.id === id ? { ...b, type, typeSource: "user" } : b)),
+      prev.map((b) => (b.id === id ? {
+        ...b, type, typeSource: "user", reason: undefined, blocker: undefined, checkedAs: undefined, hasDecision: undefined,
+      } : b)),
     );
   }
 

@@ -813,6 +813,7 @@ export default function GoalsView({
                 onArchiveGoalResult(id);
               }}
               onPlace={(thing, resultId) => onPlaceInResult(thing, resultId)}
+              onSetBehaviorType={onSetBehaviorType}
               archivedGoals={archivedResults.filter((result) => resultKind(result, behaviors) === "goal")}
               archivedStates={archivedResults.filter((result) => resultKind(result, behaviors) === "state")}
               onRestore={onRestoreGoalResult}
