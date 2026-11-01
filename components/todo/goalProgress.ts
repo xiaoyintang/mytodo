@@ -32,7 +32,8 @@ export function isGoalItemBehavior(card: BehaviorCard): boolean {
 
 /**
  * 这是「目标」（要达成）还是「状态」（要保持）。用户指定过就听用户的；
- * 老 KR 按下面挂了什么推断：有一次性/成果类的事 → 目标；只有可重复行为 → 状态。
+ * 老 KR 的初次兼容推断：有一次性/成果类的事 → 目标；只有可重复行为 → 状态。
+ * TodoApp 在数据加载完整后通过 materializeResultKinds 保存类型，不能一直随子项变化。
  * 从模板套出来的例行任务（起床、早饭）不参与判断——它们不说明这是个有终点的事。
  */
 export function resultKind(result: GoalResult, behaviors: BehaviorCard[]): "goal" | "state" {
@@ -42,6 +43,17 @@ export function resultKind(result: GoalResult, behaviors: BehaviorCard[]): "goal
   if (mine.some(isGoalItemBehavior)) return "goal";
   if (mine.some((card) => card.type === "habit" || card.type === "stop")) return "state";
   return "goal";
+}
+
+/** 只补没有类型的旧数据，不覆盖手动选择，也不改子项或归属。幂等，便于云端旧数据复用。 */
+export function materializeResultKinds(results: GoalResult[], behaviors: BehaviorCard[]): GoalResult[] {
+  let changed = false;
+  const next = results.map(result => {
+    if (result.kind) return result;
+    changed = true;
+    return { ...result, kind: resultKind(result, behaviors) };
+  });
+  return changed ? next : results;
 }
 
 function itemFromTasks(key: string, title: string, linked: Task[], behaviorId?: string, stepCount = 0): GoalItem {

@@ -50,7 +50,7 @@ import { copyTaskToDates } from "@/components/todo/taskCopy";
 import { newlyStartedAction, startWinsOn } from "@/components/todo/startWin";
 import { stampCompletion } from "@/components/todo/completion";
 import { goalLevels, goalXp, levelOf, type XpData } from "@/components/todo/goalXp";
-import { goalItems, goalProgress, resultKind, type GoalItem } from "@/components/todo/goalProgress";
+import { goalItems, goalProgress, materializeResultKinds, resultKind, type GoalItem } from "@/components/todo/goalProgress";
 import { resolveTaskGoalResult } from "@/components/todo/taskGoal";
 import WinNotice, { type Win } from "@/components/WinNotice";
 import type { Misplaced } from "@/components/IdentityOverview";
@@ -384,6 +384,13 @@ export default function TodoApp() {
     useLocalStorageState<GoalResult[]>(GOAL_RESULTS_KEY, EMPTY_GOAL_RESULTS);
   const { value: behaviorCards, setValue: setBehaviorCards, hydrated: behHydrated } =
     useLocalStorageState<BehaviorCard[]>(BEHAVIORS_KEY, EMPTY_BEHAVIORS);
+
+  // 旧 KR 只推断一次并落库。不能让新增/重判/删除行为把整组状态变成目标。
+  // 两张表都加载后才推断；也处理之后同步进来的缺 kind 的旧条目。
+  useEffect(() => {
+    if (!resultsHydrated || !behHydrated || !goalResults.some(result => !result.kind)) return;
+    setGoalResults(prev => materializeResultKinds(prev, behaviorCards));
+  }, [resultsHydrated, behHydrated, goalResults, behaviorCards, setGoalResults]);
 
   const { value: habits, setValue: setHabits, hydrated: habitsHydrated } =
     useLocalStorageState<Habit[]>(HABITS_KEY, EMPTY_HABITS);
@@ -1283,7 +1290,7 @@ export default function TodoApp() {
       aspirationId,
       title: title.trim(),
       evidence: evidence?.trim() || undefined,
-      kind,
+      kind: kind ?? "goal",
       createdAt: Date.now(),
     };
     setGoalResults((prev) => [...prev, result]);

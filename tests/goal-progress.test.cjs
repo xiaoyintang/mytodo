@@ -11,7 +11,7 @@ function load(file) {
   new Function('require', 'module', 'exports', code)(require, module, module.exports);
   return module.exports;
 }
-const { goalItems, goalProgress, reorderGoalItems, goalRetro, resultKind } = load('components/todo/goalProgress.ts');
+const { goalItems, goalProgress, reorderGoalItems, goalRetro, resultKind, materializeResultKinds } = load('components/todo/goalProgress.ts');
 
 const goal = { id: 'r1', aspirationId: 'g', title: '准备面试', createdAt: Date.parse('2026-10-10T09:00:00') };
 const card = (id, text, extra = {}) => ({ id, aspirationId: 'g', resultId: 'r1', text, type: 'onetime', createdAt: 1, ...extra });
@@ -74,4 +74,62 @@ test('old KRs: only habits underneath → state; any one-off item → goal; expl
   assert.equal(resultKind(goal, behaviors), 'goal', 'mixed KR with a one-off item is a goal');
   assert.equal(resultKind({ ...habitsOnly, kind: 'goal' }, behaviors), 'goal');
   assert.equal(resultKind({ ...goal, id: 'empty' }, behaviors), 'goal', 'new empty KR defaults to goal');
+});
+
+test('legacy state is pinned before adding/rejudging a one-off; removal, archive and reload cannot move the group', () => {
+  const legacy = { ...goal, title: '早睡早起', evidence: '每周五天', order: 2 };
+  const initial = [card('h', '放下手机', { type: 'habit' })];
+  const pinned = materializeResultKinds([legacy], initial);
+  assert.deepEqual(pinned[0], { ...legacy, kind: 'state' });
+  assert.equal(legacy.kind, undefined, 'migration does not mutate its input');
+  for (const changed of [
+    [...initial, card('new', '买窗帘', { type: 'unsorted' })],
+    [...initial, card('new', '买窗帘')],
+    [card('h', '放下手机')], // AI rejudges the only repeatable
+    [card('h', '放下手机', { type: 'habit', archived: true })],
+    [],
+  ]) {
+    assert.equal(resultKind(pinned[0], changed), 'state');
+    assert.equal(materializeResultKinds(pinned, changed), pinned, 'no repeated writes');
+    assert.equal(resultKind(JSON.parse(JSON.stringify(pinned[0])), changed), 'state');
+  }
+  const manuallyChanged = [{ ...pinned[0], kind: 'goal' }];
+  assert.equal(materializeResultKinds(manuallyChanged, initial), manuallyChanged);
+  assert.equal(resultKind(manuallyChanged[0], initial), 'goal');
+});
+
+test('pinning preserves explicit kinds, archived rows and goal metadata; handles newly imported legacy rows', () => {
+  const explicit = { ...goal, kind: 'state', itemOrder: ['b'], status: 'done' };
+  const archived = { ...goal, id: 'archive', archived: true, status: 'done', doneAt: 123 };
+  const rows = materializeResultKinds([explicit, archived, { ...goal, id: 'empty' }], []);
+  assert.equal(rows[0], explicit);
+  assert.deepEqual(rows[1], { ...archived, kind: 'goal' });
+  assert.equal(rows[2].kind, 'goal');
+  const incoming = { ...goal, id: 'cloud' };
+  const next = materializeResultKinds([...rows, incoming], [card('cloud-h', '拉伸', { resultId: 'cloud', type: 'habit' })]);
+  assert.equal(next[0], explicit);
+  assert.equal(next[3].kind, 'state');
+  assert.equal(materializeResultKinds(next, []), next);
+});
+
+test('actual TodoApp migration waits for both tables, pins once, and never overwrites an explicit edit', () => {
+  const file = ts.createSourceFile('TodoApp.tsx', fs.readFileSync(path.join(__dirname, '../components/TodoApp.tsx'), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let effect;
+  const visit = node => {
+    if (ts.isCallExpression(node) && node.expression.getText(file) === 'useEffect' && node.arguments[0]?.getText(file).includes('materializeResultKinds')) effect = node.arguments[0].getText(file);
+    ts.forEachChild(node, visit);
+  };
+  visit(file); assert.ok(effect);
+  const code = ts.transpileModule(`const effect = ${effect};`, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText;
+  let results = [goal], writes = 0;
+  const behaviors = [card('h', '睡觉', { type: 'habit' })];
+  const run = (resultsHydrated, behHydrated, cards = behaviors) => new Function('resultsHydrated', 'behHydrated', 'goalResults', 'behaviorCards', 'setGoalResults', 'materializeResultKinds', code + '\neffect();')(
+    resultsHydrated, behHydrated, results, cards, fn => { writes++; results = fn(results); }, materializeResultKinds,
+  );
+  run(false, false); run(true, false); run(false, true);
+  assert.equal(writes, 0);
+  run(true, true); assert.equal(results[0].kind, 'state'); assert.equal(writes, 1);
+  run(true, true, [card('new', '买窗帘')]); assert.equal(writes, 1); assert.equal(results[0].kind, 'state');
+  results = [{ ...results[0], kind: 'goal' }]; run(true, true);
+  assert.equal(writes, 1); assert.equal(results[0].kind, 'goal');
 });
