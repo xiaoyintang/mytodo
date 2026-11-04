@@ -4,15 +4,7 @@ import { useRef, useState, type RefObject } from "react";
 import { CalendarDays, Check, Clock, Flag, Plus, Sparkles, Timer, X } from "lucide-react";
 import type { ISODate, Task } from "@/components/todo/types";
 import { CN_WEEKDAY, toISODate } from "@/components/todo/date";
-
-type ParsedTask = {
-  title: string;
-  date: string;
-  startTime?: string;
-  endTime?: string;
-  priority?: "high";
-  targetMinutes?: number;
-};
+import type { ParsedTask } from "@/components/todo/llmtask";
 
 // 比服务端 8 秒超时多留一点响应时间；失败重试一次。
 async function fetchAITasks(text: string): Promise<ParsedTask[] | null> {
@@ -99,6 +91,9 @@ export default function QuickAddTask({ onCreate, date, inputRef, compact = false
         endTime: t.targetMinutes ? undefined : t.endTime || undefined,
         priority: t.priority,
         targetMinutes: t.targetMinutes,
+        ...(t.steps?.length ? { subtasks: t.steps.map((title) => ({
+          id: crypto.randomUUID(), title: title.trim(), done: false,
+        })) } : {}),
       });
     }
     setPreview(null);
@@ -119,7 +114,7 @@ export default function QuickAddTask({ onCreate, date, inputRef, compact = false
   }
 
   const canCreatePreview = Boolean(
-    preview?.length && preview.every((task) => task.title.trim() && /^\d{4}-\d{2}-\d{2}$/.test(task.date) && (!task.endTime || task.startTime)),
+    preview?.length && preview.every((task) => task.title.trim() && /^\d{4}-\d{2}-\d{2}$/.test(task.date) && (!task.endTime || task.startTime) && (!task.steps || task.steps.every((step) => step.trim()))),
   );
 
   return (
@@ -160,7 +155,7 @@ export default function QuickAddTask({ onCreate, date, inputRef, compact = false
         {!compact && <button
           type="button"
           aria-label="用 AI 解析复杂安排"
-          data-full-text="用 AI 解析时间、重复或多条任务"
+          data-full-text="用 AI 解析时间、重复、任务步骤或多条任务"
           onClick={handleParse}
           disabled={!input.trim() || parsing}
           className={[
@@ -205,6 +200,32 @@ export default function QuickAddTask({ onCreate, date, inputRef, compact = false
                   aria-label={`移除第 ${i + 1} 个任务`}
                 >
                   <X className="h-3.5 w-3.5 text-[var(--color-text-tertiary)]" />
+                </button>
+              </div>
+
+              <div className="ml-2 border-l border-[var(--color-border)] pl-3">
+                {!!t.steps?.length && <p className="mb-1 text-[11px] text-[var(--color-text-tertiary)]">{t.steps.length} 个步骤 · 创建后均为待办</p>}
+                {t.steps?.map((step, stepIndex) => (
+                  <div key={stepIndex} className="flex items-start gap-1">
+                    <span className="pt-2 text-[11px] tabular-nums text-[var(--color-text-tertiary)]">{stepIndex + 1}.</span>
+                    <textarea
+                      rows={2}
+                      value={step}
+                      aria-label={`第 ${i + 1} 个任务的第 ${stepIndex + 1} 个步骤`}
+                      onChange={(event) => updatePreview(i, { steps: t.steps?.map((value, index) => index === stepIndex ? event.target.value : value) })}
+                      className="min-w-0 flex-1 resize-y rounded-md border border-transparent px-2 py-1.5 text-[12px] text-[var(--color-text-secondary)] outline-none hover:border-[var(--color-border)] focus:border-[var(--color-primary)]"
+                    />
+                    <button type="button" aria-label={`移除第 ${i + 1} 个任务的第 ${stepIndex + 1} 个步骤`}
+                      onClick={() => updatePreview(i, { steps: t.steps?.filter((_, index) => index !== stepIndex) })}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[var(--color-text-tertiary)] hover:bg-[var(--color-bg-gray-light)]">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+                <button type="button" aria-label={`为第 ${i + 1} 个任务添加步骤`}
+                  onClick={() => updatePreview(i, { steps: [...(t.steps ?? []), ""] })}
+                  className="flex min-h-9 items-center gap-1 text-[11px] text-[var(--color-primary)]">
+                  <Plus className="h-3 w-3" />添加步骤
                 </button>
               </div>
 
@@ -288,7 +309,7 @@ export default function QuickAddTask({ onCreate, date, inputRef, compact = false
             </div>
           ))}
           {!canCreatePreview && (
-            <p className="text-[11px] text-[var(--color-danger)]">请补全任务标题和日期；填写结束时间时也需要填写开始时间。</p>
+            <p className="text-[11px] text-[var(--color-danger)]">请补全标题、日期和步骤（不用的步骤可移除）；填写结束时间时也需要填写开始时间。</p>
           )}
           <div className="flex justify-end gap-2 mt-1">
             <button

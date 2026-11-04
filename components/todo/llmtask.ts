@@ -8,12 +8,13 @@ export type ParsedTask = {
   endTime?: string;
   priority?: "high";
   targetMinutes?: number;
+  steps?: string[];
 };
 
 const TASK_PROMPT = `你是一个待办任务解析器。用户用一句话描述要做的任务，你解析成结构化 JSON。
 
 输出格式（必须是合法 JSON，不要输出其他内容）：
-{"tasks":[{"title":"任务名","date":"YYYY-MM-DD","startTime":"HH:mm","endTime":"HH:mm","priority":"high","targetMinutes":180}]}
+{"tasks":[{"title":"任务名","date":"YYYY-MM-DD","startTime":"HH:mm","endTime":"HH:mm","priority":"high","targetMinutes":180,"steps":["用户提供的步骤一","用户提供的步骤二"]}]}
 
 规则：
 1. title：只去掉语气词和已经提取的日期时间，必须保留动作、资料来源、地点、数量和完成边界。例如“下周每天都要在林木实干圈的飞书文档里学习一章工作技巧”，标题应为“在林木实干圈的飞书文档里学习一章工作技巧”，不能缩成“学习工作技巧”
@@ -21,11 +22,12 @@ const TASK_PROMPT = `你是一个待办任务解析器。用户用一句话描�
 3. startTime/endTime：提到具体时间就填（24 小时制，"下午3点"=15:00）；没提就省略
 4. priority：提到"高优/重要/紧急/急/务必"→ "high"，否则省略该字段
 5. targetMinutes：如果是"学习3小时/看书2小时/背单词1小时"这种只要求投入时长、不限具体时间段的，填 targetMinutes（分钟），并省略 startTime/endTime
-6. 一句话可能包含多个任务，全部解析出来
+6. 多个独立任务分别解析；但“步骤如下/流程/子任务”或明确表示同一任务的组成部分时，只建一个父任务，title 只写父任务名，按原顺序把各步骤放进 steps 字符串数组。不要把步骤塞进 title，也不要拆成独立任务。不要求用户换行或使用特定编号。没有提供步骤就省略 steps，不擅自生成步骤。
 7. 同一任务在多个日期重复时，只输出一个对象，用 dates 数组代替 date，写全所有具体日期，程序负责逐日创建。例如当前日期为 2026-09-06 时，“下周每天学习”应返回 {"tasks":[{"title":"学习","dates":["2026-09-07","2026-09-08","2026-09-09","2026-09-10","2026-09-11","2026-09-12","2026-09-13"]}]}。多个不同任务分别使用自己的 dates/date，不能混用日期范围
 8. "下周"指下一个周一到周日；"下周工作日"指下周一到周五；"下周末"指下周六和周日
 9. 范围中的例外必须排除（如“除了周三”）；“本周每天”从今天到本周日；只有“每天”没有结束日期时先排从今天起 7 天，不要无限生成；单次最多展开 31 天
-10. 只输出 JSON，解析不出任务时返回 {"tasks":[]}`;
+10. 步骤保留题号、分数、✅、备注等原有信息；分数不是时长、题号不是日期或时刻。✅ 只保留为文本，不输出完成状态。例如“做题，步骤如下：第三套 4：左手倒右手 84 ✅ 第三套 10：经验迁移 改成模板题，不再打分”应输出一个 title 为“做题”的任务，steps 为 ["第三套第4题：左手倒右手 84 ✅","第三套第10题：经验迁移；改成模板题，不再打分"]。这里只提取已有结构，不改写或删减用户的要求。
+11. 只输出 JSON，解析不出任务时返回 {"tasks":[]}`;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
@@ -100,10 +102,13 @@ export async function parseTasksWithLLM(
       const priority = o.priority === "high" ? "high" : undefined;
       const tm = Math.round(Number(o.targetMinutes));
       const targetMinutes = Number.isFinite(tm) && tm > 0 ? tm : undefined;
+      const steps = Array.isArray(o.steps)
+        ? o.steps.filter((step): step is string => typeof step === "string").map((step) => step.trim()).filter(Boolean)
+        : [];
       const dates = Array.isArray(o.dates)
         ? [...new Set(o.dates.filter((value): value is string => typeof value === "string" && DATE_RE.test(value)))].slice(0, 31)
         : [date];
-      return dates.map((date) => ({ title, date, startTime, endTime, priority, targetMinutes }));
+      return dates.map((date) => ({ title, date, startTime, endTime, priority, targetMinutes, ...(steps.length ? { steps: [...steps] } : {}) }));
     });
 
   const requestedDates = requestedNextWeekDates(text, today);

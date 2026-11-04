@@ -94,6 +94,30 @@ test('AI failure preserves draft and directs users to plus for manual capture', 
   assert.deepEqual(calls, [{ title: '明早九点开会', date: '2026-10-08', status: 'todo' }]);
 });
 
+test('AI step preview edits/removes/adds steps and creates independent pending subtasks for each day', async () => {
+  const calls = [];
+  const tasks = ['2026-11-04', '2026-11-05'].map(date => ({ title: '做题', date, steps: ['第一题 84 ✅', '保留备注', '删去这步'] }));
+  const h = harness('components/QuickAddTask.tsx', { date: '2026-11-04', onCreate: t => calls.push(t) }, async () => ({ ok: true, json: async () => ({ tasks }) }));
+  h.type('做题，步骤如下'); await h.enter();
+  const field = label => h.nodes().find(n => n.props['aria-label'] === label);
+  const confirm = () => h.nodes().find(n => n.type === 'button' && n.props.children?.includes?.('创建'));
+  field('第 1 个任务的第 2 个步骤').props.onChange({ target: { value: '改成模板题，不再打分' } }); h.render();
+  h.click('移除第 1 个任务的第 3 个步骤');
+  h.click('为第 1 个任务添加步骤');
+  assert.equal(confirm().props.disabled, true);
+  confirm().props.onClick(); assert.equal(calls.length, 0);
+  field('第 1 个任务的第 3 个步骤').props.onChange({ target: { value: '  复盘  ' } }); h.render();
+  assert.equal(confirm().props.disabled, false);
+  confirm().props.onClick();
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0].subtasks.map(s => s.title), ['第一题 84 ✅', '改成模板题，不再打分', '复盘']);
+  assert.deepEqual(calls[1].subtasks.map(s => s.title), ['第一题 84 ✅', '保留备注', '删去这步']);
+  const subtasks = calls.flatMap(t => t.subtasks);
+  assert.equal(new Set(subtasks.map(s => s.id)).size, 6);
+  assert.ok(subtasks.every(s => s.done === false && !s.completedAt));
+  assert.ok(calls.every(t => t.status === 'todo' && t.title === '做题'));
+});
+
 test('weekly inline capture opens in place, supports repeated entry and Escape', () => {
   const calls = []; const h = harness('components/QuickAddTask.tsx', { compact: true, date: '2026-09-24', onCreate: t => calls.push(t) });
   assert.equal(h.input(), undefined); h.click('在 2026-09-24 添加任务');
