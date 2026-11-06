@@ -110,7 +110,7 @@ test('step progress and duration targets remain separate measures', () => {
   assert.equal(flatten(tree).find(n => n.props.role === 'progressbar').props['aria-valuenow'], 50);
   assert.ok(flatten(tree).some(n => n.props.style?.width === '25%'));
 });
-test('picker searches only that day’s unfinished alternatives, selects once and can cancel designation', () => {
+test('picker searches that day’s alternatives, selects once and can cancel designation', () => {
   const state = []; let cursor = 0; let selected; let tree;
   const react = { useEffect() {}, useRef(value) { return { current: value }; }, useState(initial) { const i = cursor++; if (!(i in state)) state[i] = initial; return [state[i], v => state[i] = v]; } };
   const Component = load('components/DailyFocusSection.tsx', react).default;
@@ -125,6 +125,57 @@ test('picker searches only that day’s unfinished alternatives, selects once an
   flatten(tree).find(n => n.props['aria-label'] === '取消关键任务').props.onClick(); assert.equal(selected, null);
   render({ ...tasks[1], status: 'done' });
   assert.ok(JSON.stringify(tree).includes('已完成'));
+});
+
+test('past-day picker includes completed tasks, labels the date and excludes other dates', () => {
+  const state = []; let cursor = 0; let selected;
+  const react = { useEffect() {}, useRef: value => ({ current: value }), useState(initial) {
+    const i = cursor++; if (!(i in state)) state[i] = initial; return [state[i], v => state[i] = v];
+  } };
+  const Component = load('components/DailyFocusSection.tsx', react).default;
+  const completed = { ...tasks[0], status: 'done', completedAt: 1234 };
+  const allTasks = [completed, ...tasks.slice(1)];
+  const before = structuredClone(allTasks);
+  const render = task => { cursor = 0; return Component({ task, tasks: allTasks, date, aspirations: [], isToday: false, onSelect: id => selected = id }); };
+  let tree = render();
+  assert.equal(tree.props['aria-label'], '9月13日关键任务');
+  flatten(tree).find(n => n.type === 'button' && n.props.children === '选一件').props.onClick();
+  tree = render();
+  const choices = flatten(tree).filter(n => n.type === 'button' && n.key);
+  assert.deepEqual(choices.map(n => n.key), ['a', 'b']);
+  assert.ok(JSON.stringify(choices[0]).includes('已完成'));
+  choices[0].props.onClick(); assert.equal(selected, 'a');
+  tree = render(completed);
+  assert.ok(!tree.props.className.includes('daily-focus-celebrate'));
+  assert.deepEqual(allTasks, before);
+});
+
+test('switching dates reads/writes separate focus plans and completed-task menus remain usable', () => {
+  const Component = load('components/TodoDayView.tsx', { useState: value => [value, () => {}] }).default;
+  const allTasks = tasks.map(t => ({ ...t, status: 'done', completedAt: 1234 }));
+  const before = structuredClone(allTasks);
+  let plans = {};
+  const render = selectedDate => Component({ viewMode: 'day', selectedDate, today: '2026-09-15', tasks: allTasks,
+    entries: [], aspirations: [], goalResults: [], behaviors: [], habits: [], dayPlans: plans, running: null, elapsedMs: 0,
+    onSetDailyFocus: (day, id) => { plans = setDailyFocus(plans, day, id, allTasks); },
+  });
+  const focusOf = tree => flatten(tree).find(n => n.type?.default === 'DailyFocusSection' || n.type === 'DailyFocusSection');
+  let tree = render(date);
+  assert.equal(focusOf(tree).props.date, date);
+  assert.deepEqual(focusOf(tree).props.tasks.map(t => t.id).sort(), ['a', 'b']);
+  focusOf(tree).props.onSelect('a');
+  tree = render(tomorrow);
+  assert.equal(focusOf(tree).props.task, undefined);
+  assert.equal(focusOf(tree).props.date, tomorrow);
+  const menu = flatten(tree).find(n => n.type?.default === 'TaskQuickActions' || n.type === 'TaskQuickActions');
+  assert.equal(typeof menu.props.onToggleDailyFocus, 'function');
+  menu.props.onToggleDailyFocus();
+  assert.equal(focusOf(render(tomorrow)).props.task.id, 'c');
+  assert.equal(focusOf(render(date)).props.task.id, 'a');
+  focusOf(render(date)).props.onSelect(null);
+  assert.equal(focusOf(render(date)).props.task, undefined);
+  assert.equal(focusOf(render(tomorrow)).props.task.id, 'c');
+  assert.deepEqual(allTasks, before);
 });
 
 test('focus celebration only runs on completion of the same task, cleans up and never replays on mount', () => {

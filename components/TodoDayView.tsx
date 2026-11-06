@@ -547,7 +547,7 @@ export default function TodoDayView({
           <TaskQuickActions title={t.title} onRename={() => setRenamingTaskId(t.id)}
             onCopy={() => setCopyingTaskId(t.id)}
             isDailyFocus={keyTask?.id === t.id}
-            onToggleDailyFocus={t.status !== "done" || keyTask?.id === t.id ? () => onSetDailyFocus(selectedDate, keyTask?.id === t.id ? null : t.id) : undefined}
+            onToggleDailyFocus={() => onSetDailyFocus(selectedDate, keyTask?.id === t.id ? null : t.id)}
             onDelete={() => setDeletingTaskId(t.id)} />
         </div>
 
@@ -644,7 +644,7 @@ export default function TodoDayView({
 
       <div className="flex w-full flex-col gap-5 px-[18px] pb-6 pt-1">
         <DailyFocusSection key={selectedDate} task={keyTask} tasks={dayTasks} aspirations={aspirations}
-          isToday={selectedDate === today} onSelect={(id) => onSetDailyFocus(selectedDate, id)}>
+          date={selectedDate} isToday={selectedDate === today} onSelect={(id) => onSetDailyFocus(selectedDate, id)}>
           {keyTask && <button type="button" onClick={() => openTaskDetails(keyTask)}
             aria-label={`查看关键任务详情：${keyTask.title}`}
             className="my-1 flex min-h-11 w-full min-w-0 items-center gap-2 rounded-lg px-1 py-1.5 text-left transition-colors hover:bg-[var(--color-bg-white)]/60 focus-visible:outline-[var(--color-primary)]">

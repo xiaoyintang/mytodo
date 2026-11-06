@@ -2,13 +2,15 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, Sparkles, Target, X } from "lucide-react";
-import type { Aspiration, Task } from "@/components/todo/types";
+import type { Aspiration, ISODate, Task } from "@/components/todo/types";
+import { parseISODate } from "@/components/todo/date";
 
-export default function DailyFocusSection({ task, tasks, aspirations, isToday, onSelect, children }: {
+export default function DailyFocusSection({ task, tasks, aspirations, isToday, date, onSelect, children }: {
   task?: Task;
   tasks: Task[];
   aspirations: Aspiration[];
   isToday: boolean;
+  date?: ISODate;
   onSelect: (id: string | null) => void;
   children?: ReactNode;
 }) {
@@ -27,8 +29,10 @@ export default function DailyFocusSection({ task, tasks, aspirations, isToday, o
       return () => window.clearTimeout(timer);
     }
   }, [task?.id, task?.status]);
-  const label = isToday ? "今日关键任务" : "当天关键任务";
-  const choices = tasks.filter((item) => item.status !== "done" && item.id !== task?.id && item.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+  const selectedDay = date ? parseISODate(date) : undefined;
+  const label = isToday ? "今日关键任务" : selectedDay ? `${selectedDay.getMonth() + 1}月${selectedDay.getDate()}日关键任务` : "当天关键任务";
+  // 补选历史关键任务时，已完成的也应可选；指定重点不改变任务状态。
+  const choices = tasks.filter((item) => (!date || item.date === date) && item.id !== task?.id && item.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const buttonClass = "min-h-9 rounded-lg px-2.5 text-[12px] font-medium text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] focus-visible:outline-2 focus-visible:outline-[var(--color-primary)]";
   const accent = done ? "text-[var(--color-success)]" : task ? "text-[var(--color-focus)]" : "text-[var(--color-primary)]";
   return <section aria-label={label} className={`rounded-xl border transition-colors duration-300 motion-reduce:transition-none ${task ? done ? "border-[var(--color-success)] bg-[var(--color-success-light)]" : "border-[var(--color-focus-border)] bg-[var(--color-focus-light)]" : "border-[var(--color-border)] bg-[var(--color-bg-white)]"} ${celebrating ? "daily-focus-celebrate" : ""}`}>
@@ -48,10 +52,10 @@ export default function DailyFocusSection({ task, tasks, aspirations, isToday, o
         {choices.map((item) => <button key={item.id} type="button" onClick={() => { onSelect(item.id); setChoosing(false); }}
           className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-[var(--color-primary-light)] focus-visible:outline-[var(--color-primary)]">
           <span className="min-w-0 flex-1"><span data-full-text={item.title} className="block truncate text-[13px] font-medium text-[var(--color-text-primary)]">{item.title}</span>
-            <span className="block truncate text-[11px] text-[var(--color-text-secondary)]">{item.startTime ?? "不限时段"}{item.aspirationId ? ` · ${aspirations.find((goal) => goal.id === item.aspirationId)?.title ?? ""}` : ""}</span></span>
+            <span className="block truncate text-[11px] text-[var(--color-text-secondary)]">{item.startTime ?? "不限时段"}{item.aspirationId ? ` · ${aspirations.find((goal) => goal.id === item.aspirationId)?.title ?? ""}` : ""}{item.status === "done" ? " · 已完成" : ""}</span></span>
           <span className="shrink-0 text-[12px] text-[var(--color-primary)]">选这件</span>
         </button>)}
-        {!choices.length && <p className="py-3 text-[12px] text-[var(--color-text-secondary)]">{query ? "没有匹配的任务" : "暂无其他未完成任务，可以先在下方添加。"}</p>}
+        {!choices.length && <p className="py-3 text-[12px] text-[var(--color-text-secondary)]">{query ? "没有匹配的任务" : "当天暂无其他任务，可以先在下方添加。"}</p>}
       </div>
     </div>}
     {task && <div className={`border-t px-3 ${done ? "border-[var(--color-success)]/20" : "border-[var(--color-focus-border)]/50"}`}>
