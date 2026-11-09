@@ -34,6 +34,7 @@ import MainlineBar from "@/components/MainlineBar";
 import CategoryDonut, { type DonutSlice } from "@/components/CategoryDonut";
 import GoalInvestChart from "@/components/GoalInvestChart";
 import { AppHeader, AppShell, MonthDatePicker, ViewTabs, WeekDateStrip } from "@/components/ViewChrome";
+import { useDraftDictation } from "@/components/todo/useDraftDictation";
 
 
 type Props = {
@@ -170,6 +171,8 @@ export default function TimeLogView({
   onNextWeek,
 }: Props) {
   const [input, setInput] = useState("");
+  const voice = useDraftDictation(selectedDate, setInput);
+  const localVoice = process.env.NEXT_PUBLIC_DICTATION_ENABLED === "1" || process.env.NODE_ENV === "development";
   const [pending, setPending] = useState<PendingEntry[] | null>(null);
   const [parsing, setParsing] = useState(false);
   const [parseSource, setParseSource] = useState<"ai" | "rule" | null>(null);
@@ -328,7 +331,7 @@ export default function TimeLogView({
   // useAI=false 走本地规则解析（零延迟）；useAI=true 走 /api/parse，失败时降级规则
   async function handleParse(useAI: boolean) {
     const text = input.trim();
-    if (!text || parsing) return;
+    if (!text || parsing || voice.phase) return;
     if (handleTimerCommand(text)) return; // 计时开始/停止指令：拦截，不走时间记录解析
     setParsing(true);
     setParseError(null);
@@ -777,10 +780,17 @@ export default function TimeLogView({
           <div className="flex items-center gap-2">
             <Mic className="w-4 h-4 text-[var(--color-primary)]" />
             <span className="text-[var(--color-text-primary)] text-[16px] font-semibold">记一笔</span>
-            <span className="text-[var(--color-text-tertiary)] text-[12px]">回车解析 · Shift+回车换行 · 可语音</span>
+            <span className="text-[var(--color-text-tertiary)] text-[12px]">回车解析 · Shift+回车换行</span>
+            {localVoice && <button type="button" aria-label={voice.aria} aria-pressed={!!voice.phase}
+              disabled={parsing || voice.phase === "finishing"}
+              onClick={() => voice.toggle(() => { setParseError(null); setPending(null); })}
+              className="ml-auto min-h-10 shrink-0 rounded-lg px-2 text-xs font-semibold text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] disabled:opacity-50">
+              {voice.label}
+            </button>}
           </div>
           <textarea
             value={input}
+            readOnly={!!voice.phase}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
               // 回车提交解析；Shift+回车换行；输入法组字中的回车（选字）不算提交
@@ -794,6 +804,10 @@ export default function TimeLogView({
             rows={2}
             className="w-full px-3 py-2.5 rounded-[10px] border border-[var(--color-border)] text-[14px] leading-relaxed placeholder:text-[var(--color-text-tertiary)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] resize-none"
           />
+          {localVoice && <div role="status" aria-live={voice.phase === "listening" ? "off" : "polite"} className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+            {voice.help}
+            {voice.phase && voice.phase !== "permission" && <button type="button" onClick={voice.discard} className="shrink-0 underline">放弃本次听写</button>}
+          </div>}
           {parseError && (
             <p className="text-[12px] text-[var(--color-danger)]">{parseError}</p>
           )}
@@ -888,7 +902,7 @@ export default function TimeLogView({
               <button
                 type="button"
                 onClick={() => handleParse(false)}
-                disabled={!input.trim() || parsing}
+                disabled={!input.trim() || parsing || !!voice.phase}
                 className={[
                   "flex-1 flex items-center justify-center gap-1.5 rounded-[10px] py-2.5 text-[14px] font-semibold border transition-colors",
                   input.trim() && !parsing
@@ -902,7 +916,7 @@ export default function TimeLogView({
               <button
                 type="button"
                 onClick={() => handleParse(true)}
-                disabled={!input.trim() || parsing}
+                disabled={!input.trim() || parsing || !!voice.phase}
                 className={[
                   "flex-1 flex items-center justify-center gap-1.5 rounded-[10px] py-2.5 text-[14px] font-semibold transition-colors",
                   input.trim() && !parsing

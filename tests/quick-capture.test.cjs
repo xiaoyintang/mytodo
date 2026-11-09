@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const ts = require('typescript');
 
-function harness(file, initialProps, fetchImpl = () => { throw new Error('Manual capture must not call AI'); }, exportName = 'default') {
+function harness(file, initialProps, fetchImpl = () => { throw new Error('Manual capture must not call AI'); }, exportName = 'default', modules = {}) {
   const slots = []; let cursor = 0, tree, props = initialProps;
   const react = {
     useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = typeof initial === 'function' ? initial() : initial;
@@ -21,6 +21,7 @@ function harness(file, initialProps, fetchImpl = () => { throw new Error('Manual
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
     }).outputText;
     new Function('require', 'module', 'exports', 'fetch', code)(name => {
+      if (name in modules) return modules[name];
       if (name === 'react') return react;
       if (name.startsWith('./')) return load(path.join(path.dirname(relative), name + '.ts'));
       if (name.startsWith('@/components/todo/')) return load(name.slice(2) + '.ts');
@@ -32,7 +33,7 @@ function harness(file, initialProps, fetchImpl = () => { throw new Error('Manual
   const Component = load(file)[exportName];
   function render(updates = {}) { props = { ...props, ...updates }; cursor = 0; tree = Component(props); }
   function nodes(n = tree) { return Array.isArray(n) ? n.flatMap(child => nodes(child ?? null)) : !n || typeof n !== 'object' ? [] : [n, ...nodes(n.props?.children ?? null)]; }
-  const input = () => nodes().find(n => n.type === 'input' && n.props.type === 'text');
+  const input = () => nodes().find(n => n.type === 'textarea' && n.props.onKeyDown);
   render();
   return { nodes, render, input,
     type(value) { input().props.onChange({ target: { value } }); render(); },
@@ -56,7 +57,52 @@ test('Chinese composition confirmation and blank title never parse or create tas
   let requests = 0;
   const calls = []; const h = harness('components/QuickAddTask.tsx', { date: '2026-09-21', onCreate: t => calls.push(t) }, async () => { requests++; return { status: 501 }; });
   h.type('写提纲'); await h.enter({ nativeEvent: { isComposing: true } }); await h.enter({ keyCode: 229 });
+  await h.enter({ shiftKey: true, preventDefault() { assert.fail('Shift+Enter must insert a newline'); } });
   h.type('   '); await h.enter(); assert.equal(calls.length, 0); assert.equal(requests, 0);
+});
+
+test('task dictation leaves draft unchanged until explicitly finished', async () => {
+  const created = []; let requests = 0, voice;
+  const h = harness('components/QuickAddTask.tsx', { localVoice: true, date: '2026-11-07', onCreate: t => created.push(t) },
+    async () => { requests++; return { status: 501 }; }, 'default', {
+      '@/components/todo/cloudDictation': { dictate(events) {
+        voice = events; events.phase('listening');
+        return { stop() { events.end('明天下午开会', ''); }, cancel() {} };
+      } },
+    });
+  h.type('面试准备'); h.click('开始云端听写');
+  assert.equal(h.input().props.value, '面试准备');
+  voice.elapsed(4); h.render();
+  assert.equal(h.input().props.value, '面试准备');
+  h.click('放弃本次听写'); assert.equal(h.input().props.value, '面试准备');
+  h.click('开始云端听写'); voice.elapsed(3); h.render();
+  await h.enter(); h.click('直接添加任务');
+  h.click('结束听写');
+  assert.equal(h.input().props.value, '面试准备\n明天下午开会');
+  assert.equal(requests, 0); assert.equal(created.length, 0);
+  h.type('明天下午三点开会'); h.click('直接添加任务');
+  assert.equal(created[0].title, '明天下午三点开会');
+});
+
+test('record dictation appends a stopped recording without executing a timer command or saving a log', async t => {
+  const previous = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'development';
+  t.after(() => { if (previous === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = previous; });
+  const h = harness('components/TimeLogView.tsx', { selectedDate: '2026-11-09', today: '2026-11-09',
+    tasks: [], entries: [], aspirations: [], dayPlans: {}, running: null,
+    timer: { running: null, start: () => assert.fail('dictation started the timer') },
+    onAddEntries: () => assert.fail('dictation saved the draft'),
+  }, undefined, 'default', {
+    '@/components/todo/cloudDictation': { dictate(events) {
+      events.phase('listening');
+      return { stop() { events.end('现在写报告', ''); }, cancel() {} };
+    } },
+  });
+  h.type('之前的记录'); h.click('开始云端听写');
+  await h.enter(); assert.equal(h.input().props.value, '之前的记录');
+  h.click('放弃本次听写'); assert.equal(h.input().props.value, '之前的记录');
+  h.click('开始云端听写'); h.click('结束听写');
+  assert.equal(h.input().props.value, '之前的记录\n现在写报告');
 });
 
 test('Enter uses AI in daily and weekly capture; preview is editable and needs confirmation', async () => {

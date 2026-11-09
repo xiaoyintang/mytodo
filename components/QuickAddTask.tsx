@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState, type RefObject } from "react";
-import { CalendarDays, Check, Clock, Flag, Plus, Sparkles, Timer, X } from "lucide-react";
+import { useRef, useState, type ReactNode, type RefObject } from "react";
+import { CalendarDays, Check, Clock, Flag, Mic, Plus, Sparkles, Square, Timer, X } from "lucide-react";
+import { useDraftDictation } from "@/components/todo/useDraftDictation";
 import type { ISODate, Task } from "@/components/todo/types";
 import { CN_WEEKDAY, toISODate } from "@/components/todo/date";
 import type { ParsedTask } from "@/components/todo/llmtask";
@@ -36,24 +37,29 @@ async function fetchAITasks(text: string): Promise<ParsedTask[] | null> {
   return null;
 }
 
-export default function QuickAddTask({ onCreate, date, inputRef, compact = false, showDate = false }: {
+export default function QuickAddTask({ onCreate, date, inputRef, compact = false, showDate = false, trailingAction, localVoice = false }: {
   onCreate: (task: Omit<Task, "id">) => void;
   date: ISODate;
-  inputRef?: RefObject<HTMLInputElement | null>;
+  inputRef?: RefObject<HTMLTextAreaElement | null>;
+  trailingAction?: ReactNode;
+  localVoice?: boolean;
   compact?: boolean;
   showDate?: boolean;
 }) {
-  const localRef = useRef<HTMLInputElement>(null);
+  const localRef = useRef<HTMLTextAreaElement>(null);
   const fieldRef = inputRef ?? localRef;
   const [editing, setEditing] = useState(false);
   const [input, setInput] = useState("");
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState("");
   const [preview, setPreview] = useState<ParsedTask[] | null>(null);
+  const voice = useDraftDictation(date, setInput);
+  const { phase } = voice;
+  const draft = input;
 
   function createManual() {
     const title = input.trim();
-    if (!title || parsing) return;
+    if (!title || parsing || phase) return;
     onCreate({ title, date, status: "todo" });
     setInput("");
     setError("");
@@ -63,7 +69,7 @@ export default function QuickAddTask({ onCreate, date, inputRef, compact = false
 
   async function handleParse() {
     const text = input.trim();
-    if (!text || parsing) return;
+    if (!text || parsing || phase) return;
     setParsing(true);
     setError("");
     setPreview(null);
@@ -125,13 +131,16 @@ export default function QuickAddTask({ onCreate, date, inputRef, compact = false
           className="flex min-h-9 w-full items-center gap-1.5 rounded-md px-2 text-left text-[12px] text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-bg-gray-light)] hover:text-[var(--color-primary)]">
           <Plus className="h-3.5 w-3.5" />添加任务
         </button>
-      ) : <div className="flex items-center gap-1.5">
-        <input
+      ) : <div className={compact ? "flex items-start gap-1.5" : "flex flex-col gap-1.5 sm:flex-row sm:items-start"}>
+        <div className={`relative min-w-0 sm:flex-1 ${compact ? "flex-1" : ""}`}>
+          <div aria-hidden="true" className={`invisible max-h-48 overflow-hidden whitespace-pre-wrap [overflow-wrap:anywhere] rounded-lg border border-transparent px-3 py-2 text-base leading-6 sm:text-sm sm:leading-6 ${compact ? "min-h-10" : "min-h-16"}`}>{draft + "\u200b"}</div>
+        <textarea
           ref={fieldRef}
           autoFocus={compact}
           aria-label={compact ? `${date} 的任务标题` : "新任务标题"}
-          type="text"
-          value={input}
+          rows={compact ? 1 : 2}
+          value={draft}
+          readOnly={!!phase}
           disabled={parsing}
           onBlur={() => { if (compact && !input.trim()) setEditing(false); }}
           onChange={(e) => {
@@ -140,14 +149,22 @@ export default function QuickAddTask({ onCreate, date, inputRef, compact = false
           }}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-            if (e.key === "Enter") { e.preventDefault(); return handleParse(); }
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); return handleParse(); }
             if (e.key === "Escape" && compact) { setInput(""); setEditing(false); }
           }}
           placeholder="写下任务，回车 AI 识别；加号直接添加"
           aria-busy={parsing}
-          className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-white px-3 text-[13px] placeholder:text-[var(--color-text-tertiary)] focus:border-[var(--color-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
+          className="absolute inset-0 h-full w-full resize-none rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-white)] px-3 py-2 text-base leading-6 sm:text-sm sm:leading-6 placeholder:text-[var(--color-text-tertiary)] focus:border-[var(--color-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
         />
-        <button type="button" onClick={createManual} disabled={!input.trim() || parsing}
+        </div>
+        <div className="flex shrink-0 items-center justify-end gap-1.5">
+        {localVoice && <button type="button" onClick={() => voice.toggle(() => { setError(""); setPreview(null); })} disabled={parsing || phase === "finishing"}
+          aria-label={voice.aria} aria-pressed={!!phase}
+          className="flex min-h-10 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] disabled:opacity-50">
+          {phase ? <Square className="size-4" /> : <Mic className="size-4" />}
+          {voice.label}
+        </button>}
+        <button type="button" onClick={createManual} disabled={!input.trim() || parsing || !!phase}
           aria-label="直接添加任务" data-full-text="直接添加，不经过 AI"
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary)] text-white transition-opacity disabled:opacity-35">
           <Plus className="h-4 w-4" />
@@ -157,7 +174,7 @@ export default function QuickAddTask({ onCreate, date, inputRef, compact = false
           aria-label="用 AI 解析复杂安排"
           data-full-text="用 AI 解析时间、重复、任务步骤或多条任务"
           onClick={handleParse}
-          disabled={!input.trim() || parsing}
+          disabled={!input.trim() || parsing || !!phase}
           className={[
             "flex h-9 items-center gap-1 rounded-lg px-2.5 text-[12px] font-semibold transition-colors whitespace-nowrap",
             input.trim() && !parsing
@@ -168,6 +185,12 @@ export default function QuickAddTask({ onCreate, date, inputRef, compact = false
           <Sparkles className="h-3.5 w-3.5" />
           {parsing ? "解析中" : "AI"}
         </button>}
+        {trailingAction}
+        </div>
+      </div>}
+      {localVoice && <div role="status" aria-live={phase === "listening" ? "off" : "polite"} className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+        {voice.help}
+        {phase && phase !== "permission" && <button type="button" onClick={voice.discard} className="shrink-0 underline">放弃本次听写</button>}
       </div>}
       {compact && parsing && <span role="status" className="text-[12px] text-[var(--color-text-tertiary)]">AI 解析中…</span>}
       {showDate && <span className="text-[10px] text-[var(--color-text-tertiary)]">加号直接添加到 {date.slice(5).replace("-", "/")} · 也可在下方每天的卡片里添加</span>}
