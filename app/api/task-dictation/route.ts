@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { kvConfig } from "@/components/todo/kv";
 
 export const runtime = "nodejs";
+export const preferredRegion = "hkg1";
 export const maxDuration = 45;
 
 const loopback = new Set(["127.0.0.1", "localhost", "[::1]"]);
@@ -27,6 +28,7 @@ export async function POST(req: Request) {
     header.readUInt32LE(16) !== 16 || header.readUInt16LE(20) !== 1 || header.readUInt16LE(22) !== 1 ||
     header.readUInt32LE(24) !== 16000 || header.readUInt16LE(34) !== 16 || header.toString("ascii", 36, 40) !== "data" ||
     header.readUInt32LE(40) !== size - 44) return fail("录音格式不正确", 415);
+  let quotaMs = 0;
   if (!local) {
     const kv = kvConfig();
     if (!kv) return fail("听写服务暂不可用", 503);
@@ -36,10 +38,12 @@ export async function POST(req: Request) {
     // Shared quotas across function instances; never store raw IPs or audio in KV.
     const script = "local a=tonumber(redis.call('GET',KEYS[1]) or '0'); local b=tonumber(redis.call('GET',KEYS[2]) or '0'); if a>=60 or b>=600 then return 0 end; for i=1,2 do redis.call('INCR',KEYS[i]); redis.call('EXPIRE',KEYS[i],3700) end; return 1";
     try {
+      const start = performance.now();
       const quota = await fetch(kv.url, { method: "POST", headers: { Authorization: `Bearer ${kv.token}`, "Content-Type": "application/json" },
         body: JSON.stringify(["EVAL", script, 2, `voice:${bucket}:${client}`, `voice:${bucket}:all`]), cache: "no-store", signal: AbortSignal.timeout(5000) });
       if (!quota.ok) return fail("听写服务暂不可用", 503);
       const { result } = await quota.json();
+      quotaMs = Math.round(performance.now() - start);
       if (result === 0) return fail("听写次数较多，请稍后再试", 429);
       if (result !== 1) return fail("听写服务暂不可用", 503);
     } catch { return fail("听写服务暂不可用", 503); }
@@ -48,6 +52,7 @@ export async function POST(req: Request) {
   form.set("model", "FunAudioLLM/SenseVoiceSmall");
   form.set("file", audio, "task.wav");
   try {
+    const start = performance.now();
     const res = await fetch("https://api.siliconflow.cn/v1/audio/transcriptions", {
       method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form,
       signal: AbortSignal.any([req.signal, AbortSignal.timeout(30000)]), cache: "no-store",
@@ -55,6 +60,7 @@ export async function POST(req: Request) {
     if (!res.ok) return fail(res.status === 429 ? "转写服务繁忙，请稍后重试。" : "SenseVoice 暂未能转写，请重试。", 502);
     const data = await res.json();
     if (typeof data.text !== "string") return fail("转写服务未返回文字", 502);
-    return Response.json({ text: data.text }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json({ text: data.text }, { headers: { "Cache-Control": "no-store",
+      "Server-Timing": `quota;dur=${quotaMs}, asr;dur=${Math.round(performance.now() - start)}` } });
   } catch { return fail("转写服务连接失败或超时，请重试。", 502); }
 }

@@ -653,7 +653,7 @@ export default function TodoDayView({
             <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--color-text-secondary)]" />
           </button>}
         </DailyFocusSection>
-        <QuickAddTask onCreate={onCreateTask} date={selectedDate} localVoice={process.env.NEXT_PUBLIC_DICTATION_ENABLED === "1" || process.env.NODE_ENV === "development"} trailingAction={
+        <QuickAddTask aspirations={aspirations} onCreate={onCreateTask} date={selectedDate} localVoice={process.env.NEXT_PUBLIC_DICTATION_ENABLED === "1" || process.env.NODE_ENV === "development"} trailingAction={
           <button
             type="button"
             onClick={onOpenTemplates}

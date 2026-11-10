@@ -192,6 +192,7 @@ function WeekTaskRow({
 
 // 每天先看重点；需要时展开当天的完整清单，始终操作原任务。
 function DayRow({
+  aspirations,
   date,
   tasks,
   entries,
@@ -223,6 +224,7 @@ function DayRow({
   showAll: boolean;
   today: ISODate;
   mainlineTitles: string[];
+  aspirations: Aspiration[];
 }) {
   const [expanded, setExpanded] = useState(false);
   const iso = toISODate(date);
@@ -289,7 +291,7 @@ function DayRow({
             <ChevronDown className={`h-3 w-3 ${expanded ? "rotate-180" : ""}`} />{expanded ? "收起" : importantTasks.length > 3 ? `展开当天 · ${tasks.length} 项` : `其他 ${hiddenCount} 项`}
           </button>}
           <div className="min-w-0 flex-1 has-[input]:basis-full">
-            <QuickAddTask compact date={iso} onCreate={(task) => { onCreateTask(task); setExpanded(true); }} />
+            <QuickAddTask aspirations={aspirations} compact date={iso} onCreate={(task) => { onCreateTask(task); setExpanded(true); }} />
           </div>
         </div>
       </div>
@@ -425,6 +427,7 @@ export default function TodoWeekView({
             const day = overview.days.find(day => day.date === iso)!;
             return (
               <DayRow
+                aspirations={aspirations}
                 key={`${iso}-${showAll}`}
                 date={d}
                 tasks={day.all}
@@ -467,7 +470,7 @@ export default function TodoWeekView({
         </details>}
         <details className="mx-[18px] mb-4 rounded-lg border border-[var(--color-border)]">
           <summary className="cursor-pointer px-3 py-3 text-[12px] text-[var(--color-text-secondary)]">批量添加任务</summary>
-          <div className="px-3 pb-3"><QuickAddTask date={selectedDate} showDate onCreate={(task) => { onCreateTask(task); setShowAll(true); }} /></div>
+          <div className="px-3 pb-3"><QuickAddTask aspirations={aspirations} date={selectedDate} showDate onCreate={(task) => { onCreateTask(task); setShowAll(true); }} /></div>
         </details>
 
       </AppShell>

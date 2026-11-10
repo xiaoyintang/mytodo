@@ -3,7 +3,8 @@
 import { useRef, useState, type ReactNode, type RefObject } from "react";
 import { CalendarDays, Check, Clock, Flag, Mic, Plus, Sparkles, Square, Timer, X } from "lucide-react";
 import { useDraftDictation } from "@/components/todo/useDraftDictation";
-import type { ISODate, Task } from "@/components/todo/types";
+import type { Aspiration, ISODate, Task } from "@/components/todo/types";
+import { assignTaskIdentities } from "@/components/todo/taskIdentity";
 import { CN_WEEKDAY, toISODate } from "@/components/todo/date";
 import type { ParsedTask } from "@/components/todo/llmtask";
 
@@ -37,7 +38,9 @@ async function fetchAITasks(text: string): Promise<ParsedTask[] | null> {
   return null;
 }
 
-export default function QuickAddTask({ onCreate, date, inputRef, compact = false, showDate = false, trailingAction, localVoice = false }: {
+type DraftTask = ParsedTask & { aspirationId?: string };
+export default function QuickAddTask({ onCreate, date, inputRef, compact = false, showDate = false, trailingAction, localVoice = false, aspirations = [] }: {
+  aspirations?: Aspiration[];
   onCreate: (task: Omit<Task, "id">) => void;
   date: ISODate;
   inputRef?: RefObject<HTMLTextAreaElement | null>;
@@ -52,7 +55,7 @@ export default function QuickAddTask({ onCreate, date, inputRef, compact = false
   const [input, setInput] = useState("");
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState("");
-  const [preview, setPreview] = useState<ParsedTask[] | null>(null);
+  const [preview, setPreview] = useState<DraftTask[] | null>(null);
   const voice = useDraftDictation(date, setInput);
   const { phase } = voice;
   const draft = input;
@@ -83,7 +86,7 @@ export default function QuickAddTask({ onCreate, date, inputRef, compact = false
       setError('没识别出任务，换个说法，如"明天下午3点开会"');
       return;
     }
-    setPreview(tasks);
+    setPreview(assignTaskIdentities(tasks, text, aspirations));
   }
 
   function handleConfirm() {
@@ -96,6 +99,7 @@ export default function QuickAddTask({ onCreate, date, inputRef, compact = false
         startTime: t.targetMinutes ? undefined : t.startTime || undefined,
         endTime: t.targetMinutes ? undefined : t.endTime || undefined,
         priority: t.priority,
+        ...(t.aspirationId && aspirations.some(a => a.id === t.aspirationId && !a.archived) ? { aspirationId: t.aspirationId } : {}),
         targetMinutes: t.targetMinutes,
         ...(t.steps?.length ? { subtasks: t.steps.map((title) => ({
           id: crypto.randomUUID(), title: title.trim(), done: false,
@@ -113,7 +117,7 @@ export default function QuickAddTask({ onCreate, date, inputRef, compact = false
     setPreview(next.length ? next : null);
   }
 
-  function updatePreview(i: number, updates: Partial<ParsedTask>) {
+  function updatePreview(i: number, updates: Partial<DraftTask>) {
     setPreview((current) =>
       current?.map((task, index) => index === i ? { ...task, ...updates } : task) ?? null,
     );
@@ -253,6 +257,17 @@ export default function QuickAddTask({ onCreate, date, inputRef, compact = false
               </div>
 
               <div className="flex flex-wrap items-center gap-1.5">
+                <label className="flex h-8 max-w-full items-center gap-1 rounded-md border border-[var(--color-border)] px-2 text-[11px] text-[var(--color-text-secondary)]">
+                  身份
+                  <select aria-label={`第 ${i + 1} 个任务归属身份`} value={t.aspirationId ?? ""}
+                    onChange={e => updatePreview(i, { aspirationId: e.target.value || undefined, identityName: undefined })}
+                    className="max-w-40 bg-transparent">
+                    <option value="">未归属</option>
+                    {aspirations.filter(a => !a.archived).map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
+                  </select>
+                </label>
+                {t.identityName && !t.aspirationId && !aspirations.some(a => !a.archived && a.title === t.identityName) &&
+                  <span className="text-[11px] text-[var(--color-text-secondary)]">没找到「{t.identityName}」，可以手选</span>}
                 <label className="flex h-8 items-center gap-1 rounded-md border border-[var(--color-border)] px-2 text-[10px] text-[var(--color-text-tertiary)] focus-within:border-[var(--color-primary)]">
                   <CalendarDays className="h-3 w-3 flex-shrink-0" />
                   <input

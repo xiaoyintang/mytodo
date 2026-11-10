@@ -129,6 +129,28 @@ test('Enter uses AI in daily and weekly capture; preview is editable and needs c
   }
 });
 
+test('spoken identity is a separate, editable assignment persisted only after confirmation', async () => {
+  const text = '简历最终成稿，然后归属到面试能通过的这个身份里面。';
+  const opts = [{ id: 'interview', title: '面试能通过' }, { id: 'study', title: '持续学习' }];
+  for (const [raw, expected, choose] of [
+    [text, 'interview', 'interview'], [text, 'interview', 'study'], [text, 'interview', ''],
+    ['准备面试能通过的案例', '', ''],
+    ['简历最终成稿，不要归属到面试能通过', '', ''],
+  ]) {
+    const created = [];
+    const h = harness('components/QuickAddTask.tsx', { aspirations: opts, date: '2026-11-10', onCreate: t => created.push(t) },
+      async () => ({ ok: true, json: async () => ({ tasks: [{ date: '2026-11-10', title: raw, identityName: '面试能通过' }] }) }));
+    h.type(raw); await h.enter();
+    const owner = h.nodes().find(n => n.props['aria-label'] === '第 1 个任务归属身份');
+    assert.equal(owner.props.value, expected);
+    assert.deepEqual(created, []);
+    owner.props.onChange({target:{ value:choose }}); h.render();
+    h.nodes().find(n => n.type === 'button' && n.props.children?.includes?.('创建')).props.onClick();
+    assert.equal(created[0].aspirationId, choose || undefined);
+    assert.equal(created[0].title, expected ? '简历最终成稿' : raw);
+  }
+});
+
 test('AI failure preserves draft and directs users to plus for manual capture', async () => {
   const calls = [];
   const h = harness('components/QuickAddTask.tsx', { date: '2026-10-08', onCreate: t => calls.push(t) }, async () => ({ status: 501 }));

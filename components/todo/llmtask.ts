@@ -9,6 +9,7 @@ export type ParsedTask = {
   priority?: "high";
   targetMinutes?: number;
   steps?: string[];
+  identityName?: string;
 };
 
 const TASK_PROMPT = `你是一个待办任务解析器。用户用一句话描述要做的任务，你解析成结构化 JSON。
@@ -27,7 +28,8 @@ const TASK_PROMPT = `你是一个待办任务解析器。用户用一句话描�
 8. "下周"指下一个周一到周日；"下周工作日"指下周一到周五；"下周末"指下周六和周日
 9. 范围中的例外必须排除（如“除了周三”）；“本周每天”从今天到本周日；只有“每天”没有结束日期时先排从今天起 7 天，不要无限生成；单次最多展开 31 天
 10. 步骤保留题号、分数、✅、备注等原有信息；分数不是时长、题号不是日期或时刻。✅ 只保留为文本，不输出完成状态。例如“做题，步骤如下：第三套 4：左手倒右手 84 ✅ 第三套 10：经验迁移 改成模板题，不再打分”应输出一个 title 为“做题”的任务，steps 为 ["第三套第4题：左手倒右手 84 ✅","第三套第10题：经验迁移；改成模板题，不再打分"]。这里只提取已有结构，不改写或删减用户的要求。
-11. 只输出 JSON，解析不出任务时返回 {"tasks":[]}`;
+11. 用户明确要求“归属到/归入/放到某个身份或主线”时，在对应任务的 identityName 字段逐字写出身份名称，title 只保留任务内容。例如“简历最终成稿，然后归属到面试能通过的这个身份里面” → title 为“简历最终成稿”、identityName 为“面试能通过”。没有明确指定、否定归属或只是谈到面试时，不要推测身份。不同任务分别处理。
+12. 只输出 JSON，解析不出任务时返回 {"tasks":[]}`;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
@@ -108,7 +110,7 @@ export async function parseTasksWithLLM(
       const dates = Array.isArray(o.dates)
         ? [...new Set(o.dates.filter((value): value is string => typeof value === "string" && DATE_RE.test(value)))].slice(0, 31)
         : [date];
-      return dates.map((date) => ({ title, date, startTime, endTime, priority, targetMinutes, ...(steps.length ? { steps: [...steps] } : {}) }));
+      return dates.map((date) => ({ title, date, startTime, endTime, priority, targetMinutes, ...(typeof o.identityName === "string" && o.identityName.trim() ? { identityName: o.identityName.trim() } : {}), ...(steps.length ? { steps: [...steps] } : {}) }));
     });
 
   const requestedDates = requestedNextWeekDates(text, today);
