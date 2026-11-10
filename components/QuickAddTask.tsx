@@ -4,7 +4,7 @@ import { useRef, useState, type ReactNode, type RefObject } from "react";
 import { CalendarDays, Check, Clock, Flag, Mic, Plus, Sparkles, Square, Timer, X } from "lucide-react";
 import { useDraftDictation } from "@/components/todo/useDraftDictation";
 import type { Aspiration, ISODate, Task } from "@/components/todo/types";
-import { assignTaskIdentities } from "@/components/todo/taskIdentity";
+import { assignTaskIdentities, simpleIdentityDraft } from "@/components/todo/taskIdentity";
 import { CN_WEEKDAY, toISODate } from "@/components/todo/date";
 import type { ParsedTask } from "@/components/todo/llmtask";
 
@@ -73,6 +73,8 @@ export default function QuickAddTask({ onCreate, date, inputRef, compact = false
   async function handleParse() {
     const text = input.trim();
     if (!text || parsing || phase) return;
+    const simple = simpleIdentityDraft(text, date, aspirations);
+    if (simple) { setError(""); setPreview([simple]); return; }
     setParsing(true);
     setError("");
     setPreview(null);

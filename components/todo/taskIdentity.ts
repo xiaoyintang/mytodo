@@ -16,6 +16,18 @@ function clause(value: string, identity: Identity): boolean {
     /^(?:的)?(?:这个|那个)?(?:身份|主线)(?:里[面边]?|下[面边]?|中)?$/u.test(match[1].slice(name.length)));
 }
 
+// A short title followed by a known identity is already a complete form.
+// Leave dates, steps, ambiguous prose and multiple tasks to the existing parser.
+export function simpleIdentityDraft(input: string, date: string, identities: Identity[]) {
+  const bits = input.split(split).map(s => s.trim()).filter(Boolean);
+  if (bits.length !== 2) return null;
+  const [title, assignment] = bits;
+  if (!/^[\p{Script=Han}A-Za-z ]{2,24}$/u.test(title) ||
+    /今|明[天早晚上下午年]|后天|昨|周|星期|礼拜|月|日|号|晨|早[上晨]|午|晚|点|时|分钟|刻|每天|每年|每隔|每次|小时|下班|上班前|优先|高优|重要|紧急|务必|步骤|流程|然后|再|并|以及|和|先|接着|加一个|提醒|还有|记得|等会/u.test(title)) return null;
+  const matches = identities.filter(a => !a.archived && clause(assignment, a));
+  return matches.length === 1 ? { title, date, aspirationId: matches[0].id } : null;
+}
+
 export function assignTaskIdentities(tasks: ParsedTask[], input: string, identities: Identity[]) {
   const active = identities.filter(a => !a.archived);
   const explicit = active.filter(a => input.split(split).some(part => clause(part, a)));

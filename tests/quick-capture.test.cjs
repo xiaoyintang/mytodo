@@ -151,6 +151,16 @@ test('spoken identity is a separate, editable assignment persisted only after co
   }
 });
 
+test('title plus identity previews locally, but a dated request still goes through the task parser', async () => {
+  let calls = 0;
+  const h = harness('components/QuickAddTask.tsx', { date: '2026-11-10', aspirations: [{id:'a',title:'面试能通过'}], onCreate: () => assert.fail() },
+    async () => { calls++; return { ok:true, json:async () => ({tasks:[{ title:'改简历', date:'2026-11-11', identityName:'面试能通过' }]}) }; });
+  h.type('简历最终成稿，然后归属到面试能通过的这个身份里面。'); await h.enter();
+  assert.equal(calls, 0); assert.equal(h.nodes().find(n => n.props['aria-label'] === '第 1 个任务归属身份').props.value,'a');
+  h.type('明天改简历，然后归属到面试能通过的这个身份里面。'); await h.enter();
+  assert.equal(calls, 1); assert.equal(h.nodes().find(n => n.props['aria-label'] === '第 1 个任务日期').props.value,'2026-11-11');
+});
+
 test('AI failure preserves draft and directs users to plus for manual capture', async () => {
   const calls = [];
   const h = harness('components/QuickAddTask.tsx', { date: '2026-10-08', onCreate: t => calls.push(t) }, async () => ({ status: 501 }));

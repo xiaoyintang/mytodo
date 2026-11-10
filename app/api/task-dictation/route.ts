@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { kvConfig } from "@/components/todo/kv";
 
 export const runtime = "nodejs";
-export const preferredRegion = "hkg1";
 export const maxDuration = 45;
 
 const loopback = new Set(["127.0.0.1", "localhost", "[::1]"]);
