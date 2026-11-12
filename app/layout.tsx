@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import PageAnalytics from "@/components/PageAnalytics";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -46,6 +47,7 @@ export default function RootLayout({
       </head>
       <body className="font-inter h-full antialiased">
         {children}
+        {process.env.VERCEL_ENV === "production" && <PageAnalytics />}
 
         {/* Service Worker 注册 */}
         <script

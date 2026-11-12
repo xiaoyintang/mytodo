@@ -346,6 +346,8 @@ timing 改成看 `Habit.anchor` 字段；decision 去任务详情的「拆解」
 
 ## PWA
 
+- Vercel 正式版在根布局挂载 Web Analytics，只统计首页访问；不发送 URL 参数、任务、同步码或自定义行为事件。本地与预览版不计入访客。
+
 - `public/manifest.json`（`display: "standalone"`）、`public/sw.js`、`public/icons/`、`app/layout.tsx`（meta + SW 注册）。
 - SW：页面导航网络优先，静态资源缓存优先（生产 chunk 带 hash）。**对 localhost 直接放行不缓存**——
   否则 dev 改完刷新还是旧 bundle。本地遇到"改了没生效"，先去 DevTools → Application 退掉 SW。
